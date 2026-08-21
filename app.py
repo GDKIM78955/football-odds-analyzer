@@ -10,7 +10,7 @@ st.set_page_config(
 )
 
 # 2. 비공개 보안 비밀번호 (원하는 비밀번호로 바꾸세요)
-ADMIN_PASSWORD = "myfootball2026!"
+ADMIN_PASSWORD = "2592"
 
 if "authenticated" not in st.session_state:
     st.session_state["authenticated"] = False
