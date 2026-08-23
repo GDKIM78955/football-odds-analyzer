@@ -12,7 +12,7 @@ st.set_page_config(
 # 2. 9대 배당 업체 및 10번 경기내용 시트 정의
 BOOKMAKERS = [
     "bwin", "10x10", "1xbet", "betway", 
-    "william hill", "bet365", "pinnacle", "stake", "betman"
+    "william hill", "bet365", "pinnacle", "stake", "배트맨"
 ]
 STATS_SHEET_NAME = "경기내용"
 
@@ -81,10 +81,9 @@ with tab_input:
                     with st.container(border=True):
                         st.markdown(f"**🏢 [{idx+1}] {bm.upper()}**")
                         oh, od, oa = st.columns(3)
-                        # 베트맨(9번) 및 각 업체별 기본값
-                        default_h = 1.22 if bm == "betman" else 1.25
-                        default_d = 5.10 if bm == "betman" else 5.25
-                        default_a = 7.50 if bm == "betman" else 7.80
+                        default_h = 1.22 if bm == "배트맨" else 1.25
+                        default_d = 5.10 if bm == "배트맨" else 5.25
+                        default_a = 7.50 if bm == "배트맨" else 7.80
                         
                         h_val = oh.number_input("홈", value=default_h, step=0.01, key=f"in_{bm}_h")
                         d_val = od.number_input("무", value=default_d, step=0.01, key=f"in_{bm}_d")
@@ -102,8 +101,8 @@ with tab_input:
     away_1h_g = g3.number_input("원정 전반 득점", min_value=0, value=0)
     away_2h_g = g4.number_input("원정 후반 득점", min_value=0, value=2)
 
-    # 전술 및 슈팅/지표
-    st.markdown("**📊 전술 및 경기력 지표**")
+    # 전술 및 슈팅/기대값
+    st.markdown("**📊 전술 & 슈팅/기대값(xG) 지표**")
     p1, p2, p3, p4 = st.columns(4)
     home_tac = p1.text_input("홈 전술/포메이션", value="4-2-3-1")
     away_tac = p2.text_input("원정 전술/포메이션", value="4-1-4-1")
@@ -116,11 +115,19 @@ with tab_input:
     home_sot = s3.number_input("홈 유효슈팅", value=10)
     away_sot = s4.number_input("원정 유효슈팅", value=3)
 
+    # 점유율, 패스성공률, 경고/퇴장
+    st.markdown("**🟨 점유율, 패스 & 카드(경고/퇴장)**")
     r1, r2, r3, r4 = st.columns(4)
     home_pos = r1.number_input("홈 점유율(%)", value=61)
     away_pos = r2.number_input("원정 점유율(%)", value=39)
     home_pass = r3.number_input("홈 패스성공률(%)", value=82)
     away_pass = r4.number_input("원정 패스성공률(%)", value=70)
+
+    c1, c2, c3, c4 = st.columns(4)
+    home_yc = c1.number_input("홈 경고(옐로카드)", min_value=0, value=1)
+    away_yc = c2.number_input("원정 경고(옐로카드)", min_value=0, value=2)
+    home_rc = c3.number_input("홈 퇴장(레드카드)", min_value=0, value=0)
+    away_rc = c4.number_input("원정 퇴장(레드카드)", min_value=0, value=0)
 
     st.markdown("---")
     if st.button("💾 1~9번 배당 시트 & 10번 경기내용 시트 일괄 저장", type="primary", use_container_width=True):
