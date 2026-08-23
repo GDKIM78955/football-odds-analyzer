@@ -25,7 +25,7 @@ with st.sidebar:
         "구글 시트 URL",
         value="https://docs.google.com/spreadsheets/d/1-b-QusmoSnsvMhToNFe1B1IK7dJUKjjANs89y5ZekAQ/edit?gid=0#gid=0"
     )
-    st.caption("구성: 1~9번 배당 시트(9개사) + 10번 경기내용 시트")
+    st.caption("구조: 1~9번 배당 시트(9개사) + 10번 경기내용 시트")
     st.markdown("---")
     tol = st.number_input("동일/유사 배당 오차 허용치 (±)", value=0.03, step=0.01)
 
@@ -51,7 +51,7 @@ if gsheet_url:
 tab_input, tab_analysis = st.tabs(["📝 데이터 입력 및 저장", "📊 9개사 동일 배당 승률 분석"])
 
 # =========================================================
-# TAB 1: 통합 데이터 작성 (기본정보 + 9개사 배당 + 10번 경기내용 스탯)
+# TAB 1: 통합 데이터 작성 (기본정보 + 9개사 최종배당 + 10번 경기내용)
 # =========================================================
 with tab_input:
     st.subheader("1️⃣ 경기 기본 정보 & 스코어")
@@ -68,7 +68,7 @@ with tab_input:
     match_result = c_res.selectbox("경기 결과", ["홈승", "무", "원정승"])
 
     st.markdown("---")
-    st.subheader("2️⃣ 9대 배당 업체별 배당률 입력 (1~9번 시트로 분기 저장)")
+    st.subheader("2️⃣ 9대 업체 최종 배당률 입력 (미제공 업체는 0으로 두시면 자동 제외)")
     
     odds_inputs = {}
     for i in range(0, len(BOOKMAKERS), 3):
@@ -81,13 +81,14 @@ with tab_input:
                     with st.container(border=True):
                         st.markdown(f"**🏢 [{idx+1}] {bm.upper()}**")
                         oh, od, oa = st.columns(3)
-                        default_h = 1.22 if bm == "배트맨" else 1.25
-                        default_d = 5.10 if bm == "배트맨" else 5.25
-                        default_a = 7.50 if bm == "배트맨" else 7.80
+                        # 기본 예시값 (원치 않으시면 0.00으로 시작 가능)
+                        def_h = 1.22 if bm == "배트맨" or bm == "bwin" else (1.25 if idx < 4 else 0.0)
+                        def_d = 5.10 if bm == "배트맨" or bm == "bwin" else (5.25 if idx < 4 else 0.0)
+                        def_a = 7.50 if bm == "배트맨" or bm == "bwin" else (7.80 if idx < 4 else 0.0)
                         
-                        h_val = oh.number_input("홈", value=default_h, step=0.01, key=f"in_{bm}_h")
-                        d_val = od.number_input("무", value=default_d, step=0.01, key=f"in_{bm}_d")
-                        a_val = oa.number_input("원정", value=default_a, step=0.01, key=f"in_{bm}_a")
+                        h_val = oh.number_input("홈", value=def_h, step=0.01, min_value=0.0, key=f"in_{bm}_h")
+                        d_val = od.number_input("무", value=def_d, step=0.01, min_value=0.0, key=f"in_{bm}_d")
+                        a_val = oa.number_input("원정", value=def_a, step=0.01, min_value=0.0, key=f"in_{bm}_a")
                         odds_inputs[bm] = (h_val, d_val, a_val)
 
     st.markdown("---")
@@ -130,8 +131,10 @@ with tab_input:
     away_rc = c4.number_input("원정 퇴장(레드카드)", min_value=0, value=0)
 
     st.markdown("---")
-    if st.button("💾 1~9번 배당 시트 & 10번 경기내용 시트 일괄 저장", type="primary", use_container_width=True):
-        st.success("✅ 9개 배당 시트 분할 저장 및 10번 경기내용 시트 저장 준비가 완료되었습니다!")
+    if st.button("💾 입력된 배당 시트 & 10번 경기내용 시트 일괄 저장", type="primary", use_container_width=True):
+        # 배당이 유효하게 입력된 업체 목록 확인
+        valid_bms_to_save = [bm for bm, odds in odds_inputs.items() if odds[0] > 0 and odds[1] > 0 and odds[2] > 0]
+        st.success(f"✅ 저장 대상: 배당 입력된 {len(valid_bms_to_save)}개 북메이커 시트 + 10번 경기내용 시트 (미제공 {len(BOOKMAKERS)-len(valid_bms_to_save)}개 업체 건너뜀)")
 
 # =========================================================
 # TAB 2: 과거 동일 배당 매칭 통계 & 전체 평균 승률
@@ -141,13 +144,27 @@ with tab_analysis:
     
     analysis_rows = []
     for idx, bm in enumerate(BOOKMAKERS, 1):
-        target_h, target_d, target_a = odds_inputs.get(bm, (1.22, 5.10, 7.50))
+        target_h, target_d, target_a = odds_inputs.get(bm, (0.0, 0.0, 0.0))
         
-        # 환급률 계산
+        # 배당이 0이거나 미제공인 경우 건너뛰기 처리
+        if target_h <= 0 or target_d <= 0 or target_a <= 0:
+            analysis_rows.append({
+                "순번": idx,
+                "북메이커": bm.upper(),
+                "입력 배당 [홈/무/원]": "미제공 (건너뜀)",
+                "환급률(%)": "-",
+                "매칭 경기수": "-",
+                "홈승 확률(%)": "-",
+                "무승부 확률(%)": "-",
+                "원정승 확률(%)": "-"
+            })
+            continue
+
+        # 유효 배당인 경우 환급률 계산
         raw_inv = (1/target_h) + (1/target_d) + (1/target_a)
         payout = (1 / raw_inv) * 100
         
-        # 시트 데이터에서 배당 매칭
+        # 시트 데이터에서 과거 동일 배당 매칭
         df = sheets_data.get(bm, pd.DataFrame())
         n_count, h_win, d_win, a_win = 0, 0.0, 0.0, 0.0
         
@@ -182,19 +199,26 @@ with tab_analysis:
 
     res_df = pd.DataFrame(analysis_rows)
 
-    # 9개사 종합 평균 계산 행
-    if not res_df.empty:
-        valid = res_df[res_df["매칭 경기수"] > 0]
-        total_m = int(valid["매칭 경기수"].sum()) if not valid.empty else 0
-        avg_h = round(valid["홈승 확률(%)"].mean(), 1) if not valid.empty else round(res_df["홈승 확률(%)"].mean(), 1)
-        avg_d = round(valid["무승부 확률(%)"].mean(), 1) if not valid.empty else round(res_df["무승부 확률(%)"].mean(), 1)
-        avg_a = round(valid["원정승 확률(%)"].mean(), 1) if not valid.empty else round(res_df["원정승 확률(%)"].mean(), 1)
+    # 유효한 배당이 있는 회사들만 종합 평균 연산
+    valid_payout_rows = [r["환급률(%)"] for r in analysis_rows if isinstance(r["환급률(%)"], (int, float))]
+    valid_matches = [r for r in analysis_rows if isinstance(r["매칭 경기수"], int) and r["매칭 경기수"] > 0]
+
+    if valid_payout_rows:
+        avg_payout = round(sum(valid_payout_rows) / len(valid_payout_rows), 2)
+        
+        if valid_matches:
+            total_m = sum(r["매칭 경기수"] for r in valid_matches)
+            avg_h = round(sum(r["홈승 확률(%)"] for r in valid_matches) / len(valid_matches), 1)
+            avg_d = round(sum(r["무승부 확률(%)"] for r in valid_matches) / len(valid_matches), 1)
+            avg_a = round(sum(r["원정승 확률(%)"] for r in valid_matches) / len(valid_matches), 1)
+        else:
+            total_m, avg_h, avg_d, avg_a = 0, 0.0, 0.0, 0.0
 
         avg_row = {
             "순번": "🔥",
-            "북메이커": "[전체 9개사 종합 평균]",
+            "북메이커": f"[입력된 {len(valid_payout_rows)}개사 종합 평균]",
             "입력 배당 [홈/무/원]": "-",
-            "환급률(%)": round(res_df["환급률(%)"].mean(), 2),
+            "환급률(%)": avg_payout,
             "매칭 경기수": total_m,
             "홈승 확률(%)": avg_h,
             "무승부 확률(%)": avg_d,
