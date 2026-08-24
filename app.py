@@ -37,7 +37,6 @@ def get_gspread_client():
     except Exception:
         return None
 
-# 구글 시트 탭 실시간 데이터 캐시 로더
 @st.cache_data(ttl=10, show_spinner=False)
 def load_sheet_data(sheet_name):
     client = get_gspread_client()
@@ -68,7 +67,7 @@ tab_input, tab_analysis, tab_team_stats, tab_report = st.tabs([
     "📝 데이터 입력 및 저장", 
     "📊 9개사 동일 배당 승률 분석", 
     "📈 팀별 세부내용 평균계산기",
-    "📋 원클릭 분석 리포트 생성기"
+    "📋 원클릭 분석 리포트 (표 형식)"
 ])
 
 # =========================================================
@@ -427,91 +426,250 @@ with tab_team_stats:
         st.info("💡 10번 '경기내용' 탭에 아직 데이터가 없습니다.")
 
 # =========================================================
-# TAB 4: 원클릭 분석 리포트 생성기 (사용자 지정 저작권 양식 완벽 반영)
+# TAB 4: 원클릭 분석 리포트 생성기 (표 형식 100% 구현)
 # =========================================================
 with tab_report:
-    st.subheader("📋 Boro 축구 경기 분석 리포트 원클릭 자동 생성기")
-    st.caption("편집 저작물 - 저작권등록 제 C-2016-010109호 양식 기준")
+    st.subheader("📋 Boro 축구 경기 분석 리포트 (표 형식 원클릭 생성)")
+    st.caption("편집 저작물 - 저작권등록 제 C-2016-010109호")
 
-    with st.expander("🛠️ 1. 리포트 기본 및 상대전적 설정", expanded=True):
-        r_c1, r_c2, r_c3 = st.columns(3)
-        rep_home = r_c1.text_input("리포트 대상 홈팀", value="리버풀")
-        rep_away = r_c2.text_input("리포트 대상 원정팀", value="본머스")
-        rep_author = r_c3.text_input("작성자명", value="Boro")
+    # 1. 기본 정보 및 상대 전적
+    with st.expander("1️⃣ 기본 정보 & 상대전적 / 최근 10경기 입력", expanded=True):
+        r1, r2, r3 = st.columns(3)
+        rep_home = r1.text_input("홈팀", value="리버풀")
+        rep_away = r2.text_input("원정팀", value="본머스")
+        rep_author = r3.text_input("작성자", value="Boro")
 
-        st.markdown("**📊 최근 5시즌 상대전적**")
-        h2h_1, h2h_2, h2h_3, h2h_4 = st.columns(4)
-        h2h_tot_m = h2h_1.number_input("전체 상대 경기수", min_value=0, value=10)
-        h2h_tot_w = h2h_2.number_input("홈팀 기준 승", min_value=0, value=8)
-        h2h_tot_d = h2h_3.number_input("무승부", min_value=0, value=1)
-        h2h_tot_l = h2h_4.number_input("패", min_value=0, value=1)
-        h2h_note = st.text_input("상대전적 특이사항", value="리버풀이 홈에서 본머스 상대 5연승 기록 중")
+        st.markdown("##### 📊 상대전적 (최근 5시즌)")
+        c1, c2, c3, c4 = st.columns(4)
+        h2h_all_m = c1.text_input("전체 상대전적 (전)", value="10전")
+        h2h_all_w = c2.text_input("전체 승", value="8승")
+        h2h_all_d = c3.text_input("전체 무", value="1무")
+        h2h_all_l = c4.text_input("전체 패", value="1패")
 
-    with st.expander("📉 2. 배당 절삭 & 구매투표율 & 과거 결과 패턴"):
-        b_c1, b_c2, b_c3 = st.columns(3)
-        cut_h = b_c1.number_input("홈승 절삭률 (%)", value=29.03, step=0.01)
-        cut_d = b_c2.number_input("무승부 절삭률 (%)", value=13.68, step=0.01)
-        cut_a = b_c3.number_input("원정승 절삭률 (%)", value=7.14, step=0.01)
+        c5, c6, c7, c8 = st.columns(4)
+        h2h_home_m = c5.text_input("홈 기준 상대전적 (전)", value="5전")
+        h2h_home_w = c6.text_input("홈 기준 승", value="5승")
+        h2h_home_d = c7.text_input("홈 기준 무", value="0무")
+        h2h_home_l = c8.text_input("홈 기준 패", value="0패")
 
-        v_c1, v_c2, v_c3 = st.columns(3)
-        vote_h = v_c1.number_input("배트맨 투표율 - 홈승 (%)", value=78.5, step=0.1)
-        vote_d = v_c2.number_input("배트맨 투표율 - 무승부 (%)", value=13.2, step=0.1)
-        vote_a = v_c3.number_input("배트맨 투표율 - 원정승 (%)", value=8.3, step=0.1)
+        st.markdown("##### ⚽ 상대전적 평균 득실점")
+        g1, g2, g3, g4 = st.columns(4)
+        h2h_h_gf = g1.text_input("홈경기 평균 득점", value="3.2")
+        h2h_h_ga = g2.text_input("홈경기 평균 실점", value="0.6")
+        h2h_a_gf = g3.text_input("원정경기 평균 득점", value="2.0")
+        h2h_a_ga = g4.text_input("원정경기 평균 실점", value="1.0")
 
-        pat_c1, pat_c2, pat_c3 = st.columns(3)
-        odd_pat_h = pat_c1.number_input("동일배당 정배 출현율 (%)", value=70.0, step=1.0)
-        odd_pat_d = pat_c2.number_input("동일배당 무배 출현율 (%)", value=20.0, step=1.0)
-        odd_pat_a = pat_c3.number_input("동일배당 역배 출현율 (%)", value=10.0, step=1.0)
+        h2h_note = st.text_input("상대전적 특이사항", value="리버풀 홈 맞대결 5연승 중, 압도적 우세")
 
-    with st.expander("🎯 3. 최종 추천 픽 & 코멘트"):
-        pk_c1, pk_c2, pk_c3 = st.columns(3)
-        main_pick = pk_c1.text_input("주력 픽", value="리버풀 승")
-        main_prob = pk_c2.text_input("주력 적중확률", value="75%")
-        main_odd = pk_c3.text_input("주력 배당률", value="1.22")
+        st.markdown("##### 📈 최근 10경기 승패 및 평균 득실점")
+        t1, t2, t3, t4 = st.columns(4)
+        ten_h_m = t1.text_input("홈팀 최근 10경기", value="10전 7승 2무 1패")
+        ten_a_m = t2.text_input("원정팀 최근 10경기", value="10전 4승 2무 4패")
+        ten_h_g = t3.text_input("홈팀 최근10경기 득/실", value="2.4득 / 0.9실")
+        ten_a_g = t4.text_input("원정팀 최근10경기 득/실", value="1.2득 / 1.5실")
+        ten_note = st.text_input("최근 10경기 특이사항", value="리버풀 최근 홈 4연승 무패 행진")
 
-        sub_c1, sub_c2, sub_c3 = st.columns(3)
-        sub_pick = sub_c1.text_input("부주력 (핸디/언오버)", value="리버풀 -1.5 마핸승 / 3.5 오버")
-        sub_prob = sub_c2.text_input("부주력 적중확률", value="60%")
-        sub_odd = sub_c3.text_input("부주력 배당률", value="1.65")
+    # 2. 팀별 세부 스탯
+    with st.expander("2️⃣ 홈/원정팀 최근 경기 세부 스탯 분석 (전술/지표)"):
+        st.markdown(f"##### 🔵 [{rep_home}] 세부 분석")
+        st_h1, st_h2 = st.columns(2)
+        h_tac_rank = st_h1.text_input("홈팀 전술 순위", value="1순위 4-2-3-1 (75%), 2순위 4-3-3 (25%)")
+        h_tac_home = st_h2.text_input("홈경기 주력 전술", value="4-2-3-1 (80%)")
+        
+        st_h3, st_h4, st_h5 = st.columns(3)
+        h_goal_r = st_h3.text_input("홈 득점비율 (시즌전/후, 홈전/후)", value="전25% 후75% / 전30% 후70%")
+        h_poss_s = st_h4.text_input("홈 점유율 (홈/원정/시즌)", value="61% / 55% / 58%")
+        h_xg_s = st_h5.text_input("홈 xG (홈/원정/시즌)", value="2.21 / 1.80 / 2.01")
+        
+        st_h6, st_h7, st_h8 = st.columns(3)
+        h_sot_r = st_h6.text_input("홈 유효슈팅비율 (홈/원정/시즌)", value="52.6% / 45.0% / 48.8%")
+        h_pass_s = st_h7.text_input("홈 패스성공률 (홈/원정/시즌)", value="82% / 78% / 80%")
+        h_card_s = st_h8.text_input("홈 경고/퇴장 (장)", value="1.2장 / 0.0장")
+        h_spec = st_text_h = st.text_input("홈팀 특이사항", value="후반전 득점 집중력이 매우 높음")
 
-        rep_extra_note = st.text_area("결장자 및 동기부여 코멘트", value="리버풀은 주전 공격진 전원 출전 가능하며, 본머스는 핵심 미드필더 부상 결장으로 중원 열세 예상.")
+        st.markdown(f"##### 🔴 [{rep_away}] 세부 분석")
+        st_a1, st_a2 = st.columns(2)
+        a_tac_rank = st_a1.text_input("원정팀 전술 순위", value="1순위 4-1-4-1 (70%), 2순위 5-4-1 (30%)")
+        a_tac_away = st_a2.text_input("원정경기 주력 전술", value="4-1-4-1 (75%)")
+        
+        st_a3, st_a4, st_a5 = st.columns(3)
+        a_goal_r = st_a3.text_input("원정 득점비율 (시즌전/후, 원정전/후)", value="전30% 후70% / 전20% 후80%")
+        a_poss_s = st_a4.text_input("원정 점유율 (홈/원정/시즌)", value="48% / 39% / 43.5%")
+        a_xg_s = st_a5.text_input("원정 xG (홈/원정/시즌)", value="1.50 / 1.10 / 1.30")
+        
+        st_a6, st_a7, st_a8 = st.columns(3)
+        a_sot_r = st_a6.text_input("원정 유효슈팅비율 (홈/원정/시즌)", value="38.0% / 30.0% / 34.0%")
+        a_pass_s = st_a7.text_input("원정 패스성공률 (홈/원정/시즌)", value="76% / 70% / 73%")
+        a_card_s = st_a8.text_input("원정 경고/퇴장 (장)", value="2.1장 / 0.1장")
+        a_spec = st.text_input("원정팀 특이사항", value="원정 경기 시 점유율 및 유효슈팅 급감")
+
+    # 3. 배당/투표율/최종 픽
+    with st.expander("3️⃣ 배당 절삭 / 배당조정 / 구매투표율 / 최종 픽"):
+        st.markdown("##### 📉 배당 절삭률 & 배당조정")
+        bc1, bc2, bc3 = st.columns(3)
+        cut_h = bc1.text_input("홈승 절삭률", value="-29.03%")
+        cut_d = bc2.text_input("무승부 절삭률", value="-13.68%")
+        cut_a = bc3.text_input("원정승 절삭률", value="-7.14%")
+
+        adj1, adj2, adj3 = st.columns(3)
+        adj_gen = adj1.text_input("일반 (국내조정 / 해외조정)", value="하락 2회 / 하락 4회")
+        adj_hnd = adj2.text_input("핸디캡 (국내조정 / 해외조정)", value="변동 없음 / 하락 1회")
+        adj_uno = adj3.text_input("언오버 (국내조정 / 해외조정)", value="오버 하락 3회 / 오버 하락 3회")
+
+        st.markdown("##### 🗳️ 구매투표율 (배트맨 기준)")
+        vp1, vp2, vp3 = st.columns(3)
+        vote_gen = vp1.text_input("일반 투표율 (홈/무/원)", value="78.5% / 13.2% / 8.3%")
+        vote_hnd = vp2.text_input("핸디캡 투표율 (승/무/패)", value="58.0% / 22.0% / 20.0%")
+        vote_uno = vp3.text_input("언오버 투표율 (언더/오버)", value="28.0% / 72.0%")
+
+        st.markdown("##### 🎯 최종 픽 & 적중확률")
+        p1, p2, p3 = st.columns(3)
+        main_pk = p1.text_input("주력픽 / 적중확률 / 배당", value="리버풀 승 | 80% | 1.22")
+        sub_pk = p2.text_input("부주력 / 적중확률 / 배당", value="리버풀 -1.0 핸승 | 65% | 1.65")
+        uno_pk = p3.text_input("언오버픽 / 적중확률 / 배당", value="3.5 오버 | 60% | 1.85")
+        extra_note = st.text_area("결장자 / 동기부여 / 최종 코멘트", value="리버풀은 홈 개막전 전력 풀가동 상태이며, 본머스는 중원 주전 미드필더 결장으로 전력 누수가 큽니다.")
 
     st.markdown("---")
-    
-    if st.button("🚀 원클릭 리포트 텍스트 생성", type="primary", use_container_width=True):
+
+    if st.button("🚀 정밀 표(Table) 형식 리포트 생성", type="primary", use_container_width=True):
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
         
-        # 리포트 텍스트 빌드
-        report_text = f"""편집 저작물 - 저작권등록 제 C-2016-010109호
-작성자 : {rep_author}
-작성시간 : {now_str}
+        # 1. 웹 화면용 HTML 표 리포트
+        html_report = f"""
+        <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #222;">
+            <div style="border-bottom: 2px solid #333; padding-bottom: 8px; margin-bottom: 15px;">
+                <p style="margin: 0; font-size: 12px; color: #666;">편집 저작물 - 저작권등록 제 C-2016-010109호</p>
+                <h3 style="margin: 5px 0;">⚽ [축구 분석 리포트] {rep_home} vs {rep_away}</h3>
+                <p style="margin: 0; font-size: 13px;"><b>작성자:</b> {rep_author} &nbsp;|&nbsp; <b>작성시간:</b> {now_str}</p>
+            </div>
 
-==================================================
-⚽ [축구 경기 정밀 분석 리포트] {rep_home} vs {rep_away}
-==================================================
+            <h4>1. 상대전적 및 득실점 요약</h4>
+            <table border="1" style="border-collapse: collapse; width: 100%; text-align: center; font-size: 13px; margin-bottom: 10px;">
+                <tr style="background-color: #f2f2f2; font-weight: bold;">
+                    <td>구분</td><td>경기수</td><td>승</td><td>무</td><td>패</td><td>홈경기 평균득실점</td><td>원정경기 평균득실점</td>
+                </tr>
+                <tr>
+                    <td>최근5시즌 상대전적</td><td>{h2h_all_m}</td><td>{h2h_all_w}</td><td>{h2h_all_d}</td><td>{h2h_all_l}</td>
+                    <td rowspan="2">{h2h_h_gf}득 / {h2h_h_ga}실</td><td rowspan="2">{h2h_a_gf}득 / {h2h_a_ga}실</td>
+                </tr>
+                <tr>
+                    <td>홈팀기준 상대전적</td><td>{h2h_home_m}</td><td>{h2h_home_w}</td><td>{h2h_home_d}</td><td>{h2h_home_l}</td>
+                </tr>
+            </table>
+            <p style="font-size: 12px; margin-top: -5px;"><b>* 특이사항:</b> {h2h_note}</p>
 
-1. 최근 5시즌 상대전적
---------------------------------------------------
-* 전체 상대전적: {h2h_tot_m}전 {h2h_tot_w}승 {h2h_tot_d}무 {h2h_tot_l}패
+            <h4>2. 최근 10경기 승패 및 평균 득실점</h4>
+            <table border="1" style="border-collapse: collapse; width: 100%; text-align: center; font-size: 13px; margin-bottom: 10px;">
+                <tr style="background-color: #f2f2f2; font-weight: bold;">
+                    <td>구분</td><td>최근 10경기 승패</td><td>평균 득실점</td>
+                </tr>
+                <tr><td>{rep_home} (홈)</td><td>{ten_h_m}</td><td>{ten_h_g}</td></tr>
+                <tr><td>{rep_away} (원정)</td><td>{ten_a_m}</td><td>{ten_a_g}</td></tr>
+            </table>
+            <p style="font-size: 12px; margin-top: -5px;"><b>* 특이사항:</b> {ten_note}</p>
+
+            <h4>3. 팀별 세부 경기내용 비교</h4>
+            <table border="1" style="border-collapse: collapse; width: 100%; text-align: center; font-size: 13px; margin-bottom: 10px;">
+                <tr style="background-color: #f2f2f2; font-weight: bold;">
+                    <td>세부 항목</td><td>{rep_home} (홈팀)</td><td>{rep_away} (원정팀)</td>
+                </tr>
+                <tr><td>전술 (포메이션)</td><td>{h_tac_rank} / {h_tac_home}</td><td>{a_tac_rank} / {a_tac_away}</td></tr>
+                <tr><td>전/후반 득점비율</td><td>{h_goal_r}</td><td>{a_goal_r}</td></tr>
+                <tr><td>점유율 (홈/원정/시즌)</td><td>{h_poss_s}</td><td>{a_poss_s}</td></tr>
+                <tr><td>xG 기대득점</td><td>{h_xg_s}</td><td>{a_xg_s}</td></tr>
+                <tr><td>유효슈팅 비율</td><td>{h_sot_r}</td><td>{a_sot_r}</td></tr>
+                <tr><td>패스성공률</td><td>{h_pass_s}</td><td>{a_pass_s}</td></tr>
+                <tr><td>경고 / 퇴장</td><td>{h_card_s}</td><td>{a_card_s}</td></tr>
+                <tr><td>특이사항</td><td>{h_spec}</td><td>{a_spec}</td></tr>
+            </table>
+
+            <h4>4. 배당 절삭 / 배당조정 / 구매투표율</h4>
+            <table border="1" style="border-collapse: collapse; width: 100%; text-align: center; font-size: 13px; margin-bottom: 10px;">
+                <tr style="background-color: #f2f2f2; font-weight: bold;">
+                    <td>구분</td><td>홈승</td><td>무승부</td><td>원정승</td><td>핸디캡 / 언오버</td>
+                </tr>
+                <tr>
+                    <td>배당 절삭률</td><td>{cut_h}</td><td>{cut_d}</td><td>{cut_a}</td><td>-</td>
+                </tr>
+                <tr>
+                    <td>배당 조정횟수</td><td colspan="3">{adj_gen}</td><td>핸디({adj_hnd}) / 언오버({adj_uno})</td>
+                </tr>
+                <tr>
+                    <td>구매 투표율</td><td colspan="3">{vote_gen}</td><td>핸디({vote_hnd}) / 언오버({vote_uno})</td>
+                </tr>
+            </table>
+
+            <h4>5. 최종 픽 & 적중확률</h4>
+            <table border="1" style="border-collapse: collapse; width: 100%; text-align: center; font-size: 13px; margin-bottom: 15px;">
+                <tr style="background-color: #e6f2ff; font-weight: bold;">
+                    <td>구분</td><td>추천 선택지</td><td>적중확률 / 배당</td>
+                </tr>
+                <tr><td><b>★ 주력픽</b></td><td colspan="2"><b>{main_pk}</b></td></tr>
+                <tr><td><b>☆ 부주력</b></td><td colspan="2">{sub_pk}</td></tr>
+                <tr><td><b>⚡ 언오버</b></td><td colspan="2">{uno_pk}</td></tr>
+            </table>
+
+            <p style="font-size: 12px; color: #444; background-color: #f9f9f9; padding: 8px; border-left: 3px solid #0066cc;">
+                <b>* 종합 코멘트:</b> {extra_note}<br>
+                <i>* 본 분석은 작성시간 기준이며 차후 변동사항에 따라 분석픽이 달라질 수 있습니다. 무단 도용 시 법적 조치를 받을 수 있습니다.</i>
+            </p>
+        </div>
+        """
+        
+        st.markdown(html_report, unsafe_allow_html=True)
+        
+        st.markdown("---")
+        st.subheader("📋 블로그/마크다운 전용 복사 텍스트 (표 완벽 지원)")
+        
+        # 2. 마크다운 표 전용 텍스트
+        md_table_text = f"""편집 저작물 - 저작권등록 제 C-2016-010109호
+작성자 : {rep_author} | 작성시간 : {now_str}
+
+### ⚽ [축구 분석 리포트] {rep_home} vs {rep_away}
+
+#### 1. 상대전적 및 득실점 요약
+| 구분 | 경기수 | 승 | 무 | 패 | 홈경기 평균득실 | 원정경기 평균득실 |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: |
+| **최근5시즌 상대전적** | {h2h_all_m} | {h2h_all_w} | {h2h_all_d} | {h2h_all_l} | {h2h_h_gf}득 / {h2h_h_ga}실 | {h2h_a_gf}득 / {h2h_a_ga}실 |
+| **홈팀기준 상대전적** | {h2h_home_m} | {h2h_home_w} | {h2h_home_d} | {h2h_home_l} | - | - |
+
 * 특이사항: {h2h_note}
 
-2. 배당 절삭률 & 투표율 흐름
---------------------------------------------------
-* 배당 절삭률: 홈승 {cut_h}% / 무승부 {cut_d}% / 원정승 {cut_a}%
-* 배트맨 투표율: 홈승 {vote_h}% / 무승부 {vote_d}% / 원정승 {vote_a}%
-* 동일배당 과거 결과비율: 정배 {odd_pat_h}% / 무배 {odd_pat_d}% / 역배 {odd_pat_a}%
+#### 2. 최근 10경기 승패 및 평균 득실점
+| 구분 | 최근 10경기 승패 | 평균 득실점 |
+| :--- | :---: | :---: |
+| **{rep_home} (홈)** | {ten_h_m} | {ten_h_g} |
+| **{rep_away} (원정)** | {ten_a_m} | {ten_a_g} |
 
-3. 경기 외적 요인 및 특이사항
---------------------------------------------------
-* 동기부여 및 결장자: {rep_extra_note}
+* 특이사항: {ten_note}
 
-4. 최종 예상 픽 & 적중확률
---------------------------------------------------
-★ [주력픽] : {main_pick} (배당: {main_odd} / 적중확률: {main_prob})
-☆ [부주력] : {sub_pick} (배당: {sub_odd} / 적중확률: {sub_prob})
+#### 3. 팀별 세부 경기내용 비교
+| 세부 항목 | {rep_home} (홈팀) | {rep_away} (원정팀) |
+| :--- | :---: | :---: |
+| **전술 (포메이션)** | {h_tac_rank} / {h_tac_home} | {a_tac_rank} / {a_tac_away} |
+| **전/후반 득점비율** | {h_goal_r} | {a_goal_r} |
+| **점유율 (홈/원정/시즌)** | {h_poss_s} | {a_poss_s} |
+| **xG 기대득점** | {h_xg_s} | {a_xg_s} |
+| **유효슈팅 비율** | {h_sot_r} | {a_sot_r} |
+| **패스성공률** | {h_pass_s} | {a_pass_s} |
+| **경고 / 퇴장** | {h_card_s} | {a_card_s} |
+| **특이사항** | {h_spec} | {a_spec} |
 
-*분석은 작성시간 기준이며 차후 변동사항에 따라 분석픽이 달라질 수 있습니다.*
-위의 분석 글은 저작권에 등록된 상태이므로 무단 도용 시 법적 조치를 받을 수 있습니다.
+#### 4. 배당 절삭 / 배당조정 / 구매투표율
+| 구분 | 홈승 | 무승부 | 원정승 | 핸디캡 / 언오버 |
+| :--- | :---: | :---: | :---: | :---: |
+| **배당 절삭률** | {cut_h} | {cut_d} | {cut_a} | - |
+| **배당 조정횟수** | {adj_gen} | - | - | 핸디({adj_hnd}) / 언오버({adj_uno}) |
+| **구매 투표율** | {vote_gen} | - | - | 핸디({vote_hnd}) / 언오버({vote_uno}) |
+
+#### 5. 최종 픽 & 적중확률
+| 구분 | 추천 선택지 및 배당 / 적중확률 |
+| :--- | :--- |
+| **★ 주력픽** | **{main_pk}** |
+| **☆ 부주력** | {sub_pk} |
+| **⚡ 언오버** | {uno_pk} |
+
+* **종합 코멘트**: {extra_note}
+* *분석은 작성시간 기준이며 차후 변동사항에 따라 분석픽이 달라질 수 있습니다. 무단 도용 시 법적 조치를 받을 수 있습니다.*
 """
-        st.success("🎉 분석 리포트가 성공적으로 생성되었습니다! 아래 텍스트를 바로 복사하여 사용하세요.")
-        st.text_area("📋 블로그/게시판용 복사 영역", value=report_text, height=450)
+        st.text_area("📋 마크다운 표 복사창", value=md_table_text, height=450)
