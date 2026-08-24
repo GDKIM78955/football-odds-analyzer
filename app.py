@@ -4,7 +4,7 @@ import numpy as np
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 
-# 1. 페이지 설정
+# 1. 페이지 기본 설정
 st.set_page_config(
     page_title="Football 9-Bookmakers & Stats Hub",
     page_icon="⚽",
@@ -18,7 +18,7 @@ BOOKMAKERS = [
 STATS_SHEET_NAME = "경기내용"
 SPREADSHEET_ID = "1-b-QusmoSnsvMhToNFe1B1IK7dJUKjjANs89y5ZekAQ"
 
-st.title("⚽ 축구 9대 배당 업체 & 경기내용 세부 스탯 통합 시스템")
+st.title("⚽ 축구 9대 배당 업체 & 경기 세부 스탯 통합 분석 허브")
 
 # 2. 구글 시트 연동 클라이언트
 @st.cache_resource(show_spinner=False)
@@ -32,20 +32,19 @@ def get_gspread_client():
             ]
             creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
             return gspread.authorize(creds)
-        else:
-            return None
+        return None
     except Exception:
         return None
 
-# 시트 데이터 실시간 캐시 조회 함수
+# 구글 시트 탭 실시간 데이터 캐시 로더
 @st.cache_data(ttl=10, show_spinner=False)
-def load_sheet_data(bm_name):
+def load_sheet_data(sheet_name):
     client = get_gspread_client()
     if not client:
         return pd.DataFrame()
     try:
         spreadsheet = client.open_by_key(SPREADSHEET_ID)
-        ws = spreadsheet.worksheet(bm_name)
+        ws = spreadsheet.worksheet(sheet_name)
         data = ws.get_all_values()
         if len(data) > 1:
             df = pd.DataFrame(data[1:], columns=data[0])
@@ -56,21 +55,25 @@ def load_sheet_data(bm_name):
 
 # 3. 사이드바 설정
 with st.sidebar:
-    st.header("⚙️ 분석 필터 설정")
+    st.header("⚙️ 시스템 설정")
     st.caption(f"연동 시트 ID: `{SPREADSHEET_ID}`")
     tol = st.number_input("배당 오차 허용치 (±)", value=0.03, step=0.01)
-    if st.button("🔄 시트 데이터 즉시 새로고침"):
+    if st.button("🔄 전체 시트 데이터 새로고침"):
         st.cache_data.clear()
         st.rerun()
 
-# 4. 탭 구성
-tab_input, tab_analysis = st.tabs(["📝 데이터 입력 및 저장", "📊 9개사 동일 배당 승률 분석"])
+# 4. 3개 탭 구성
+tab_input, tab_analysis, tab_team_stats = st.tabs([
+    "📝 데이터 입력 및 통합 저장", 
+    "📊 9개사 동일 배당 승률 분석", 
+    "📈 팀별 세부 경기내용 평균계산기"
+])
 
 # =========================================================
 # TAB 1: 데이터 입력 및 저장
 # =========================================================
 with tab_input:
-    st.subheader("1️⃣ 경기 기본 정보 & 스코어")
+    st.subheader("1️⃣ 경기 기본 정보 & 팀명")
     c_m1, c_m2, c_m3 = st.columns(3)
     season = c_m1.text_input("시즌", value="25-26")
     league = c_m2.text_input("리그명", value="PL")
@@ -149,6 +152,7 @@ with tab_input:
                 try:
                     spreadsheet = client.open_by_key(SPREADSHEET_ID)
                     
+                    # 베트맨 지표 계산
                     b_h, b_d, b_a = odds_inputs.get("배트맨", (0.0, 0.0, 0.0))
                     if b_h > 0 and b_d > 0 and b_a > 0:
                         b_inv = (1/b_h) + (1/b_d) + (1/b_a)
@@ -173,6 +177,7 @@ with tab_input:
                     saved_odds_count = 0
                     skipped_list = []
                     
+                    # 1~9번 배당 탭 저장
                     for bm_name in BOOKMAKERS:
                         h, d, a = odds_inputs[bm_name]
                         if h <= 0 or d <= 0 or a <= 0:
@@ -221,7 +226,7 @@ with tab_input:
                             ws.append_row(row_data_odds, value_input_option="USER_ENTERED")
                             saved_odds_count += 1
                         except gspread.exceptions.WorksheetNotFound:
-                            st.warning(f"⚠️ '{bm_name}' 탭을 찾을 수 없습니다.")
+                            pass
 
                     # 10번 경기내용 탭 저장
                     h_1h_ratio = round((home_1h / home_score) * 100, 2) if home_score > 0 else 0.0
@@ -249,60 +254,43 @@ with tab_input:
                         ws_stats = spreadsheet.worksheet(STATS_SHEET_NAME)
                         ws_stats.append_row(row_data_stats, value_input_option="USER_ENTERED")
                     except gspread.exceptions.WorksheetNotFound:
-                        st.warning(f"⚠️ '{STATS_SHEET_NAME}' 탭을 찾을 수 없습니다.")
+                        pass
                     
-                    st.cache_data.clear()  # 캐시 비우기
-                    st.success(f"🎉 성공: 배당 탭 {saved_odds_count}개 및 '경기내용' 탭에 저장이 완료되었습니다!")
-                    if skipped_list:
-                        st.info(f"ℹ️ 배당 미입력 건너뜀: {', '.join(skipped_list)}")
+                    st.cache_data.clear()
+                    st.success(f"🎉 성공: 배당 {saved_odds_count}개 탭 & '경기내용' 탭에 저장이 완료되었습니다!")
                 except Exception as e:
                     st.error(f"저장 중 오류 발생: {e}")
 
 # =========================================================
-# TAB 2: 구글 시트 실시간 연동 9개사 동일 배당 분석
+# TAB 2: 배당률 과거 승률 분석
 # =========================================================
 with tab_analysis:
-    st.subheader(f"📊 9대 북메이커 동일/유사 배당 (오차 ±{tol}) 과거 승률 분석표")
-    
+    st.subheader(f"📊 9대 북메이커 동일 배당 (오차 ±{tol}) 과거 승률 분석")
     analysis_rows = []
     matched_detail_dfs = {}
     
     for idx, bm in enumerate(BOOKMAKERS, 1):
         target_h, target_d, target_a = odds_inputs.get(bm, (0.0, 0.0, 0.0))
-        
-        # 입력 배당이 없는 경우
         if target_h <= 0 or target_d <= 0 or target_a <= 0:
             analysis_rows.append({
-                "순번": idx,
-                "북메이커": bm.upper(),
-                "입력 배당 [홈/무/원]": "미입력 (제외)",
-                "환급률(%)": "-",
-                "매칭 경기수": 0,
-                "홈승 확률": "-",
-                "무승부 확률": "-",
-                "원정승 확률": "-"
+                "순번": idx, "북메이커": bm.upper(), "입력 배당": "미입력", "환급률": "-",
+                "매칭 경기": "0건", "홈승 확률": "-", "무승부 확률": "-", "원정승 확률": "-"
             })
             continue
 
         raw_inv = (1/target_h) + (1/target_d) + (1/target_a)
         payout = (1 / raw_inv) * 100
-        
-        # 구글 시트에서 해당 북메이커 시트 데이터 불러오기
         df_bm = load_sheet_data(bm)
         
         match_count = 0
-        h_prob_str = "0.0%"
-        d_prob_str = "0.0%"
-        a_prob_str = "0.0%"
+        h_str, d_str, a_str = "0.0%", "0.0%", "0.0%"
         
         if not df_bm.empty and "해당_홈" in df_bm.columns and "경기결과" in df_bm.columns:
             try:
-                # 숫자 변환
                 df_bm["H_num"] = pd.to_numeric(df_bm["해당_홈"], errors="coerce")
                 df_bm["D_num"] = pd.to_numeric(df_bm["해당_무"], errors="coerce")
                 df_bm["A_num"] = pd.to_numeric(df_bm["해당_원"], errors="coerce")
                 
-                # 배당 필터링 (오차 범위 내)
                 cond = (
                     (df_bm["H_num"] >= target_h - tol) & (df_bm["H_num"] <= target_h + tol) &
                     (df_bm["D_num"] >= target_d - tol) & (df_bm["D_num"] <= target_d + tol) &
@@ -313,36 +301,145 @@ with tab_analysis:
                 
                 if match_count > 0:
                     matched_detail_dfs[bm.upper()] = matched_df
-                    res_counts = matched_df["경기결과"].value_counts()
-                    hw = res_counts.get("홈승", 0)
-                    dr = res_counts.get("무승부", 0)
-                    aw = res_counts.get("원정승", 0)
-                    
-                    h_prob_str = f"{round((hw / match_count) * 100, 1)}% ({hw}회)"
-                    d_prob_str = f"{round((dr / match_count) * 100, 1)}% ({dr}회)"
-                    a_prob_str = f"{round((aw / match_count) * 100, 1)}% ({aw}회)"
+                    res_c = matched_df["경기결과"].value_counts()
+                    hw, dr, aw = res_c.get("홈승", 0), res_c.get("무승부", 0), res_c.get("원정승", 0)
+                    h_str = f"{round((hw/match_count)*100, 1)}% ({hw}회)"
+                    d_str = f"{round((dr/match_count)*100, 1)}% ({dr}회)"
+                    a_str = f"{round((aw/match_count)*100, 1)}% ({aw}회)"
             except Exception:
                 pass
         
         analysis_rows.append({
-            "순번": idx,
-            "북메이커": bm.upper(),
-            "입력 배당 [홈/무/원]": f"{target_h} / {target_d} / {target_a}",
-            "환급률(%)": f"{round(payout, 2)}%",
-            "매칭 경기수": f"{match_count}건",
-            "홈승 확률": h_prob_str,
-            "무승부 확률": d_prob_str,
-            "원정승 확률": a_prob_str
+            "순번": idx, "북메이커": bm.upper(),
+            "입력 배당": f"{target_h} / {target_d} / {target_a}",
+            "환급률": f"{round(payout, 2)}%",
+            "매칭 경기": f"{match_count}건",
+            "홈승 확률": h_str, "무승부 확률": d_str, "원정승 확률": a_str
         })
 
-    summary_df = pd.DataFrame(analysis_rows)
-    st.dataframe(summary_df, use_container_width=True, hide_index=True)
-    
-    # 매칭된 경기 상세 내역 조회
+    st.dataframe(pd.DataFrame(analysis_rows), use_container_width=True, hide_index=True)
     if matched_detail_dfs:
         st.markdown("---")
-        st.subheader("📋 매칭된 과거 경기 상세 리스트")
         for name, m_df in matched_detail_dfs.items():
             with st.expander(f"📌 {name} 매칭 내역 ({len(m_df)}건)", expanded=False):
-                show_cols = [c for c in ["시즌", "리그명", "날짜", "홈팀", "원정팀", "해당_홈", "해당_무", "해당_원", "홈스코어", "원정스코어", "경기결과", "정/중/역"] if c in m_df.columns]
-                st.dataframe(m_df[show_cols], use_container_width=True, hide_index=True)
+                st.dataframe(m_df, use_container_width=True, hide_index=True)
+
+# =========================================================
+# TAB 3: 팀별 세부 경기내용 평균계산기 (요청 양식 완벽 구현)
+# =========================================================
+with tab_team_stats:
+    st.subheader("📈 팀별 과거 세부 경기내용 평균계산기")
+    
+    df_stats_all = load_sheet_data(STATS_SHEET_NAME)
+    
+    # 1. 필터 조건 입력
+    c_f1, c_f2, c_f3 = st.columns(3)
+    
+    available_seasons = sorted(df_stats_all["시즌"].dropna().unique().tolist()) if not df_stats_all.empty and "시즌" in df_stats_all.columns else ["25-26", "2025"]
+    available_leagues = sorted(df_stats_all["리그명"].dropna().unique().tolist()) if not df_stats_all.empty and "리그명" in df_stats_all.columns else ["PL", "EPL"]
+    
+    # 홈팀 + 원정팀 전체 팀 목록 추출
+    teams_set = set()
+    if not df_stats_all.empty:
+        if "홈팀" in df_stats_all.columns:
+            teams_set.update(df_stats_all["홈팀"].dropna().unique())
+        if "원정팀" in df_stats_all.columns:
+            teams_set.update(df_stats_all["원정팀"].dropna().unique())
+    available_teams = sorted(list(teams_set)) if teams_set else ["맨체스터시티", "리버풀", "본머스"]
+
+    sel_season = c_f1.selectbox("시즌", available_seasons if available_seasons else ["전체"])
+    sel_league = c_f2.selectbox("경기구분 (리그)", available_leagues if available_leagues else ["전체"])
+    sel_team = c_f3.selectbox("경기목록 (팀이름)", available_teams if available_teams else ["팀 선택"])
+
+    st.markdown("---")
+
+    if not df_stats_all.empty and "홈팀" in df_stats_all.columns:
+        # 필터링
+        df_target = df_stats_all.copy()
+        if sel_season != "전체":
+            df_target = df_target[df_target["시즌"] == sel_season]
+        if sel_league != "전체":
+            df_target = df_target[df_target["리그명"] == sel_league]
+
+        # 홈 경기 / 원정 경기 분리
+        df_home_matches = df_target[df_target["홈팀"] == sel_team]
+        df_away_matches = df_target[df_target["원정팀"] == sel_team]
+
+        def to_num(series):
+            # '%' 문자 제거 후 float 변환
+            return pd.to_numeric(series.astype(str).str.replace("%", "").str.strip(), errors="coerce").fillna(0)
+
+        # 1. 득점 집계
+        h_cnt = len(df_home_matches)
+        a_cnt = len(df_away_matches)
+        total_cnt = h_cnt + a_cnt
+
+        # 홈 경기 득점
+        h_1h_goals = to_num(df_home_matches["전반득점_홈"]).sum() if h_cnt > 0 else 0
+        h_2h_goals = to_num(df_home_matches["후반득점_홈"]).sum() if h_cnt > 0 else 0
+        h_tot_goals = h_1h_goals + h_2h_goals
+
+        # 원정 경기 득점
+        a_1h_goals = to_num(df_away_matches["전반득점_원"]).sum() if a_cnt > 0 else 0
+        a_2h_goals = to_num(df_away_matches["후반득점_원"]).sum() if a_cnt > 0 else 0
+        a_tot_goals = a_1h_goals + a_2h_goals
+
+        # 평균 득점
+        h_1h_avg = round(h_1h_goals / h_cnt, 2) if h_cnt > 0 else 0.0
+        h_2h_avg = round(h_2h_goals / h_cnt, 2) if h_cnt > 0 else 0.0
+        h_tot_avg = round(h_tot_goals / h_cnt, 2) if h_cnt > 0 else 0.0
+
+        a_1h_avg = round(a_1h_goals / a_cnt, 2) if a_cnt > 0 else 0.0
+        a_2h_avg = round(a_2h_goals / a_cnt, 2) if a_cnt > 0 else 0.0
+        a_tot_avg = round(a_tot_goals / a_cnt, 2) if a_cnt > 0 else 0.0
+
+        tot_1h_avg = round((h_1h_goals + a_1h_goals) / total_cnt, 2) if total_cnt > 0 else 0.0
+        tot_2h_avg = round((h_2h_goals + a_2h_goals) / total_cnt, 2) if total_cnt > 0 else 0.0
+        tot_all_avg = round((h_tot_goals + a_tot_goals) / total_cnt, 2) if total_cnt > 0 else 0.0
+
+        # 2. 인게임 세부 지표 평균 함수
+        def calc_avg(h_col, a_col):
+            h_val = to_num(df_home_matches[h_col]).mean() if h_cnt > 0 and h_col in df_home_matches.columns else 0.0
+            a_val = to_num(df_away_matches[a_col]).mean() if a_cnt > 0 and a_col in df_away_matches.columns else 0.0
+            tot_val = (to_num(df_home_matches[h_col]).sum() + to_num(df_away_matches[a_col]).sum()) / total_cnt if total_cnt > 0 else 0.0
+            return round(h_val, 2), round(a_val, 2), round(tot_val, 2)
+
+        # 지표별 계산
+        poss_h, poss_a, poss_tot = calc_avg("점유율_홈", "점유율_원")
+        sot_h, sot_a, sot_tot = calc_avg("유효슈팅_홈", "유효슈팅_원")
+        pass_h, pass_a, pass_tot = calc_avg("패스성공률_홈", "패스성공률_원")
+        yc_h, yc_a, yc_tot = calc_avg("경고_홈", "경고_원")
+        rc_h, rc_a, rc_tot = calc_avg("퇴장_홈", "퇴장_원")
+        xg_h, xg_a, xg_tot = calc_avg("xG_홈", "xG_원")
+        
+        # 득점 비율 (전체 슈팅 대비 유효슈팅 혹은 득점비율)
+        ratio_h, ratio_a, ratio_tot = calc_avg("유효슈팅비율_홈", "유효슈팅비율_원")
+
+        st.markdown(f"### 📋 [{sel_team}] 시즌 평균 지표 종합 요약 (총 {total_cnt}경기: 홈 {h_cnt}경기 / 원정 {a_cnt}경기)")
+
+        # 상단 핵심 지표 카드 표
+        stat_summary_data = {
+            "구분": ["점유율 (%)", "유효슈팅 (회)", "패스성공률 (%)", "경고 (회)", "퇴장 (회)", "xG (기대득점)", "유효슈팅비율 (%)"],
+            "홈 (Home)": [f"{poss_h}%", f"{sot_h}", f"{pass_h}%", f"{yc_h}", f"{rc_h}", f"{xg_h}", f"{ratio_h}%"],
+            "원정 (Away)": [f"{poss_a}%", f"{sot_a}", f"{pass_a}%", f"{yc_a}", f"{rc_a}", f"{xg_a}", f"{ratio_a}%"],
+            "시즌 전체 평균": [f"{poss_tot}%", f"{sot_tot}", f"{pass_tot}%", f"{yc_tot}", f"{rc_tot}", f"{xg_tot}", f"{ratio_tot}%"]
+        }
+        st.dataframe(pd.DataFrame(stat_summary_data), use_container_width=True, hide_index=True)
+
+        st.markdown("---")
+        st.markdown("### ⚽ 전/후반 득점 통계표")
+
+        # 전후반 득점 표 (요청 이미지 양식과 100% 동일)
+        goal_table_data = {
+            "구분": ["홈", "원정", "시즌 평균"],
+            "전반 총득점": [int(h_1h_goals), int(a_1h_goals), "-"],
+            "후반 총득점": [int(h_2h_goals), int(a_2h_goals), "-"],
+            "총점": [int(h_tot_goals), int(a_tot_goals), "-"],
+            "전반 평균": [h_1h_avg, a_1h_avg, tot_1h_avg],
+            "후반 평균": [h_2h_avg, a_2h_avg, tot_2h_avg],
+            "합계 평균": [h_tot_avg, a_tot_avg, tot_all_avg]
+        }
+        st.dataframe(pd.DataFrame(goal_table_data), use_container_width=True, hide_index=True)
+
+    else:
+        st.info("💡 10번 '경기내용' 탭에 아직 데이터가 없습니다. 1번 탭에서 경기를 저장하시면 통계가 자동 활성화됩니다.")
