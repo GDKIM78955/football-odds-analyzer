@@ -12,9 +12,10 @@ st.set_page_config(
     layout="wide"
 )
 
+# 1번을 '배트맨'으로 변경한 북메이커 순서
 BOOKMAKERS = [
-    "bwin", "10x10", "1xbet", "betway", 
-    "william hill", "bet365", "pinnacle", "stake", "배트맨"
+    "배트맨", "bwin", "10x10", "1xbet", 
+    "betway", "william hill", "bet365", "pinnacle", "stake"
 ]
 STATS_SHEET_NAME = "경기내용"
 INJURY_SHEET_NAME = "부상자명단"
@@ -73,7 +74,7 @@ tab_input, tab_analysis, tab_team_stats, tab_injuries = st.tabs([
 ])
 
 # =========================================================
-# TAB 1: 데이터 입력 및 저장 (독립 폼)
+# TAB 1: 데이터 입력 및 저장 (배트맨 1번 순서 적용)
 # =========================================================
 with tab_input:
     st.subheader("1️⃣ 경기 기본 정보 & 팀명")
@@ -265,7 +266,7 @@ with tab_input:
                     st.error(f"저장 중 오류 발생: {e}")
 
 # =========================================================
-# TAB 2: 독립 배당 분석 랩 (2번 탭 자체 배당 입력 + 전체/동일리그 분리 비교)
+# TAB 2: 독립 배당 분석 랩 (배트맨 1번 순서 적용)
 # =========================================================
 with tab_analysis:
     st.subheader("🔬 2번 탭 독립 분석 랩: 9대 북메이커 배당 입력 및 승률 분석")
@@ -338,7 +339,6 @@ with tab_analysis:
 
                     if h_col and d_col and a_col and res_col:
                         df_work = df_bm.copy()
-                        # 동일 리그 필터링 적용 여부
                         if is_league_filter and lg_col and league_name.strip():
                             df_work = df_work[df_work[lg_col].astype(str).str.upper() == league_name.strip().upper()]
 
