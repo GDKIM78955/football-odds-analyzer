@@ -17,6 +17,7 @@ BOOKMAKERS = [
     "william hill", "bet365", "pinnacle", "stake", "배트맨"
 ]
 STATS_SHEET_NAME = "경기내용"
+INJURY_SHEET_NAME = "부상자명단"
 SPREADSHEET_ID = "1-b-QusmoSnsvMhToNFe1B1IK7dJUKjjANs89y5ZekAQ"
 
 st.title("⚽ 축구 9대 배당 업체 & 경기 세부 스탯 통합 분석 허브")
@@ -68,7 +69,7 @@ tab_input, tab_analysis, tab_team_stats, tab_injuries = st.tabs([
     "📝 데이터 입력 및 통합 저장", 
     "📊 9개사 동일 배당 승률 분석", 
     "📈 팀별 세부 경기내용 평균계산기",
-    "🚑 블로그용 부상자/결장자 카드 생성기"
+    "🚑 팀별 부상자/결장자 명단 (11번 시트 연동)"
 ])
 
 # =========================================================
@@ -343,7 +344,7 @@ with tab_team_stats:
             teams_set.update(df_stats_all["홈팀"].dropna().unique())
         if "원정팀" in df_stats_all.columns:
             teams_set.update(df_stats_all["원정팀"].dropna().unique())
-    available_teams = sorted(list(teams_set)) if teams_set else ["맨체스터시티", "리버풀", "본머스"]
+    available_teams = sorted(list(teams_set)) if teams_set else ["맨체스터시티", "리버풀", "본머스", "웨스트햄"]
 
     sel_season = c_f1.selectbox("시즌", available_seasons if available_seasons else ["전체"], key="sel_stat_season")
     sel_league = c_f2.selectbox("경기구분 (리그)", available_leagues if available_leagues else ["전체"], key="sel_stat_league")
@@ -429,31 +430,33 @@ with tab_team_stats:
         st.info("💡 10번 '경기내용' 탭에 아직 데이터가 없습니다.")
 
 # =========================================================
-# TAB 4: 블로그용 부상자/결장자 카드 생성기 (스타일 1 카드형 전용)
+# TAB 4: 11번 구글 시트 연동 팀별 부상자/결장자 카드 리포트
 # =========================================================
 with tab_injuries:
-    st.subheader("🚑 블로그 전용 부상자/결장자 카드 리포트 생성기")
-    st.caption("선수 데이터를 입력하면 블로그에 바로 붙여넣을 수 있는 '카드/박스형' 서식이 자동으로 완성됩니다.")
+    st.subheader("🚑 팀별 부상자/결장자 명단 및 카드 리포트 (11번 시트 연동)")
+    
+    # 11번 시트 데이터 불러오기
+    df_injuries = load_sheet_data(INJURY_SHEET_NAME)
 
-    # 세션 상태에 결장자 리스트 초기화 (기본 예시 데이터)
-    if "injury_list" not in st.session_state:
-        st.session_state.injury_list = [
-            {"name_en": "Lucas Paquetá", "name_kr": "루카스 파케타", "pos": "MF", "start": 20, "sub": 3, "goals": 4, "assists": 0, "role": "주전", "reason": "부상", "note": "팀 내 득점 3위"},
-            {"name_en": "Michail Antonio", "name_kr": "미카일 안토니오", "pos": "FW", "start": 11, "sub": 3, "goals": 1, "assists": 1, "role": "로테이션", "reason": "부상", "note": "-"},
-            {"name_en": "Niclas Füllkrug", "name_kr": "니클라스 퓔크루크", "pos": "FW", "start": 3, "sub": 6, "goals": 2, "assists": 1, "role": "교체자원", "reason": "결장의심", "note": "경기 당일 최종 테스트 예정"},
-            {"name_en": "Crysencio Summerville", "name_kr": "크리센시오 서머빌", "pos": "MF", "start": 7, "sub": 12, "goals": 1, "assists": 1, "role": "로테이션", "reason": "부상", "note": "-"},
-        ]
+    # 1. 팀 선택 및 필터링
+    c_s1, c_s2 = st.columns(2)
+    
+    # 등록된 팀 목록 자동 추출
+    team_options = sorted(df_injuries["팀명"].dropna().unique().tolist()) if not df_injuries.empty and "팀명" in df_injuries.columns else ["웨스트햄", "리버풀", "맨체스터시티"]
+    selected_team = c_s1.selectbox("조회할 팀명 선택", team_options if team_options else ["직접 등록 필요"], key="inj_filter_team")
+    
+    inj_league_title = c_s2.text_input("리그/대회 기준 표기", value="잉글랜드 1부리그 기록", key="inj_custom_league")
 
-    # 1. 헤더 설정 (팀명, 리그)
-    c_th1, c_th2 = st.columns(2)
-    inj_team = c_th1.text_input("대상 팀명", value="웨스트햄", key="inj_team_name")
-    inj_league = c_th2.text_input("리그/대회 기준", value="잉글랜드 1부리그 기록", key="inj_league_title")
+    # 2. 신규 선수 11번 시트 등록
+    with st.expander(f"➕ [{selected_team}] 새로운 결장 선수 구글 시트에 추가", expanded=False):
+        f_s1, f_s2, f_s3 = st.columns(3)
+        add_season = f_s1.text_input("시즌", value="25-26", key="add_inj_season")
+        add_league = f_s2.text_input("리그명", value="PL", key="add_inj_league")
+        add_team = f_s3.text_input("팀명", value=selected_team, key="add_inj_team")
 
-    # 2. 선수 추가 입력창
-    with st.expander("➕ 선수 추가하기", expanded=True):
         f1, f2, f3 = st.columns(3)
-        p_name_en = f1.text_input("선수 영문명", value="", placeholder="예: Lucas Paquetá", key="p_name_en")
-        p_name_kr = f2.text_input("선수 한글명", value="", placeholder="예: 루카스 파케타", key="p_name_kr")
+        p_name_en = f1.text_input("선수 영문명", placeholder="예: Lucas Paquetá", key="p_name_en")
+        p_name_kr = f2.text_input("선수 한글명", placeholder="예: 루카스 파케타", key="p_name_kr")
         p_pos = f3.selectbox("포지션", ["FW", "MF", "DF", "GK"], key="p_pos")
 
         f4, f5, f6, f7 = st.columns(4)
@@ -465,65 +468,105 @@ with tab_injuries:
         f8, f9, f10 = st.columns(3)
         p_role = f8.text_input("팀 내 역할", value="주전", placeholder="예: 주전, 로테이션, 백업", key="p_role")
         p_reason = f9.selectbox("결장 사유", ["부상", "결장의심", "징계/퇴장", "기타"], key="p_reason")
-        p_note = f10.text_input("특이사항", value="-", placeholder="예: 햄스트링 부상, 팀 내 최다 득점", key="p_note")
+        p_note = f10.text_input("특이사항", value="-", placeholder="예: 팀 내 득점 3위", key="p_note")
 
-        c_btn1, c_btn2 = st.columns([1, 4])
-        if c_btn1.button("➕ 선수 목록에 추가", type="primary", use_container_width=True):
+        if st.button("💾 구글 시트 11번 탭(부상자명단)에 저장", type="primary", use_container_width=True):
             if p_name_en.strip() or p_name_kr.strip():
-                st.session_state.injury_list.append({
-                    "name_en": p_name_en.strip(),
-                    "name_kr": p_name_kr.strip(),
-                    "pos": p_pos,
-                    "start": p_start,
-                    "sub": p_sub,
-                    "goals": p_goals,
-                    "assists": p_assists,
-                    "role": p_role if p_role.strip() else "-",
-                    "reason": p_reason,
-                    "note": p_note if p_note.strip() else "-"
-                })
-                st.success(f"{p_name_kr or p_name_en} 선수가 추가되었습니다.")
-                st.rerun()
+                client = get_gspread_client()
+                if client:
+                    try:
+                        spreadsheet = client.open_by_key(SPREADSHEET_ID)
+                        ws_inj = spreadsheet.worksheet(INJURY_SHEET_NAME)
+                        new_row = [
+                            add_season, add_league, add_team,
+                            p_name_en.strip(), p_name_kr.strip(),
+                            p_pos, p_start, p_sub, p_goals, p_assists,
+                            p_role.strip() if p_role.strip() else "-",
+                            p_reason,
+                            p_note.strip() if p_note.strip() else "-"
+                        ]
+                        ws_inj.append_row(new_row, value_input_option="USER_ENTERED")
+                        st.cache_data.clear()
+                        st.success(f"🎉 {add_team}의 [{p_name_kr or p_name_en}] 선수가 11번 시트에 성공적으로 저장되었습니다!")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"저장 실패: {e}")
+            else:
+                st.warning("선수 이름을 최소 1개 이상 입력해 주세요.")
 
-        if c_btn2.button("🗑️ 목록 전체 비우기"):
-            st.session_state.injury_list = []
-            st.rerun()
+    st.markdown("---")
 
-    # 3. 스타일 1 카드형 텍스트 생성
-    if st.session_state.injury_list:
-        st.markdown("---")
-        st.subheader(f"📋 등록된 결장자 목록 ({len(st.session_state.injury_list)}명)")
-        
-        # 결장 확정 vs 결장 의심 분리
-        confirmed_list = [p for p in st.session_state.injury_list if p["reason"] != "결장의심"]
-        doubt_list = [p for p in st.session_state.injury_list if p["reason"] == "결장의심"]
+    # 3. 선택한 팀에 해당하는 선수들만 필터링하여 카드형 생성
+    if not df_injuries.empty and "팀명" in df_injuries.columns:
+        filtered_df = df_injuries[df_injuries["팀명"] == selected_team]
 
-        # 스타일 1 카드 텍스트 조립
-        card_text = f"### 🚑 {inj_team} 결장 & 결장의심 명단\n"
-        card_text += f"*({inj_league})*\n\n"
+        if not filtered_df.empty:
+            st.subheader(f"📋 [{selected_team}] 결장자 현황 (총 {len(filtered_df)}명)")
 
-        if confirmed_list:
-            card_text += "🔴 **[결장 확정]**\n"
-            for p in confirmed_list:
-                name_str = f"{p['name_kr']} ({p['name_en']})" if p['name_kr'] and p['name_en'] else (p['name_kr'] or p['name_en'])
-                icon = "👑" if "주전" in p['role'] else "🏃"
-                note_str = f" *({p['note']})*" if p['note'] != "-" else ""
-                card_text += f"* {icon} **{name_str}** | `{p['pos']}` · `{p['role']}`\n"
-                card_text += f"  * 📊 **기록**: {p['start']}선발 {p['sub']}교체 / {p['goals']}골 {p['assists']}도움\n"
-                card_text += f"  * ⚠️ **사유**: {p['reason']}{note_str}\n\n"
+            # 결장 확정 vs 결장 의심 분리
+            reason_col = "결장사유" if "결장사유" in filtered_df.columns else "사유"
+            confirmed_players = filtered_df[filtered_df[reason_col] != "결장의심"].to_dict("records")
+            doubt_players = filtered_df[filtered_df[reason_col] == "결장의심"].to_dict("records")
 
-        if doubt_list:
-            card_text += "---\n\n🟡 **[결장 의심 (GTD)]**\n"
-            for p in doubt_list:
-                name_str = f"{p['name_kr']} ({p['name_en']})" if p['name_kr'] and p['name_en'] else (p['name_kr'] or p['name_en'])
-                note_str = f" *({p['note']})*" if p['note'] != "-" else ""
-                card_text += f"* ❓ **{name_str}** | `{p['pos']}` · `{p['role']}`\n"
-                card_text += f"  * 📊 **기록**: {p['start']}선발 {p['sub']}교체 / {p['goals']}골 {p['assists']}도움\n"
-                card_text += f"  * ⚠️ **사유**: {p['reason']}{note_str}\n\n"
+            # 스타일 1 카드 텍스트 조립
+            card_text = f"### 🚑 {selected_team} 결장 & 결장의심 명단\n"
+            card_text += f"*({inj_league_title})*\n\n"
 
-        # 화면 미리보기
-        st.markdown(card_text)
+            if confirmed_players:
+                card_text += "🔴 **[결장 확정]**\n"
+                for p in confirmed_players:
+                    kr = p.get("선수한글명", "")
+                    en = p.get("선수영문명", "")
+                    name_str = f"{kr} ({en})" if kr and en else (kr or en)
+                    role = p.get("역할", "-")
+                    pos = p.get("포지션", "MF")
+                    start = p.get("선발", 0)
+                    sub = p.get("교체", 0)
+                    goals = p.get("골", 0)
+                    assists = p.get("도움", 0)
+                    reason = p.get(reason_col, "부상")
+                    note = p.get("특이사항", "-")
+                    
+                    icon = "👑" if "주전" in role else "🏃"
+                    note_str = f" *({note})*" if note != "-" else ""
+                    
+                    card_text += f"* {icon} **{name_str}** | `{pos}` · `{role}`\n"
+                    card_text += f"  * 📊 **기록**: {start}선발 {sub}교체 / {goals}골 {assists}도움\n"
+                    card_text += f"  * ⚠️ **사유**: {reason}{note_str}\n\n"
 
-        st.markdown("---")
-        st.subheader("📋 블로그 복사용 텍스트 (Ctrl+C로 복사해서 블로그에 붙여넣기)")
-        st.text_area("복사창", value=card_text, height=350)
+            if doubt_players:
+                card_text += "---\n\n🟡 **[결장 의심 (GTD)]**\n"
+                for p in doubt_players:
+                    kr = p.get("선수한글명", "")
+                    en = p.get("선수영문명", "")
+                    name_str = f"{kr} ({en})" if kr and en else (kr or en)
+                    role = p.get("역할", "-")
+                    pos = p.get("포지션", "MF")
+                    start = p.get("선발", 0)
+                    sub = p.get("교체", 0)
+                    goals = p.get("골", 0)
+                    assists = p.get("도움", 0)
+                    reason = p.get(reason_col, "결장의심")
+                    note = p.get("특이사항", "-")
+                    
+                    note_str = f" *({note})*" if note != "-" else ""
+                    
+                    card_text += f"* ❓ **{name_str}** | `{pos}` · `{role}`\n"
+                    card_text += f"  * 📊 **기록**: {start}선발 {sub}교체 / {goals}골 {assists}도움\n"
+                    card_text += f"  * ⚠️ **사유**: {reason}{note_str}\n\n"
+
+            # 1. 화면에 예쁘게 렌더링
+            st.markdown(card_text)
+
+            st.markdown("---")
+            # 2. 블로그에 바로 복사할 수 있는 텍스트 박스 제공
+            st.subheader(f"📋 [{selected_team}] 블로그 복사용 텍스트 (Ctrl+C로 복사)")
+            st.text_area("복사창", value=card_text, height=350)
+            
+            # 원본 데이터 테이블 확인
+            with st.expander("🔍 시트에 저장된 원본 데이터 표 보기"):
+                st.dataframe(filtered_df, use_container_width=True, hide_index=True)
+        else:
+            st.info(f"💡 현재 [{selected_team}]에 등록된 결장 선수가 없습니다. 위의 '➕ 새로운 결장 선수 추가'에서 등록해 보세요.")
+    else:
+        st.info("💡 11번 구글 시트(`부상자명단`)에 데이터가 없거나 탭이 생성되지 않았습니다. 탭을 만들고 선수를 등록해 보세요.")
