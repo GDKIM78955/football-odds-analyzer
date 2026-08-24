@@ -265,24 +265,35 @@ with tab_input:
                     st.error(f"저장 중 오류 발생: {e}")
 
 # =========================================================
-# TAB 2: 배당률 과거 승률 분석
+# TAB 2: 배당률 과거 승률 분석 (평균 가중치 산출 행 추가)
 # =========================================================
 with tab_analysis:
     st.subheader(f"📊 9대 북메이커 동일 배당 (오차 ±{tol}) 과거 승률 분석")
     analysis_rows = []
     matched_detail_dfs = {}
     
+    # 종합 평균 계산용 집계 변수
+    total_valid_bm = 0
+    total_payout_sum = 0.0
+    total_matches_count = 0
+    total_hw_count = 0
+    total_dr_count = 0
+    total_aw_count = 0
+    
     for idx, bm in enumerate(BOOKMAKERS, 1):
         target_h, target_d, target_a = odds_inputs.get(bm, (0.0, 0.0, 0.0))
         if target_h <= 0 or target_d <= 0 or target_a <= 0:
             analysis_rows.append({
-                "순번": idx, "북메이커": bm.upper(), "입력 배당": "미입력", "환급률": "-",
+                "순번": str(idx), "북메이커": bm.upper(), "입력 배당": "미입력", "환급률": "-",
                 "매칭 경기": "0건", "홈승 확률": "-", "무승부 확률": "-", "원정승 확률": "-"
             })
             continue
 
         raw_inv = (1/target_h) + (1/target_d) + (1/target_a)
         payout = (1 / raw_inv) * 100
+        total_payout_sum += payout
+        total_valid_bm += 1
+
         df_bm = load_sheet_data(bm)
         
         match_count = 0
@@ -305,7 +316,16 @@ with tab_analysis:
                 if match_count > 0:
                     matched_detail_dfs[bm.upper()] = matched_df
                     res_c = matched_df["경기결과"].value_counts()
-                    hw, dr, aw = res_c.get("홈승", 0), res_c.get("무승부", 0), res_c.get("원정승", 0)
+                    hw = res_c.get("홈승", 0)
+                    dr = res_c.get("무승부", 0)
+                    aw = res_c.get("원정승", 0)
+                    
+                    # 전체 누적 카운트에 합산
+                    total_matches_count += match_count
+                    total_hw_count += hw
+                    total_dr_count += dr
+                    total_aw_count += aw
+                    
                     h_str = f"{round((hw/match_count)*100, 1)}% ({hw}회)"
                     d_str = f"{round((dr/match_count)*100, 1)}% ({dr}회)"
                     a_str = f"{round((aw/match_count)*100, 1)}% ({aw}회)"
@@ -313,12 +333,34 @@ with tab_analysis:
                 pass
         
         analysis_rows.append({
-            "순번": idx, "북메이커": bm.upper(),
+            "순번": str(idx), "북메이커": bm.upper(),
             "입력 배당": f"{target_h} / {target_d} / {target_a}",
             "환급률": f"{round(payout, 2)}%",
             "매칭 경기": f"{match_count}건",
             "홈승 확률": h_str, "무승부 확률": d_str, "원정승 확률": a_str
         })
+
+    # -------------------------------------------------------------
+    # 맨 아래 종합 가중평균 행 추가 (각 업체별 매칭 횟수 가중 반영)
+    # -------------------------------------------------------------
+    avg_payout_str = f"{round(total_payout_sum / total_valid_bm, 2)}%" if total_valid_bm > 0 else "-"
+    if total_matches_count > 0:
+        avg_h_prob_str = f"{round((total_hw_count / total_matches_count) * 100, 1)}% ({total_hw_count}회)"
+        avg_d_prob_str = f"{round((total_dr_count / total_matches_count) * 100, 1)}% ({total_dr_count}회)"
+        avg_a_prob_str = f"{round((total_aw_count / total_matches_count) * 100, 1)}% ({total_aw_count}회)"
+    else:
+        avg_h_prob_str, avg_d_prob_str, avg_a_prob_str = "0.0%", "0.0%", "0.0%"
+
+    analysis_rows.append({
+        "순번": "🔥",
+        "북메이커": "종합 가중평균 (전체 누적)",
+        "입력 배당": f"유효 {total_valid_bm}개사",
+        "환급률": avg_payout_str,
+        "매칭 경기": f"총 {total_matches_count}건",
+        "홈승 확률": avg_h_prob_str,
+        "무승부 확률": avg_d_prob_str,
+        "원정승 확률": avg_a_prob_str
+    })
 
     st.dataframe(pd.DataFrame(analysis_rows), use_container_width=True, hide_index=True)
     if matched_detail_dfs:
@@ -435,13 +477,11 @@ with tab_team_stats:
 with tab_injuries:
     st.subheader("🚑 팀별 부상자/결장자 명단 및 카드 리포트 (11번 시트 연동)")
     
-    # 11번 시트 데이터 불러오기
     df_injuries = load_sheet_data(INJURY_SHEET_NAME)
 
     # 1. 팀 선택 및 필터링
     c_s1, c_s2 = st.columns(2)
     
-    # 등록된 팀 목록 자동 추출
     team_options = sorted(df_injuries["팀명"].dropna().unique().tolist()) if not df_injuries.empty and "팀명" in df_injuries.columns else ["웨스트햄", "리버풀", "맨체스터시티"]
     selected_team = c_s1.selectbox("조회할 팀명 선택", team_options if team_options else ["직접 등록 필요"], key="inj_filter_team")
     
@@ -503,12 +543,10 @@ with tab_injuries:
         if not filtered_df.empty:
             st.subheader(f"📋 [{selected_team}] 결장자 현황 (총 {len(filtered_df)}명)")
 
-            # 결장 확정 vs 결장 의심 분리
             reason_col = "결장사유" if "결장사유" in filtered_df.columns else "사유"
             confirmed_players = filtered_df[filtered_df[reason_col] != "결장의심"].to_dict("records")
             doubt_players = filtered_df[filtered_df[reason_col] == "결장의심"].to_dict("records")
 
-            # 스타일 1 카드 텍스트 조립
             card_text = f"### 🚑 {selected_team} 결장 & 결장의심 명단\n"
             card_text += f"*({inj_league_title})*\n\n"
 
@@ -555,18 +593,15 @@ with tab_injuries:
                     card_text += f"  * 📊 **기록**: {start}선발 {sub}교체 / {goals}골 {assists}도움\n"
                     card_text += f"  * ⚠️ **사유**: {reason}{note_str}\n\n"
 
-            # 1. 화면에 예쁘게 렌더링
             st.markdown(card_text)
 
             st.markdown("---")
-            # 2. 블로그에 바로 복사할 수 있는 텍스트 박스 제공
             st.subheader(f"📋 [{selected_team}] 블로그 복사용 텍스트 (Ctrl+C로 복사)")
             st.text_area("복사창", value=card_text, height=350)
             
-            # 원본 데이터 테이블 확인
             with st.expander("🔍 시트에 저장된 원본 데이터 표 보기"):
                 st.dataframe(filtered_df, use_container_width=True, hide_index=True)
         else:
             st.info(f"💡 현재 [{selected_team}]에 등록된 결장 선수가 없습니다. 위의 '➕ 새로운 결장 선수 추가'에서 등록해 보세요.")
     else:
-        st.info("💡 11번 구글 시트(`부상자명단`)에 데이터가 없거나 탭이 생성되지 않았습니다. 탭을 만들고 선수를 등록해 보세요.")
+        st.info("💡 11번 구글 시트(`부상자명단`)에 데이터가 없거나 탭이 생성되지 않았습니다.")
