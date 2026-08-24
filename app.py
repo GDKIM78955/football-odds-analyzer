@@ -22,51 +22,120 @@ STATS_SHEET_NAME = "경기내용"
 INJURY_SHEET_NAME = "부상자명단"
 SPREADSHEET_ID = "1-b-QusmoSnsvMhToNFe1B1IK7dJUKjjANs89y5ZekAQ"
 
-st.title("⚽ 축구 9대 배당 업체 & 경기 세부 스탯 통합 분석 허브")
+# =========================================================
+# 상단 탭 중앙 정렬 & 인쇄 스타일
+# =========================================================
+st.markdown("""
+<style>
+/* 상단 탭 목록을 화면 중앙으로 정렬 */
+.stTabs [data-baseweb="tab-list"] {
+    justify-content: center !important;
+    gap: 15px !important;
+    margin-bottom: 20px !important;
+}
+
+.stTabs [data-baseweb="tab"] {
+    font-size: 15px !important;
+    font-weight: bold !important;
+    padding: 10px 18px !important;
+}
+
+@media print {
+    section[data-testid="stSidebar"] { display: none !important; }
+    header[data-testid="stHeader"] { display: none !important; }
+    .stTabs [data-baseweb="tab-list"] { display: none !important; }
+    button { display: none !important; }
+}
+</style>
+""", unsafe_allow_html=True)
+
+st.markdown("<h2 style='text-align: center; margin-bottom: 25px;'>⚽ 축구 9대 배당 업체 & 경기 세부 스탯 통합 분석 허브</h2>", unsafe_allow_html=True)
 
 # =========================================================
-# 공통 헬퍼 함수: 다크모드 완벽 대응 블로그용 HTML 생성 & PDF 인쇄
+# 공통 헬퍼 함수: 다크모드 완벽 격리 블로그용 HTML 생성 뷰어
 # =========================================================
-def generate_blog_html(title, df_dict):
-    # 흰색 배경과 진한 텍스트를 강제 고정하여 다크모드 충돌 방지
-    html = """
-    <div style='background-color: #ffffff !important; color: #111111 !important; font-family: "Malgun Gothic", -apple-system, sans-serif; padding: 20px; border-radius: 8px; border: 1px solid #e0e0e0; box-shadow: 0 2px 4px rgba(0,0,0,0.05);'>
+def render_blog_component(title, df_dict, height=450):
+    html = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="utf-8">
+        <style>
+            body {{
+                background-color: #ffffff !important;
+                color: #111111 !important;
+                font-family: -apple-system, BlinkMacSystemFont, "Malgun Gothic", "맑은 고딕", sans-serif;
+                margin: 0;
+                padding: 15px;
+            }}
+            .report-card {{
+                background: #ffffff;
+                border: 1px solid #dcdcdc;
+                border-radius: 8px;
+                padding: 18px;
+            }}
+            h3 {{
+                color: #111111 !important;
+                border-bottom: 2px solid #222222;
+                padding-bottom: 8px;
+                margin-top: 0;
+                margin-bottom: 16px;
+                font-size: 17px;
+            }}
+            h4 {{
+                color: #0056b3 !important;
+                margin-bottom: 8px;
+                margin-top: 15px;
+                font-size: 14px;
+            }}
+            table {{
+                border-collapse: collapse;
+                width: 100%;
+                font-size: 13px;
+                text-align: center;
+                border: 1px solid #cccccc;
+                margin-bottom: 18px;
+                background-color: #ffffff !important;
+            }}
+            th {{
+                background-color: #f1f3f5 !important;
+                color: #111111 !important;
+                padding: 8px 6px;
+                border: 1px solid #cccccc;
+                font-weight: bold;
+            }}
+            td {{
+                background-color: #ffffff !important;
+                color: #222222 !important;
+                padding: 8px 6px;
+                border: 1px solid #e5e5e5;
+            }}
+        </style>
+    </head>
+    <body>
+        <div class="report-card">
+            <h3>{title}</h3>
     """
-    html += f"<h3 style='color: #111111 !important; border-bottom: 2px solid #222222; padding-bottom: 8px; margin-top: 0; margin-bottom: 18px;'>{title}</h3>"
-    
     for subtitle, df in df_dict.items():
         if df is not None and not df.empty:
             table_html = df.to_html(index=False, escape=False)
-            table_html = table_html.replace(
-                '<table border="1" class="dataframe">', 
-                '<table style="border-collapse: collapse; width: 100%; font-size: 13px; text-align: center; border: 1px solid #cccccc; margin-bottom: 20px; background-color: #ffffff !important;">'
-            )
-            table_html = table_html.replace(
-                '<th>', 
-                '<th style="background-color: #f1f3f5 !important; color: #111111 !important; padding: 9px 6px; border: 1px solid #cccccc; font-weight: bold;">'
-            )
-            table_html = table_html.replace(
-                '<td>', 
-                '<td style="background-color: #ffffff !important; color: #222222 !important; padding: 8px 6px; border: 1px solid #e5e5e5;">'
-            )
-            
-            html += f"<h4 style='color: #0056b3 !important; margin-bottom: 8px; margin-top: 15px; font-size: 14px;'>▶ {subtitle}</h4>"
+            table_html = table_html.replace('<table border="1" class="dataframe">', '<table>')
+            html += f"<h4>▶ {subtitle}</h4>"
             html += table_html
             
-    html += "</div>"
-    return html
+    html += """
+        </div>
+    </body>
+    </html>
+    """
+    components.html(html, height=height, scrolling=True)
 
 def print_pdf_button():
     components.html("""
-        <style>
-        @media print {
-            body { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-        }
-        </style>
-        <button onclick="window.parent.print()" style="width: 100%; padding: 12px; font-size: 15px; font-weight: bold; background-color: #1f2937; color: #ffffff; border: none; border-radius: 6px; cursor: pointer; box-shadow: 0 3px 5px rgba(0,0,0,0.15);">
+        <button onclick="window.parent.print()" style="width: 100%; padding: 11px; font-size: 15px; font-weight: bold; background-color: #1f2937; color: #ffffff; border: none; border-radius: 6px; cursor: pointer; box-shadow: 0 3px 5px rgba(0,0,0,0.15);">
             🖨️ 현재 화면 PDF로 저장 / 보고서 인쇄하기
         </button>
-    """, height=55)
+    """, height=50)
 
 # =========================================================
 # 2. 구글 시트 연동 클라이언트
@@ -102,18 +171,7 @@ def load_sheet_data(sheet_name):
     except Exception:
         return pd.DataFrame()
 
-# 3. 사이드바 및 인쇄 시 숨김 스타일
-st.markdown("""
-<style>
-@media print {
-    section[data-testid="stSidebar"] { display: none !important; }
-    header[data-testid="stHeader"] { display: none !important; }
-    .stTabs [data-baseweb="tab-list"] { display: none !important; }
-    button { display: none !important; }
-}
-</style>
-""", unsafe_allow_html=True)
-
+# 3. 사이드바 설정
 with st.sidebar:
     st.header("⚙️ 시스템 설정")
     st.caption(f"연동 시트 ID: `{SPREADSHEET_ID}`")
@@ -122,7 +180,7 @@ with st.sidebar:
         st.cache_data.clear()
         st.rerun()
 
-# 4. 5개 탭 구성
+# 4. 5개 탭 구성 (중앙 정렬 스타일 적용)
 tab_input, tab_analysis, tab_team_stats, tab_h2h, tab_injuries = st.tabs([
     "📝 경기 데이터 입력 & 저장", 
     "📊 9개사 동일 배당 분석", 
@@ -484,15 +542,14 @@ with tab_analysis:
     else:
         st.info(f"💡 현재 선택된 조건에 일치(오차 범위 ±{tol})하는 과거 경기 데이터가 없습니다.")
 
-    # [출력 기능] 2번 탭 블로그 복사 & PDF
+    # [출력 기능] 2번 탭 블로그 복사 & PDF (격리 뷰어 적용)
     with st.expander("🖨️ / 📋 현재 분석 결과 블로그/PDF로 출력하기", expanded=False):
         print_pdf_button()
-        st.markdown("##### 📝 블로그 본문 복사용 (아래 흰색 박스 안의 표를 드래그하여 복사하세요)")
-        blog_html_t2 = generate_blog_html("⚽ 동일 배당 승률 분석 리포트", {
+        st.markdown("##### 📝 블로그 본문 복사용 (아래 흰색 카드 영역을 마우스로 드래그하여 복사하세요)")
+        render_blog_component("⚽ 동일 배당 승률 분석 리포트", {
             "[전체 리그 기준] 승률 통계": df_all_league,
             f"[{target_league} 전용] 승률 통계": df_target_league
-        })
-        st.markdown(blog_html_t2, unsafe_allow_html=True)
+        }, height=420)
 
 # =========================================================
 # TAB 3: 단일 팀별 경기내용 평균계산기
@@ -623,16 +680,15 @@ with tab_team_stats:
         df_goals = pd.DataFrame(goal_table_data)
         st.dataframe(df_goals, use_container_width=True, hide_index=True)
         
-        # [출력 기능] 3번 탭 블로그 복사 & PDF
+        # [출력 기능] 3번 탭 블로그 복사 & PDF (격리 뷰어 적용)
         with st.expander("🖨️ / 📋 현재 분석 결과 블로그/PDF로 출력하기", expanded=False):
             print_pdf_button()
-            st.markdown("##### 📝 블로그 본문 복사용 (아래 흰색 박스 안의 표를 드래그하여 복사하세요)")
-            blog_html_t3 = generate_blog_html(f"📊 [{sel_team}] 시즌 평균 지표 리포트", {
+            st.markdown("##### 📝 블로그 본문 복사용 (아래 흰색 카드 영역을 마우스로 드래그하여 복사하세요)")
+            render_blog_component(f"📊 [{sel_team}] 시즌 평균 지표 리포트", {
                 "지표 종합 요약": df_summary,
                 "전술(포메이션) 사용 비율": tac_df,
                 "전/후반 득점 통계": df_goals
-            })
-            st.markdown(blog_html_t3, unsafe_allow_html=True)
+            }, height=550)
             
     else:
         st.info("💡 10번 '경기내용' 탭에 아직 데이터가 없습니다.")
@@ -804,18 +860,17 @@ with tab_h2h:
             df_h2h_goals = pd.DataFrame(h2h_goal_table)
             st.dataframe(df_h2h_goals, use_container_width=True, hide_index=True)
 
-            # [출력 기능] 4번 탭 블로그 복사 & PDF
+            # [출력 기능] 4번 탭 블로그 복사 & PDF (격리 뷰어 적용)
             with st.expander("🖨️ / 📋 현재 분석 결과 블로그/PDF로 출력하기", expanded=False):
                 print_pdf_button()
-                st.markdown("##### 📝 블로그 본문 복사용 (아래 흰색 박스 안의 표를 드래그하여 복사하세요)")
+                st.markdown("##### 📝 블로그 본문 복사용 (아래 흰색 카드 영역을 마우스로 드래그하여 복사하세요)")
                 
                 blog_dict_h2h = {"맞대결 세부 지표 평균": df_h2h_summary}
                 if not df_h_tac.empty: blog_dict_h2h[f"[{sel_home_h2h}] 전술 빈도"] = df_h_tac
                 if not df_a_tac.empty: blog_dict_h2h[f"[{sel_away_h2h}] 전술 빈도"] = df_a_tac
                 blog_dict_h2h["전/후반 득점 및 비율 통계"] = df_h2h_goals
                 
-                blog_html_t4 = generate_blog_html(f"⚔️ [{sel_home_h2h}] vs [{sel_away_h2h}] 역대 맞대결 분석 리포트", blog_dict_h2h)
-                st.markdown(blog_html_t4, unsafe_allow_html=True)
+                render_blog_component(f"⚔️ [{sel_home_h2h}] vs [{sel_away_h2h}] 역대 맞대결 리포트", blog_dict_h2h, height=650)
 
             # 4. 역대 맞대결 리스트
             st.markdown("---")
