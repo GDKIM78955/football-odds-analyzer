@@ -12,7 +12,7 @@ st.set_page_config(
     layout="wide"
 )
 
-# 1번을 '배트맨'으로 변경한 북메이커 순서
+# 1번을 '배트맨'으로 설정한 북메이커 순서
 BOOKMAKERS = [
     "배트맨", "bwin", "10x10", "1xbet", 
     "betway", "william hill", "bet365", "pinnacle", "stake"
@@ -74,7 +74,7 @@ tab_input, tab_analysis, tab_team_stats, tab_injuries = st.tabs([
 ])
 
 # =========================================================
-# TAB 1: 데이터 입력 및 저장 (배트맨 1번 순서 적용)
+# TAB 1: 데이터 입력 및 저장 (전술 포메이션 날짜 변환 방지 적용)
 # =========================================================
 with tab_input:
     st.subheader("1️⃣ 경기 기본 정보 & 팀명")
@@ -239,11 +239,15 @@ with tab_input:
                     h_sot_ratio = round((home_sot / home_shots) * 100, 2) if home_shots > 0 else 0.0
                     a_sot_ratio = round((away_sot / away_shots) * 100, 2) if away_shots > 0 else 0.0
 
+                    # 💡 전술 포메이션 날짜 자동변환 방지 (방법 1 강제 적용)
+                    home_tac_safe = f"'{home_tac.strip()}" if home_tac.strip() else ""
+                    away_tac_safe = f"'{away_tac.strip()}" if away_tac.strip() else ""
+
                     row_data_stats = [
                         season, league, match_date, home_team, away_team,
                         home_1h, home_2h, away_1h, away_2h,
                         f"{h_1h_ratio}%", f"{h_2h_ratio}%", f"{a_1h_ratio}%", f"{a_2h_ratio}%",
-                        home_tac, away_tac,
+                        home_tac_safe, away_tac_safe,
                         home_shots, away_shots, home_sot, away_sot,
                         f"{h_sot_ratio}%", f"{a_sot_ratio}%",
                         f"{home_poss}%", f"{away_poss}%",
@@ -266,7 +270,7 @@ with tab_input:
                     st.error(f"저장 중 오류 발생: {e}")
 
 # =========================================================
-# TAB 2: 독립 배당 분석 랩 (배트맨 1번 순서 적용)
+# TAB 2: 독립 배당 분석 랩
 # =========================================================
 with tab_analysis:
     st.subheader("🔬 2번 탭 독립 분석 랩: 9대 북메이커 배당 입력 및 승률 분석")
@@ -300,7 +304,7 @@ with tab_analysis:
 
     st.markdown("---")
 
-    # 2. 분석 연산 함수 (전체 리그용 & 특정 리그 필터용 공용)
+    # 2. 분석 연산 함수
     def compute_odds_analysis(is_league_filter=False, league_name=""):
         rows = []
         matched_dict = {}
@@ -401,7 +405,7 @@ with tab_analysis:
 
         return pd.DataFrame(rows), matched_dict
 
-    # 3. 2개의 분석 표 렌더링 (전체 리그 vs 동일 리그)
+    # 3. 2개의 분석 표 렌더링
     st.subheader("1️⃣ [전체 리그 기준] 동일 배당 승률 분석표")
     df_all_league, matched_all = compute_odds_analysis(is_league_filter=False)
     st.dataframe(df_all_league, use_container_width=True, hide_index=True)
@@ -411,7 +415,7 @@ with tab_analysis:
     df_target_league, matched_target = compute_odds_analysis(is_league_filter=True, league_name=target_league)
     st.dataframe(df_target_league, use_container_width=True, hide_index=True)
 
-    # 4. 과거 상세 매칭 경기 리스트 (아코디언)
+    # 4. 과거 상세 매칭 경기 리스트
     st.markdown("---")
     st.subheader("📋 매칭된 과거 경기 상세 리스트 (업체별 전체 내역)")
     
