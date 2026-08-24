@@ -3,10 +3,11 @@ import pandas as pd
 import numpy as np
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
+from datetime import datetime
 
 # 1. 페이지 기본 설정
 st.set_page_config(
-    page_title="Football 9-Bookmakers & Stats Hub",
+    page_title="Football 9-Bookmakers & Analysis Hub",
     page_icon="⚽",
     layout="wide"
 )
@@ -18,7 +19,7 @@ BOOKMAKERS = [
 STATS_SHEET_NAME = "경기내용"
 SPREADSHEET_ID = "1-b-QusmoSnsvMhToNFe1B1IK7dJUKjjANs89y5ZekAQ"
 
-st.title("⚽ 축구 9대 배당 업체 & 경기 세부 스탯 통합 분석 허브")
+st.title("⚽ 축구 9대 배당 업체 & 통합 데이터 분석 시스템")
 
 # 2. 구글 시트 연동 클라이언트
 @st.cache_resource(show_spinner=False)
@@ -62,11 +63,12 @@ with st.sidebar:
         st.cache_data.clear()
         st.rerun()
 
-# 4. 3개 탭 구성
-tab_input, tab_analysis, tab_team_stats = st.tabs([
-    "📝 데이터 입력 및 통합 저장", 
+# 4. 4개 탭 구성
+tab_input, tab_analysis, tab_team_stats, tab_report = st.tabs([
+    "📝 데이터 입력 및 저장", 
     "📊 9개사 동일 배당 승률 분석", 
-    "📈 팀별 세부 경기내용 평균계산기"
+    "📈 팀별 세부내용 평균계산기",
+    "📋 원클릭 분석 리포트 생성기"
 ])
 
 # =========================================================
@@ -152,7 +154,6 @@ with tab_input:
                 try:
                     spreadsheet = client.open_by_key(SPREADSHEET_ID)
                     
-                    # 베트맨 지표 계산
                     b_h, b_d, b_a = odds_inputs.get("배트맨", (0.0, 0.0, 0.0))
                     if b_h > 0 and b_d > 0 and b_a > 0:
                         b_inv = (1/b_h) + (1/b_d) + (1/b_a)
@@ -177,7 +178,6 @@ with tab_input:
                     saved_odds_count = 0
                     skipped_list = []
                     
-                    # 1~9번 배당 탭 저장
                     for bm_name in BOOKMAKERS:
                         h, d, a = odds_inputs[bm_name]
                         if h <= 0 or d <= 0 or a <= 0:
@@ -325,20 +325,16 @@ with tab_analysis:
                 st.dataframe(m_df, use_container_width=True, hide_index=True)
 
 # =========================================================
-# TAB 3: 팀별 세부 경기내용 평균계산기 (요청 양식 완벽 구현)
+# TAB 3: 팀별 경기내용 평균계산기
 # =========================================================
 with tab_team_stats:
     st.subheader("📈 팀별 과거 세부 경기내용 평균계산기")
-    
     df_stats_all = load_sheet_data(STATS_SHEET_NAME)
     
-    # 1. 필터 조건 입력
     c_f1, c_f2, c_f3 = st.columns(3)
-    
     available_seasons = sorted(df_stats_all["시즌"].dropna().unique().tolist()) if not df_stats_all.empty and "시즌" in df_stats_all.columns else ["25-26", "2025"]
     available_leagues = sorted(df_stats_all["리그명"].dropna().unique().tolist()) if not df_stats_all.empty and "리그명" in df_stats_all.columns else ["PL", "EPL"]
     
-    # 홈팀 + 원정팀 전체 팀 목록 추출
     teams_set = set()
     if not df_stats_all.empty:
         if "홈팀" in df_stats_all.columns:
@@ -354,37 +350,30 @@ with tab_team_stats:
     st.markdown("---")
 
     if not df_stats_all.empty and "홈팀" in df_stats_all.columns:
-        # 필터링
         df_target = df_stats_all.copy()
         if sel_season != "전체":
             df_target = df_target[df_target["시즌"] == sel_season]
         if sel_league != "전체":
             df_target = df_target[df_target["리그명"] == sel_league]
 
-        # 홈 경기 / 원정 경기 분리
         df_home_matches = df_target[df_target["홈팀"] == sel_team]
         df_away_matches = df_target[df_target["원정팀"] == sel_team]
 
         def to_num(series):
-            # '%' 문자 제거 후 float 변환
             return pd.to_numeric(series.astype(str).str.replace("%", "").str.strip(), errors="coerce").fillna(0)
 
-        # 1. 득점 집계
         h_cnt = len(df_home_matches)
         a_cnt = len(df_away_matches)
         total_cnt = h_cnt + a_cnt
 
-        # 홈 경기 득점
         h_1h_goals = to_num(df_home_matches["전반득점_홈"]).sum() if h_cnt > 0 else 0
         h_2h_goals = to_num(df_home_matches["후반득점_홈"]).sum() if h_cnt > 0 else 0
         h_tot_goals = h_1h_goals + h_2h_goals
 
-        # 원정 경기 득점
         a_1h_goals = to_num(df_away_matches["전반득점_원"]).sum() if a_cnt > 0 else 0
         a_2h_goals = to_num(df_away_matches["후반득점_원"]).sum() if a_cnt > 0 else 0
         a_tot_goals = a_1h_goals + a_2h_goals
 
-        # 평균 득점
         h_1h_avg = round(h_1h_goals / h_cnt, 2) if h_cnt > 0 else 0.0
         h_2h_avg = round(h_2h_goals / h_cnt, 2) if h_cnt > 0 else 0.0
         h_tot_avg = round(h_tot_goals / h_cnt, 2) if h_cnt > 0 else 0.0
@@ -397,27 +386,22 @@ with tab_team_stats:
         tot_2h_avg = round((h_2h_goals + a_2h_goals) / total_cnt, 2) if total_cnt > 0 else 0.0
         tot_all_avg = round((h_tot_goals + a_tot_goals) / total_cnt, 2) if total_cnt > 0 else 0.0
 
-        # 2. 인게임 세부 지표 평균 함수
         def calc_avg(h_col, a_col):
             h_val = to_num(df_home_matches[h_col]).mean() if h_cnt > 0 and h_col in df_home_matches.columns else 0.0
             a_val = to_num(df_away_matches[a_col]).mean() if a_cnt > 0 and a_col in df_away_matches.columns else 0.0
             tot_val = (to_num(df_home_matches[h_col]).sum() + to_num(df_away_matches[a_col]).sum()) / total_cnt if total_cnt > 0 else 0.0
             return round(h_val, 2), round(a_val, 2), round(tot_val, 2)
 
-        # 지표별 계산
         poss_h, poss_a, poss_tot = calc_avg("점유율_홈", "점유율_원")
         sot_h, sot_a, sot_tot = calc_avg("유효슈팅_홈", "유효슈팅_원")
         pass_h, pass_a, pass_tot = calc_avg("패스성공률_홈", "패스성공률_원")
         yc_h, yc_a, yc_tot = calc_avg("경고_홈", "경고_원")
         rc_h, rc_a, rc_tot = calc_avg("퇴장_홈", "퇴장_원")
         xg_h, xg_a, xg_tot = calc_avg("xG_홈", "xG_원")
-        
-        # 득점 비율 (전체 슈팅 대비 유효슈팅 혹은 득점비율)
         ratio_h, ratio_a, ratio_tot = calc_avg("유효슈팅비율_홈", "유효슈팅비율_원")
 
         st.markdown(f"### 📋 [{sel_team}] 시즌 평균 지표 종합 요약 (총 {total_cnt}경기: 홈 {h_cnt}경기 / 원정 {a_cnt}경기)")
 
-        # 상단 핵심 지표 카드 표
         stat_summary_data = {
             "구분": ["점유율 (%)", "유효슈팅 (회)", "패스성공률 (%)", "경고 (회)", "퇴장 (회)", "xG (기대득점)", "유효슈팅비율 (%)"],
             "홈 (Home)": [f"{poss_h}%", f"{sot_h}", f"{pass_h}%", f"{yc_h}", f"{rc_h}", f"{xg_h}", f"{ratio_h}%"],
@@ -429,7 +413,6 @@ with tab_team_stats:
         st.markdown("---")
         st.markdown("### ⚽ 전/후반 득점 통계표")
 
-        # 전후반 득점 표 (요청 이미지 양식과 100% 동일)
         goal_table_data = {
             "구분": ["홈", "원정", "시즌 평균"],
             "전반 총득점": [int(h_1h_goals), int(a_1h_goals), "-"],
@@ -440,6 +423,95 @@ with tab_team_stats:
             "합계 평균": [h_tot_avg, a_tot_avg, tot_all_avg]
         }
         st.dataframe(pd.DataFrame(goal_table_data), use_container_width=True, hide_index=True)
-
     else:
-        st.info("💡 10번 '경기내용' 탭에 아직 데이터가 없습니다. 1번 탭에서 경기를 저장하시면 통계가 자동 활성화됩니다.")
+        st.info("💡 10번 '경기내용' 탭에 아직 데이터가 없습니다.")
+
+# =========================================================
+# TAB 4: 원클릭 분석 리포트 생성기 (사용자 지정 저작권 양식 완벽 반영)
+# =========================================================
+with tab_report:
+    st.subheader("📋 Boro 축구 경기 분석 리포트 원클릭 자동 생성기")
+    st.caption("편집 저작물 - 저작권등록 제 C-2016-010109호 양식 기준")
+
+    with st.expander("🛠️ 1. 리포트 기본 및 상대전적 설정", expanded=True):
+        r_c1, r_c2, r_c3 = st.columns(3)
+        rep_home = r_c1.text_input("리포트 대상 홈팀", value="리버풀")
+        rep_away = r_c2.text_input("리포트 대상 원정팀", value="본머스")
+        rep_author = r_c3.text_input("작성자명", value="Boro")
+
+        st.markdown("**📊 최근 5시즌 상대전적**")
+        h2h_1, h2h_2, h2h_3, h2h_4 = st.columns(4)
+        h2h_tot_m = h2h_1.number_input("전체 상대 경기수", min_value=0, value=10)
+        h2h_tot_w = h2h_2.number_input("홈팀 기준 승", min_value=0, value=8)
+        h2h_tot_d = h2h_3.number_input("무승부", min_value=0, value=1)
+        h2h_tot_l = h2h_4.number_input("패", min_value=0, value=1)
+        h2h_note = st.text_input("상대전적 특이사항", value="리버풀이 홈에서 본머스 상대 5연승 기록 중")
+
+    with st.expander("📉 2. 배당 절삭 & 구매투표율 & 과거 결과 패턴"):
+        b_c1, b_c2, b_c3 = st.columns(3)
+        cut_h = b_c1.number_input("홈승 절삭률 (%)", value=29.03, step=0.01)
+        cut_d = b_c2.number_input("무승부 절삭률 (%)", value=13.68, step=0.01)
+        cut_a = b_c3.number_input("원정승 절삭률 (%)", value=7.14, step=0.01)
+
+        v_c1, v_c2, v_c3 = st.columns(3)
+        vote_h = v_c1.number_input("배트맨 투표율 - 홈승 (%)", value=78.5, step=0.1)
+        vote_d = v_c2.number_input("배트맨 투표율 - 무승부 (%)", value=13.2, step=0.1)
+        vote_a = v_c3.number_input("배트맨 투표율 - 원정승 (%)", value=8.3, step=0.1)
+
+        pat_c1, pat_c2, pat_c3 = st.columns(3)
+        odd_pat_h = pat_c1.number_input("동일배당 정배 출현율 (%)", value=70.0, step=1.0)
+        odd_pat_d = pat_c2.number_input("동일배당 무배 출현율 (%)", value=20.0, step=1.0)
+        odd_pat_a = pat_c3.number_input("동일배당 역배 출현율 (%)", value=10.0, step=1.0)
+
+    with st.expander("🎯 3. 최종 추천 픽 & 코멘트"):
+        pk_c1, pk_c2, pk_c3 = st.columns(3)
+        main_pick = pk_c1.text_input("주력 픽", value="리버풀 승")
+        main_prob = pk_c2.text_input("주력 적중확률", value="75%")
+        main_odd = pk_c3.text_input("주력 배당률", value="1.22")
+
+        sub_c1, sub_c2, sub_c3 = st.columns(3)
+        sub_pick = sub_c1.text_input("부주력 (핸디/언오버)", value="리버풀 -1.5 마핸승 / 3.5 오버")
+        sub_prob = sub_c2.text_input("부주력 적중확률", value="60%")
+        sub_odd = sub_c3.text_input("부주력 배당률", value="1.65")
+
+        rep_extra_note = st.text_area("결장자 및 동기부여 코멘트", value="리버풀은 주전 공격진 전원 출전 가능하며, 본머스는 핵심 미드필더 부상 결장으로 중원 열세 예상.")
+
+    st.markdown("---")
+    
+    if st.button("🚀 원클릭 리포트 텍스트 생성", type="primary", use_container_width=True):
+        now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
+        
+        # 리포트 텍스트 빌드
+        report_text = f"""편집 저작물 - 저작권등록 제 C-2016-010109호
+작성자 : {rep_author}
+작성시간 : {now_str}
+
+==================================================
+⚽ [축구 경기 정밀 분석 리포트] {rep_home} vs {rep_away}
+==================================================
+
+1. 최근 5시즌 상대전적
+--------------------------------------------------
+* 전체 상대전적: {h2h_tot_m}전 {h2h_tot_w}승 {h2h_tot_d}무 {h2h_tot_l}패
+* 특이사항: {h2h_note}
+
+2. 배당 절삭률 & 투표율 흐름
+--------------------------------------------------
+* 배당 절삭률: 홈승 {cut_h}% / 무승부 {cut_d}% / 원정승 {cut_a}%
+* 배트맨 투표율: 홈승 {vote_h}% / 무승부 {vote_d}% / 원정승 {vote_a}%
+* 동일배당 과거 결과비율: 정배 {odd_pat_h}% / 무배 {odd_pat_d}% / 역배 {odd_pat_a}%
+
+3. 경기 외적 요인 및 특이사항
+--------------------------------------------------
+* 동기부여 및 결장자: {rep_extra_note}
+
+4. 최종 예상 픽 & 적중확률
+--------------------------------------------------
+★ [주력픽] : {main_pick} (배당: {main_odd} / 적중확률: {main_prob})
+☆ [부주력] : {sub_pick} (배당: {sub_odd} / 적중확률: {sub_prob})
+
+*분석은 작성시간 기준이며 차후 변동사항에 따라 분석픽이 달라질 수 있습니다.*
+위의 분석 글은 저작권에 등록된 상태이므로 무단 도용 시 법적 조치를 받을 수 있습니다.
+"""
+        st.success("🎉 분석 리포트가 성공적으로 생성되었습니다! 아래 텍스트를 바로 복사하여 사용하세요.")
+        st.text_area("📋 블로그/게시판용 복사 영역", value=report_text, height=450)
