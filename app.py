@@ -265,14 +265,13 @@ with tab_input:
                     st.error(f"저장 중 오류 발생: {e}")
 
 # =========================================================
-# TAB 2: 배당률 과거 승률 분석 (평균 가중치 산출 행 추가)
+# TAB 2: 배당률 과거 승률 분석 (평균 행 + 상세 매칭 리스트 복구)
 # =========================================================
 with tab_analysis:
     st.subheader(f"📊 9대 북메이커 동일 배당 (오차 ±{tol}) 과거 승률 분석")
     analysis_rows = []
     matched_detail_dfs = {}
     
-    # 종합 평균 계산용 집계 변수
     total_valid_bm = 0
     total_payout_sum = 0.0
     total_matches_count = 0
@@ -299,36 +298,42 @@ with tab_analysis:
         match_count = 0
         h_str, d_str, a_str = "0.0%", "0.0%", "0.0%"
         
-        if not df_bm.empty and "해당_홈" in df_bm.columns and "경기결과" in df_bm.columns:
+        if not df_bm.empty:
             try:
-                df_bm["H_num"] = pd.to_numeric(df_bm["해당_홈"], errors="coerce")
-                df_bm["D_num"] = pd.to_numeric(df_bm["해당_무"], errors="coerce")
-                df_bm["A_num"] = pd.to_numeric(df_bm["해당_원"], errors="coerce")
+                # 배당 열 자동 감지 (해당_홈 또는 홈 또는 13번째 열 등 유연하게 탐색)
+                h_col = "해당_홈" if "해당_홈" in df_bm.columns else (df_bm.columns[12] if len(df_bm.columns) > 12 else None)
+                d_col = "해당_무" if "해당_무" in df_bm.columns else (df_bm.columns[13] if len(df_bm.columns) > 13 else None)
+                a_col = "해당_원" if "해당_원" in df_bm.columns else (df_bm.columns[14] if len(df_bm.columns) > 14 else None)
+                res_col = "경기결과" if "경기결과" in df_bm.columns else (df_bm.columns[32] if len(df_bm.columns) > 32 else None)
                 
-                cond = (
-                    (df_bm["H_num"] >= target_h - tol) & (df_bm["H_num"] <= target_h + tol) &
-                    (df_bm["D_num"] >= target_d - tol) & (df_bm["D_num"] <= target_d + tol) &
-                    (df_bm["A_num"] >= target_a - tol) & (df_bm["A_num"] <= target_a + tol)
-                )
-                matched_df = df_bm[cond]
-                match_count = len(matched_df)
-                
-                if match_count > 0:
-                    matched_detail_dfs[bm.upper()] = matched_df
-                    res_c = matched_df["경기결과"].value_counts()
-                    hw = res_c.get("홈승", 0)
-                    dr = res_c.get("무승부", 0)
-                    aw = res_c.get("원정승", 0)
+                if h_col and d_col and a_col and res_col:
+                    df_bm["H_num"] = pd.to_numeric(df_bm[h_col], errors="coerce")
+                    df_bm["D_num"] = pd.to_numeric(df_bm[d_col], errors="coerce")
+                    df_bm["A_num"] = pd.to_numeric(df_bm[a_col], errors="coerce")
                     
-                    # 전체 누적 카운트에 합산
-                    total_matches_count += match_count
-                    total_hw_count += hw
-                    total_dr_count += dr
-                    total_aw_count += aw
+                    cond = (
+                        (df_bm["H_num"] >= target_h - tol) & (df_bm["H_num"] <= target_h + tol) &
+                        (df_bm["D_num"] >= target_d - tol) & (df_bm["D_num"] <= target_d + tol) &
+                        (df_bm["A_num"] >= target_a - tol) & (df_bm["A_num"] <= target_a + tol)
+                    )
+                    matched_df = df_bm[cond]
+                    match_count = len(matched_df)
                     
-                    h_str = f"{round((hw/match_count)*100, 1)}% ({hw}회)"
-                    d_str = f"{round((dr/match_count)*100, 1)}% ({dr}회)"
-                    a_str = f"{round((aw/match_count)*100, 1)}% ({aw}회)"
+                    if match_count > 0:
+                        matched_detail_dfs[bm.upper()] = matched_df
+                        res_c = matched_df[res_col].value_counts()
+                        hw = res_c.get("홈승", 0)
+                        dr = res_c.get("무승부", 0)
+                        aw = res_c.get("원정승", 0)
+                        
+                        total_matches_count += match_count
+                        total_hw_count += hw
+                        total_dr_count += dr
+                        total_aw_count += aw
+                        
+                        h_str = f"{round((hw/match_count)*100, 1)}% ({hw}회)"
+                        d_str = f"{round((dr/match_count)*100, 1)}% ({dr}회)"
+                        a_str = f"{round((aw/match_count)*100, 1)}% ({aw}회)"
             except Exception:
                 pass
         
@@ -340,9 +345,7 @@ with tab_analysis:
             "홈승 확률": h_str, "무승부 확률": d_str, "원정승 확률": a_str
         })
 
-    # -------------------------------------------------------------
-    # 맨 아래 종합 가중평균 행 추가 (각 업체별 매칭 횟수 가중 반영)
-    # -------------------------------------------------------------
+    # 종합 가중평균 행
     avg_payout_str = f"{round(total_payout_sum / total_valid_bm, 2)}%" if total_valid_bm > 0 else "-"
     if total_matches_count > 0:
         avg_h_prob_str = f"{round((total_hw_count / total_matches_count) * 100, 1)}% ({total_hw_count}회)"
@@ -362,12 +365,29 @@ with tab_analysis:
         "원정승 확률": avg_a_prob_str
     })
 
+    # 상단 요약 테이블
     st.dataframe(pd.DataFrame(analysis_rows), use_container_width=True, hide_index=True)
+
+    # -------------------------------------------------------------
+    # 하단 매칭 경기 상세 리스트 영역 (복구 완료)
+    # -------------------------------------------------------------
     if matched_detail_dfs:
         st.markdown("---")
+        st.subheader("📋 매칭된 과거 경기 상세 리스트 (업체별 아코디언)")
         for name, m_df in matched_detail_dfs.items():
-            with st.expander(f"📌 {name} 매칭 내역 ({len(m_df)}건)", expanded=False):
-                st.dataframe(m_df, use_container_width=True, hide_index=True)
+            with st.expander(f"📌 [{name}] 매칭 내역 총 {len(m_df)}건 확인하기", expanded=False):
+                # 표시할 주요 컬럼 우선 선별
+                pref_cols = ["시즌", "리그명", "날짜", "홈팀", "원정팀", "해당_홈", "해당_무", "해당_원", "홈스코어", "원정스코어", "경기결과", "정/중/역", "적중배당"]
+                show_cols = [c for c in pref_cols if c in m_df.columns]
+                
+                # 만약 지정 컬럼명이 없으면 전체 컬럼 표시
+                if show_cols:
+                    st.dataframe(m_df[show_cols], use_container_width=True, hide_index=True)
+                else:
+                    st.dataframe(m_df, use_container_width=True, hide_index=True)
+    else:
+        st.markdown("---")
+        st.info("💡 현재 입력된 배당과 일치(오차 범위 내)하는 과거 경기 데이터가 아직 없습니다.")
 
 # =========================================================
 # TAB 3: 팀별 경기내용 평균계산기
@@ -479,15 +499,12 @@ with tab_injuries:
     
     df_injuries = load_sheet_data(INJURY_SHEET_NAME)
 
-    # 1. 팀 선택 및 필터링
     c_s1, c_s2 = st.columns(2)
-    
     team_options = sorted(df_injuries["팀명"].dropna().unique().tolist()) if not df_injuries.empty and "팀명" in df_injuries.columns else ["웨스트햄", "리버풀", "맨체스터시티"]
     selected_team = c_s1.selectbox("조회할 팀명 선택", team_options if team_options else ["직접 등록 필요"], key="inj_filter_team")
     
     inj_league_title = c_s2.text_input("리그/대회 기준 표기", value="잉글랜드 1부리그 기록", key="inj_custom_league")
 
-    # 2. 신규 선수 11번 시트 등록
     with st.expander(f"➕ [{selected_team}] 새로운 결장 선수 구글 시트에 추가", expanded=False):
         f_s1, f_s2, f_s3 = st.columns(3)
         add_season = f_s1.text_input("시즌", value="25-26", key="add_inj_season")
@@ -536,7 +553,6 @@ with tab_injuries:
 
     st.markdown("---")
 
-    # 3. 선택한 팀에 해당하는 선수들만 필터링하여 카드형 생성
     if not df_injuries.empty and "팀명" in df_injuries.columns:
         filtered_df = df_injuries[df_injuries["팀명"] == selected_team]
 
