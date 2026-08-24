@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import gspread
+import streamlit.components.v1 as components
 from oauth2client.service_account import ServiceAccountCredentials
 from datetime import datetime
 
@@ -23,7 +24,41 @@ SPREADSHEET_ID = "1-b-QusmoSnsvMhToNFe1B1IK7dJUKjjANs89y5ZekAQ"
 
 st.title("⚽ 축구 9대 배당 업체 & 경기 세부 스탯 통합 분석 허브")
 
+# =========================================================
+# 공통 헬퍼 함수: 블로그용 HTML 생성 & PDF 인쇄 버튼
+# =========================================================
+def generate_blog_html(title, df_dict):
+    html = f"<div style='font-family: \"Malgun Gothic\", Arial, sans-serif; max-width: 850px; margin: 0 auto; color: #222;'>"
+    html += f"<h3 style='border-bottom: 2px solid #000; padding-bottom: 8px; margin-bottom: 20px; color: #111;'>{title}</h3>"
+    
+    for subtitle, df in df_dict.items():
+        if df is not None and not df.empty:
+            table_html = df.to_html(index=False, escape=False)
+            table_html = table_html.replace('<table border="1" class="dataframe">', '<table style="border-collapse: collapse; width: 100%; font-size: 13px; text-align: center; border: 1px solid #ddd; margin-bottom: 25px;">')
+            table_html = table_html.replace('<th>', '<th style="background-color: #f4f6f8; padding: 10px 8px; border: 1px solid #ccc; font-weight: bold; color: #333;">')
+            table_html = table_html.replace('<td>', '<td style="padding: 8px; border: 1px solid #eee;">')
+            
+            html += f"<h4 style='color: #0056b3; margin-bottom: 10px; font-size: 15px;'>▶ {subtitle}</h4>"
+            html += table_html
+            
+    html += "</div>"
+    return html
+
+def print_pdf_button():
+    components.html("""
+        <style>
+        @media print {
+            body { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+        }
+        </style>
+        <button onclick="window.parent.print()" style="width: 100%; padding: 12px; font-size: 16px; font-weight: bold; background-color: #212529; color: white; border: none; border-radius: 6px; cursor: pointer; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+            🖨️ 현재 화면 PDF로 저장 / 보고서 인쇄하기
+        </button>
+    """, height=60)
+
+# =========================================================
 # 2. 구글 시트 연동 클라이언트
+# =========================================================
 @st.cache_resource(show_spinner=False)
 def get_gspread_client():
     try:
@@ -39,7 +74,6 @@ def get_gspread_client():
     except Exception:
         return None
 
-# 구글 시트 탭 실시간 데이터 로더
 @st.cache_data(ttl=10, show_spinner=False)
 def load_sheet_data(sheet_name):
     client = get_gspread_client()
@@ -56,7 +90,18 @@ def load_sheet_data(sheet_name):
     except Exception:
         return pd.DataFrame()
 
-# 3. 사이드바 설정
+# 3. 사이드바 설정 (인쇄 시 숨김 처리용 CSS 포함)
+st.markdown("""
+<style>
+@media print {
+    section[data-testid="stSidebar"] { display: none !important; }
+    header[data-testid="stHeader"] { display: none !important; }
+    .stTabs [data-baseweb="tab-list"] { display: none !important; }
+    button { display: none !important; }
+}
+</style>
+""", unsafe_allow_html=True)
+
 with st.sidebar:
     st.header("⚙️ 시스템 설정")
     st.caption(f"연동 시트 ID: `{SPREADSHEET_ID}`")
@@ -272,8 +317,7 @@ with tab_input:
 # TAB 2: 독립 배당 분석 랩
 # =========================================================
 with tab_analysis:
-    st.subheader("🔬 2번 탭 독립 분석 랩: 9대 북메이커 배당 입력 및 승률 분석")
-    st.caption("1번 탭의 저장 여부와 상관없이 여기서 배당과 리그를 직접 입력하여 전체 리그 통계와 동일 리그 통계를 실시간으로 비교 분석합니다.")
+    st.subheader("🔬 2번 탭: 9대 북메이커 배당 입력 및 승률 분석")
 
     c_an_l1, c_an_l2 = st.columns([1, 2])
     target_league = c_an_l1.text_input("🔍 분석 대상 리그명 (동일리그 필터용)", value="PL", key="t2_target_league")
@@ -402,13 +446,14 @@ with tab_analysis:
 
         return pd.DataFrame(rows), matched_dict
 
-    st.subheader("1️⃣ [전체 리그 기준] 동일 배당 승률 분석표")
     df_all_league, matched_all = compute_odds_analysis(is_league_filter=False)
+    df_target_league, matched_target = compute_odds_analysis(is_league_filter=True, league_name=target_league)
+
+    st.subheader("1️⃣ [전체 리그 기준] 동일 배당 승률 분석표")
     st.dataframe(df_all_league, use_container_width=True, hide_index=True)
 
     st.markdown("---")
     st.subheader(f"2️⃣ [{target_league} 동일 리그 전용] 동일 배당 승률 분석표")
-    df_target_league, matched_target = compute_odds_analysis(is_league_filter=True, league_name=target_league)
     st.dataframe(df_target_league, use_container_width=True, hide_index=True)
 
     st.markdown("---")
@@ -425,6 +470,16 @@ with tab_analysis:
                 st.dataframe(m_df[show_cols] if show_cols else m_df, use_container_width=True, hide_index=True)
     else:
         st.info(f"💡 현재 선택된 조건에 일치(오차 범위 ±{tol})하는 과거 경기 데이터가 없습니다.")
+
+    # [출력 기능] 2번 탭 블로그 복사 & PDF
+    with st.expander("🖨️ / 📋 현재 분석 결과 블로그/PDF로 출력하기", expanded=False):
+        print_pdf_button()
+        st.markdown("##### 📝 블로그 본문 복사용 (아래 표를 드래그하여 복사하세요)")
+        blog_html_t2 = generate_blog_html("⚽ 동일 배당 승률 분석 리포트", {
+            "[전체 리그 기준] 승률 통계": df_all_league,
+            f"[{target_league} 전용] 승률 통계": df_target_league
+        })
+        st.markdown(blog_html_t2, unsafe_allow_html=True)
 
 # =========================================================
 # TAB 3: 단일 팀별 경기내용 평균계산기
@@ -450,6 +505,10 @@ with tab_team_stats:
     sel_team = c_f3.selectbox("경기목록 (팀이름)", available_teams if available_teams else ["팀 선택"], key="sel_stat_team")
 
     st.markdown("---")
+
+    df_summary = pd.DataFrame()
+    tac_df = pd.DataFrame()
+    df_goals = pd.DataFrame()
 
     if not df_stats_all.empty and "홈팀" in df_stats_all.columns:
         df_target = df_stats_all.copy()
@@ -503,22 +562,20 @@ with tab_team_stats:
         ratio_h, ratio_a, ratio_tot = calc_avg("유효슈팅비율_홈", "유효슈팅비율_원")
 
         st.markdown(f"### 📋 [{sel_team}] 시즌 평균 지표 종합 요약 (총 {total_cnt}경기: 홈 {h_cnt}경기 / 원정 {a_cnt}경기)")
-
         stat_summary_data = {
             "구분": ["점유율 (%)", "유효슈팅 (회)", "패스성공률 (%)", "경고 (회)", "퇴장 (회)", "xG (기대득점)", "유효슈팅비율 (%)"],
             "홈 (Home)": [f"{poss_h}%", f"{sot_h}", f"{pass_h}%", f"{yc_h}", f"{rc_h}", f"{xg_h}", f"{ratio_h}%"],
             "원정 (Away)": [f"{poss_a}%", f"{sot_a}", f"{pass_a}%", f"{yc_a}", f"{rc_a}", f"{xg_a}", f"{ratio_a}%"],
             "시즌 전체 평균": [f"{poss_tot}%", f"{sot_tot}", f"{pass_tot}%", f"{yc_tot}", f"{rc_tot}", f"{xg_tot}", f"{ratio_tot}%"]
         }
-        st.dataframe(pd.DataFrame(stat_summary_data), use_container_width=True, hide_index=True)
+        df_summary = pd.DataFrame(stat_summary_data)
+        st.dataframe(df_summary, use_container_width=True, hide_index=True)
 
         st.markdown("---")
         st.markdown("### ♟️ 팀 전술(포메이션) 사용 횟수 및 비율")
-        
         home_tacs = df_home_matches["전술_홈"].dropna().astype(str).str.strip().tolist() if "전술_홈" in df_home_matches.columns else []
         away_tacs = df_away_matches["전술_원"].dropna().astype(str).str.strip().tolist() if "전술_원" in df_away_matches.columns else []
         all_tacs = home_tacs + away_tacs
-        
         unique_tacs = sorted(list(set([t for t in all_tacs if t and t != "-"])))
         
         if unique_tacs and total_cnt > 0:
@@ -541,7 +598,6 @@ with tab_team_stats:
 
         st.markdown("---")
         st.markdown("### ⚽ 전/후반 득점 통계표")
-
         goal_table_data = {
             "구분": ["홈", "원정", "시즌 평균"],
             "전반 총득점": [int(h_1h_goals), int(a_1h_goals), "-"],
@@ -551,12 +607,25 @@ with tab_team_stats:
             "후반 평균": [h_2h_avg, a_2h_avg, tot_2h_avg],
             "합계 평균": [h_tot_avg, a_tot_avg, tot_all_avg]
         }
-        st.dataframe(pd.DataFrame(goal_table_data), use_container_width=True, hide_index=True)
+        df_goals = pd.DataFrame(goal_table_data)
+        st.dataframe(df_goals, use_container_width=True, hide_index=True)
+        
+        # [출력 기능] 3번 탭 블로그 복사 & PDF
+        with st.expander("🖨️ / 📋 현재 분석 결과 블로그/PDF로 출력하기", expanded=False):
+            print_pdf_button()
+            st.markdown("##### 📝 블로그 본문 복사용 (아래 표를 드래그하여 복사하세요)")
+            blog_html_t3 = generate_blog_html(f"📊 [{sel_team}] 시즌 평균 지표 리포트", {
+                "지표 종합 요약": df_summary,
+                "전술(포메이션) 사용 비율": tac_df,
+                "전/후반 득점 통계": df_goals
+            })
+            st.markdown(blog_html_t3, unsafe_allow_html=True)
+            
     else:
         st.info("💡 10번 '경기내용' 탭에 아직 데이터가 없습니다.")
 
 # =========================================================
-# TAB 4: 홈 vs 원정 맞대결(H2H) 종합 분석 (전/후반 득점비율 % 추가)
+# TAB 4: 홈 vs 원정 맞대결(H2H) 종합 분석
 # =========================================================
 with tab_h2h:
     st.subheader("⚔️ 홈팀 vs 원정팀 역대 맞대결(H2H) 종합 분석 및 세부 지표")
@@ -579,6 +648,11 @@ with tab_h2h:
 
     st.markdown("---")
 
+    df_h2h_summary = pd.DataFrame()
+    df_h_tac = pd.DataFrame()
+    df_a_tac = pd.DataFrame()
+    df_h2h_goals = pd.DataFrame()
+
     if not df_stats_h2h.empty and "홈팀" in df_stats_h2h.columns and "원정팀" in df_stats_h2h.columns:
         def to_num(series):
             return pd.to_numeric(series.astype(str).str.replace("%", "").str.strip(), errors="coerce").fillna(0)
@@ -594,7 +668,7 @@ with tab_h2h:
         exact_h2h_count = len(df_h2h_exact)
 
         if total_h2h_count > 0:
-            st.markdown(f"### 📋 [{sel_home_h2h}] vs [{sel_away_h2h}] 역대 맞대결 기록 (총 {total_h2h_count}경기 / 이번 매치업 홈-원정 기준 {exact_h2h_count}경기)")
+            st.markdown(f"### 📋 [{sel_home_h2h}] vs [{sel_away_h2h}] 역대 맞대결 기록 (총 {total_h2h_count}경기 / 이번 매치업 기준 {exact_h2h_count}경기)")
 
             h_wins, draws, a_wins = 0, 0, 0
             for _, r in df_h2h_all.iterrows():
@@ -612,10 +686,9 @@ with tab_h2h:
 
             st.info(f"🏆 **역대 상대전적 종합:** **{sel_home_h2h}** 기준 **{total_h2h_count}전 {h_wins}승 {draws}무 {a_wins}패** (승률: {round((h_wins/total_h2h_count)*100, 1)}%)")
 
-            # 1. 맞대결 세부 지표 종합 요약표
+            # 1. 맞대결 요약
             def get_h2h_stat_avg(col_h, col_a):
-                home_team_vals = []
-                away_team_vals = []
+                home_team_vals, away_team_vals = [], []
                 for _, r in df_h2h_all.iterrows():
                     if r["홈팀"] == sel_home_h2h:
                         if col_h in r: home_team_vals.append(to_num(pd.Series([r[col_h]])).iloc[0])
@@ -623,7 +696,6 @@ with tab_h2h:
                     else:
                         if col_a in r: home_team_vals.append(to_num(pd.Series([r[col_a]])).iloc[0])
                         if col_h in r: away_team_vals.append(to_num(pd.Series([r[col_h]])).iloc[0])
-                
                 avg_home = round(np.mean(home_team_vals), 2) if home_team_vals else 0.0
                 avg_away = round(np.mean(away_team_vals), 2) if away_team_vals else 0.0
                 return avg_home, avg_away
@@ -641,15 +713,14 @@ with tab_h2h:
                 f"{sel_home_h2h} (맞대결 평균)": [f"{poss_h}%", f"{sot_h}", f"{pass_h}%", f"{yc_h}", f"{rc_h}", f"{xg_h}", f"{ratio_h}%"],
                 f"{sel_away_h2h} (맞대결 평균)": [f"{poss_a}%", f"{sot_a}", f"{pass_a}%", f"{yc_a}", f"{rc_a}", f"{xg_a}", f"{ratio_a}%"]
             }
-            st.dataframe(pd.DataFrame(h2h_summary_table), use_container_width=True, hide_index=True)
+            df_h2h_summary = pd.DataFrame(h2h_summary_table)
+            st.dataframe(df_h2h_summary, use_container_width=True, hide_index=True)
 
             # 2. 맞대결 전술 통계표
             st.markdown("---")
             st.markdown("### ♟️ 맞대결 시 양 팀의 전술(포메이션) 사용 횟수")
 
-            home_team_tacs = []
-            away_team_tacs = []
-
+            home_team_tacs, away_team_tacs = [], []
             for _, r in df_h2h_all.iterrows():
                 if r["홈팀"] == sel_home_h2h:
                     if "전술_홈" in r and r["전술_홈"]: home_team_tacs.append(str(r["전술_홈"]).strip())
@@ -663,33 +734,21 @@ with tab_h2h:
                 st.markdown(f"**🔵 [{sel_home_h2h}] 맞대결 전술 빈도**")
                 h_tac_vc = pd.Series(home_team_tacs).value_counts()
                 if not h_tac_vc.empty:
-                    df_h_tac = pd.DataFrame({
-                        "전술": h_tac_vc.index,
-                        "사용 횟수": [f"{c}회 ({round((c/total_h2h_count)*100, 1)}%)" for c in h_tac_vc.values]
-                    })
+                    df_h_tac = pd.DataFrame({"전술": h_tac_vc.index, "사용 횟수": [f"{c}회 ({round((c/total_h2h_count)*100, 1)}%)" for c in h_tac_vc.values]})
                     st.dataframe(df_h_tac, use_container_width=True, hide_index=True)
-                else:
-                    st.caption("기록 없음")
 
             with c_tc2:
                 st.markdown(f"**🔴 [{sel_away_h2h}] 맞대결 전술 빈도**")
                 a_tac_vc = pd.Series(away_team_tacs).value_counts()
                 if not a_tac_vc.empty:
-                    df_a_tac = pd.DataFrame({
-                        "전술": a_tac_vc.index,
-                        "사용 횟수": [f"{c}회 ({round((c/total_h2h_count)*100, 1)}%)" for c in a_tac_vc.values]
-                    })
+                    df_a_tac = pd.DataFrame({"전술": a_tac_vc.index, "사용 횟수": [f"{c}회 ({round((c/total_h2h_count)*100, 1)}%)" for c in a_tac_vc.values]})
                     st.dataframe(df_a_tac, use_container_width=True, hide_index=True)
-                else:
-                    st.caption("기록 없음")
 
-            # 3. 맞대결 전/후반 득점 및 비율(%) 통계표 (비율 추가 ⭐)
+            # 3. 득점 비율 통계표
             st.markdown("---")
             st.markdown("### ⚽ 맞대결 전/후반 득점 및 비율(%) 통계표")
 
-            h_1h_list, h_2h_list = [], []
-            a_1h_list, a_2h_list = [], []
-
+            h_1h_list, h_2h_list, a_1h_list, a_2h_list = [], [], [], []
             for _, r in df_h2h_all.iterrows():
                 if r["홈팀"] == sel_home_h2h:
                     h_1h_list.append(to_num(pd.Series([r.get("전반득점_홈", 0)])).iloc[0])
@@ -706,24 +765,15 @@ with tab_h2h:
             sum_a_1h, sum_a_2h = sum(a_1h_list), sum(a_2h_list)
             tot_h_score, tot_a_score = sum_h_1h + sum_h_2h, sum_a_1h + sum_a_2h
 
-            avg_h_1h = round(sum_h_1h / total_h2h_count, 2)
-            avg_h_2h = round(sum_h_2h / total_h2h_count, 2)
-            avg_h_tot = round(tot_h_score / total_h2h_count, 2)
+            avg_h_1h, avg_h_2h, avg_h_tot = round(sum_h_1h / total_h2h_count, 2), round(sum_h_2h / total_h2h_count, 2), round(tot_h_score / total_h2h_count, 2)
+            avg_a_1h, avg_a_2h, avg_a_tot = round(sum_a_1h / total_h2h_count, 2), round(sum_a_2h / total_h2h_count, 2), round(tot_a_score / total_h2h_count, 2)
 
-            avg_a_1h = round(sum_a_1h / total_h2h_count, 2)
-            avg_a_2h = round(sum_a_2h / total_h2h_count, 2)
-            avg_a_tot = round(tot_a_score / total_h2h_count, 2)
-
-            # 전/후반 득점 비율 (%) 계산
             ratio_h_1h = f"{round((sum_h_1h / tot_h_score) * 100, 1)}%" if tot_h_score > 0 else "0.0%"
             ratio_h_2h = f"{round((sum_h_2h / tot_h_score) * 100, 1)}%" if tot_h_score > 0 else "0.0%"
-
             ratio_a_1h = f"{round((sum_a_1h / tot_a_score) * 100, 1)}%" if tot_a_score > 0 else "0.0%"
             ratio_a_2h = f"{round((sum_a_2h / tot_a_score) * 100, 1)}%" if tot_a_score > 0 else "0.0%"
 
-            tot_all_1h = sum_h_1h + sum_a_1h
-            tot_all_2h = sum_h_2h + sum_a_2h
-            tot_all_score = tot_h_score + tot_a_score
+            tot_all_1h, tot_all_2h, tot_all_score = sum_h_1h + sum_a_1h, sum_h_2h + sum_a_2h, tot_h_score + tot_a_score
             ratio_all_1h = f"{round((tot_all_1h / tot_all_score) * 100, 1)}%" if tot_all_score > 0 else "0.0%"
             ratio_all_2h = f"{round((tot_all_2h / tot_all_score) * 100, 1)}%" if tot_all_score > 0 else "0.0%"
 
@@ -738,22 +788,30 @@ with tab_h2h:
                 "후반 평균": [avg_h_2h, avg_a_2h, round(avg_h_2h + avg_a_2h, 2)],
                 "경기당 평균득점": [avg_h_tot, avg_a_tot, round(avg_h_tot + avg_a_tot, 2)]
             }
-            st.dataframe(pd.DataFrame(h2h_goal_table), use_container_width=True, hide_index=True)
+            df_h2h_goals = pd.DataFrame(h2h_goal_table)
+            st.dataframe(df_h2h_goals, use_container_width=True, hide_index=True)
 
-            # 4. 역대 맞대결 전체 경기 세부 내역
+            # [출력 기능] 4번 탭 블로그 복사 & PDF
+            with st.expander("🖨️ / 📋 현재 분석 결과 블로그/PDF로 출력하기", expanded=False):
+                print_pdf_button()
+                st.markdown("##### 📝 블로그 본문 복사용 (아래 표를 드래그하여 복사하세요)")
+                
+                # HTML용 데이터 딕셔너리 조합
+                blog_dict_h2h = {"맞대결 세부 지표 평균": df_h2h_summary}
+                if not df_h_tac.empty: blog_dict_h2h[f"[{sel_home_h2h}] 전술 빈도"] = df_h_tac
+                if not df_a_tac.empty: blog_dict_h2h[f"[{sel_away_h2h}] 전술 빈도"] = df_a_tac
+                blog_dict_h2h["전/후반 득점 및 비율 통계"] = df_h2h_goals
+                
+                blog_html_t4 = generate_blog_html(f"⚔️ [{sel_home_h2h}] vs [{sel_away_h2h}] 역대 맞대결 분석 리포트", blog_dict_h2h)
+                st.markdown(blog_html_t4, unsafe_allow_html=True)
+
+            # 4. 역대 맞대결 리스트
             st.markdown("---")
             st.markdown("### 📋 역대 맞대결 전체 경기 세부 내역")
-            
-            pref_h2h_cols = [
-                "시즌", "리그명", "경기날짜", "홈팀", "원정팀", 
-                "전반득점_홈", "후반득점_홈", "전반득점_원", "후반득점_원",
-                "전술_홈", "전술_원", 
-                "점유율_홈", "점유율_원", 
-                "슈팅_홈", "슈팅_원", "유효슈팅_홈", "유효슈팅_원",
-                "xG_홈", "xG_원"
-            ]
+            pref_h2h_cols = ["시즌", "리그명", "경기날짜", "홈팀", "원정팀", "전반득점_홈", "후반득점_홈", "전반득점_원", "후반득점_원", "전술_홈", "전술_원", "점유율_홈", "점유율_원", "슈팅_홈", "슈팅_원", "유효슈팅_홈", "유효슈팅_원", "xG_홈", "xG_원"]
             show_h2h_cols = [c for c in pref_h2h_cols if c in df_h2h_all.columns]
             st.dataframe(df_h2h_all[show_h2h_cols] if show_h2h_cols else df_h2h_all, use_container_width=True, hide_index=True)
+
         else:
             st.info(f"💡 [{sel_home_h2h}]와 [{sel_away_h2h}] 간의 과거 맞대결 경기 데이터가 아직 10번 시트에 없습니다.")
     else:
@@ -879,9 +937,11 @@ with tab_injuries:
 
             st.markdown(card_text)
 
-            st.markdown("---")
-            st.subheader(f"📋 [{selected_team}] 블로그 복사용 텍스트 (Ctrl+C로 복사)")
-            st.text_area("복사창", value=card_text, height=350)
+            # [출력 기능] 5번 탭 블로그 복사 & PDF
+            with st.expander("🖨️ / 📋 현재 분석 결과 블로그/PDF로 출력하기", expanded=False):
+                print_pdf_button()
+                st.markdown("##### 📝 블로그 본문 텍스트 복사용 (텍스트 박스 클릭 후 전체 복사)")
+                st.text_area("복사창", value=card_text, height=350)
             
             with st.expander("🔍 시트에 저장된 원본 데이터 표 보기"):
                 st.dataframe(filtered_df, use_container_width=True, hide_index=True)
