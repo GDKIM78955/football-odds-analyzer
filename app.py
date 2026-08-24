@@ -20,6 +20,8 @@ SPREADSHEET_ID = "1-b-QusmoSnsvMhToNFe1B1IK7dJUKjjANs89y5ZekAQ"
 
 st.title("⚽ 축구 9대 배당 업체 & 경기내용 세부 스탯 통합 시스템")
 
+# 2. 구글 시트 연동 클라이언트
+@st.cache_resource(show_spinner=False)
 def get_gspread_client():
     try:
         if "gcp_service_account" in st.secrets:
@@ -31,14 +33,42 @@ def get_gspread_client():
             creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
             return gspread.authorize(creds)
         else:
-            st.error("Secrets에 GCP 서비스 계정 키가 누락되었습니다.")
             return None
-    except Exception as e:
-        st.error(f"연동 실패: {e}")
+    except Exception:
         return None
 
-tab_input, tab_analysis = st.tabs(["📝 데이터 입력 및 통합 저장", "📊 동일 배당 통계"])
+# 시트 데이터 실시간 캐시 조회 함수
+@st.cache_data(ttl=10, show_spinner=False)
+def load_sheet_data(bm_name):
+    client = get_gspread_client()
+    if not client:
+        return pd.DataFrame()
+    try:
+        spreadsheet = client.open_by_key(SPREADSHEET_ID)
+        ws = spreadsheet.worksheet(bm_name)
+        data = ws.get_all_values()
+        if len(data) > 1:
+            df = pd.DataFrame(data[1:], columns=data[0])
+            return df
+        return pd.DataFrame()
+    except Exception:
+        return pd.DataFrame()
 
+# 3. 사이드바 설정
+with st.sidebar:
+    st.header("⚙️ 분석 필터 설정")
+    st.caption(f"연동 시트 ID: `{SPREADSHEET_ID}`")
+    tol = st.number_input("배당 오차 허용치 (±)", value=0.03, step=0.01)
+    if st.button("🔄 시트 데이터 즉시 새로고침"):
+        st.cache_data.clear()
+        st.rerun()
+
+# 4. 탭 구성
+tab_input, tab_analysis = st.tabs(["📝 데이터 입력 및 저장", "📊 9개사 동일 배당 승률 분석"])
+
+# =========================================================
+# TAB 1: 데이터 입력 및 저장
+# =========================================================
 with tab_input:
     st.subheader("1️⃣ 경기 기본 정보 & 스코어")
     c_m1, c_m2, c_m3 = st.columns(3)
@@ -108,7 +138,6 @@ with tab_input:
         home_xg = c_xg1.number_input("홈 xG", min_value=0.0, value=2.21, step=0.01)
         away_xg = c_xg2.number_input("원정 xG", min_value=0.0, value=1.70, step=0.01)
 
-    # 전/후반 합산 최종 스코어 자동 연산
     home_score = home_1h + home_2h
     away_score = away_1h + away_2h
 
@@ -116,11 +145,10 @@ with tab_input:
     if st.button("💾 구글 시트 1~9번 배당 탭 & 10번 경기내용 탭 일괄 저장 실행", type="primary", use_container_width=True):
         client = get_gspread_client()
         if client:
-            with st.spinner("구글 스프레드시트에 배당 및 경기내용 저장 중..."):
+            with st.spinner("구글 스프레드시트에 저장 중..."):
                 try:
                     spreadsheet = client.open_by_key(SPREADSHEET_ID)
                     
-                    # ----------------- [A] 1~9번 배당 탭 저장 연산 -----------------
                     b_h, b_d, b_a = odds_inputs.get("배트맨", (0.0, 0.0, 0.0))
                     if b_h > 0 and b_d > 0 and b_a > 0:
                         b_inv = (1/b_h) + (1/b_d) + (1/b_a)
@@ -195,14 +223,12 @@ with tab_input:
                         except gspread.exceptions.WorksheetNotFound:
                             st.warning(f"⚠️ '{bm_name}' 탭을 찾을 수 없습니다.")
 
-                    # ----------------- [B] 10번 '경기내용' 탭 저장 연산 -----------------
-                    # 득점 비율 계산
+                    # 10번 경기내용 탭 저장
                     h_1h_ratio = round((home_1h / home_score) * 100, 2) if home_score > 0 else 0.0
                     h_2h_ratio = round((home_2h / home_score) * 100, 2) if home_score > 0 else 0.0
                     a_1h_ratio = round((away_1h / away_score) * 100, 2) if away_score > 0 else 0.0
                     a_2h_ratio = round((away_2h / away_score) * 100, 2) if away_score > 0 else 0.0
                     
-                    # 유효슈팅 비율 계산
                     h_sot_ratio = round((home_sot / home_shots) * 100, 2) if home_shots > 0 else 0.0
                     a_sot_ratio = round((away_sot / away_shots) * 100, 2) if away_shots > 0 else 0.0
 
@@ -222,17 +248,101 @@ with tab_input:
                     try:
                         ws_stats = spreadsheet.worksheet(STATS_SHEET_NAME)
                         ws_stats.append_row(row_data_stats, value_input_option="USER_ENTERED")
-                        stats_saved = True
                     except gspread.exceptions.WorksheetNotFound:
                         st.warning(f"⚠️ '{STATS_SHEET_NAME}' 탭을 찾을 수 없습니다.")
-                        stats_saved = False
                     
-                    # 저장 결과 피드백
-                    st.success(f"🎉 성공: 배당 탭 {saved_odds_count}개 및 '경기내용' 탭에 데이터 저장이 완료되었습니다!")
+                    st.cache_data.clear()  # 캐시 비우기
+                    st.success(f"🎉 성공: 배당 탭 {saved_odds_count}개 및 '경기내용' 탭에 저장이 완료되었습니다!")
                     if skipped_list:
                         st.info(f"ℹ️ 배당 미입력 건너뜀: {', '.join(skipped_list)}")
                 except Exception as e:
                     st.error(f"저장 중 오류 발생: {e}")
 
+# =========================================================
+# TAB 2: 구글 시트 실시간 연동 9개사 동일 배당 분석
+# =========================================================
 with tab_analysis:
-    st.info("📊 데이터가 누적되면 배당 및 경기내용 통합 매칭 통계가 출력됩니다.")
+    st.subheader(f"📊 9대 북메이커 동일/유사 배당 (오차 ±{tol}) 과거 승률 분석표")
+    
+    analysis_rows = []
+    matched_detail_dfs = {}
+    
+    for idx, bm in enumerate(BOOKMAKERS, 1):
+        target_h, target_d, target_a = odds_inputs.get(bm, (0.0, 0.0, 0.0))
+        
+        # 입력 배당이 없는 경우
+        if target_h <= 0 or target_d <= 0 or target_a <= 0:
+            analysis_rows.append({
+                "순번": idx,
+                "북메이커": bm.upper(),
+                "입력 배당 [홈/무/원]": "미입력 (제외)",
+                "환급률(%)": "-",
+                "매칭 경기수": 0,
+                "홈승 확률": "-",
+                "무승부 확률": "-",
+                "원정승 확률": "-"
+            })
+            continue
+
+        raw_inv = (1/target_h) + (1/target_d) + (1/target_a)
+        payout = (1 / raw_inv) * 100
+        
+        # 구글 시트에서 해당 북메이커 시트 데이터 불러오기
+        df_bm = load_sheet_data(bm)
+        
+        match_count = 0
+        h_prob_str = "0.0%"
+        d_prob_str = "0.0%"
+        a_prob_str = "0.0%"
+        
+        if not df_bm.empty and "해당_홈" in df_bm.columns and "경기결과" in df_bm.columns:
+            try:
+                # 숫자 변환
+                df_bm["H_num"] = pd.to_numeric(df_bm["해당_홈"], errors="coerce")
+                df_bm["D_num"] = pd.to_numeric(df_bm["해당_무"], errors="coerce")
+                df_bm["A_num"] = pd.to_numeric(df_bm["해당_원"], errors="coerce")
+                
+                # 배당 필터링 (오차 범위 내)
+                cond = (
+                    (df_bm["H_num"] >= target_h - tol) & (df_bm["H_num"] <= target_h + tol) &
+                    (df_bm["D_num"] >= target_d - tol) & (df_bm["D_num"] <= target_d + tol) &
+                    (df_bm["A_num"] >= target_a - tol) & (df_bm["A_num"] <= target_a + tol)
+                )
+                matched_df = df_bm[cond]
+                match_count = len(matched_df)
+                
+                if match_count > 0:
+                    matched_detail_dfs[bm.upper()] = matched_df
+                    res_counts = matched_df["경기결과"].value_counts()
+                    hw = res_counts.get("홈승", 0)
+                    dr = res_counts.get("무승부", 0)
+                    aw = res_counts.get("원정승", 0)
+                    
+                    h_prob_str = f"{round((hw / match_count) * 100, 1)}% ({hw}회)"
+                    d_prob_str = f"{round((dr / match_count) * 100, 1)}% ({dr}회)"
+                    a_prob_str = f"{round((aw / match_count) * 100, 1)}% ({aw}회)"
+            except Exception:
+                pass
+        
+        analysis_rows.append({
+            "순번": idx,
+            "북메이커": bm.upper(),
+            "입력 배당 [홈/무/원]": f"{target_h} / {target_d} / {target_a}",
+            "환급률(%)": f"{round(payout, 2)}%",
+            "매칭 경기수": f"{match_count}건",
+            "홈승 확률": h_prob_str,
+            "무승부 확률": d_prob_str,
+            "원정승 확률": a_prob_str
+        })
+
+    summary_df = pd.DataFrame(analysis_rows)
+    st.dataframe(summary_df, use_container_width=True, hide_index=True)
+    
+    # 매칭된 경기 상세 내역 조회
+    if matched_detail_dfs:
+        st.markdown("---")
+        st.subheader("📋 매칭된 과거 경기 상세 리스트")
+        for name, m_df in matched_detail_dfs.items():
+            with st.expander(f"📌 {name} 매칭 내역 ({len(m_df)}건)", expanded=False):
+                show_cols = [c for c in ["시즌", "리그명", "날짜", "홈팀", "원정팀", "해당_홈", "해당_무", "해당_원", "홈스코어", "원정스코어", "경기결과", "정/중/역"] if c in m_df.columns]
+                st.dataframe(m_df[show_cols], use_container_width=True, hide_index=True)
