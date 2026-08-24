@@ -76,13 +76,13 @@ tab_input, tab_analysis, tab_team_stats, tab_report = st.tabs([
 with tab_input:
     st.subheader("1️⃣ 경기 기본 정보 & 팀명")
     c_m1, c_m2, c_m3 = st.columns(3)
-    season = c_m1.text_input("시즌", value="25-26")
-    league = c_m2.text_input("리그명", value="PL")
-    match_date = c_m3.text_input("경기 날짜", value="25.08.16")
+    season = c_m1.text_input("시즌", value="25-26", key="in_season")
+    league = c_m2.text_input("리그명", value="PL", key="in_league")
+    match_date = c_m3.text_input("경기 날짜", value="25.08.16", key="in_match_date")
     
     c_t1, c_t2 = st.columns(2)
-    home_team = c_t1.text_input("홈팀", value="리버풀")
-    away_team = c_t2.text_input("원정팀", value="본머스")
+    home_team = c_t1.text_input("홈팀", value="리버풀", key="in_home_team")
+    away_team = c_t2.text_input("원정팀", value="본머스", key="in_away_team")
 
     st.markdown("---")
     st.subheader("2️⃣ 9대 북메이커 최종 배당 입력 (미제공 시 0으로 설정)")
@@ -112,35 +112,35 @@ with tab_input:
     
     with st.expander("⚽ 전/후반 득점 및 포메이션(전술)", expanded=True):
         c_g1, c_g2, c_g3, c_g4 = st.columns(4)
-        home_1h = c_g1.number_input("홈 전반 득점", min_value=0, value=1)
-        home_2h = c_g2.number_input("홈 후반 득점", min_value=0, value=3)
-        away_1h = c_g3.number_input("원정 전반 득점", min_value=0, value=0)
-        away_2h = c_g4.number_input("원정 후반 득점", min_value=0, value=2)
+        home_1h = c_g1.number_input("홈 전반 득점", min_value=0, value=1, key="in_home_1h")
+        home_2h = c_g2.number_input("홈 후반 득점", min_value=0, value=3, key="in_home_2h")
+        away_1h = c_g3.number_input("원정 전반 득점", min_value=0, value=0, key="in_away_1h")
+        away_2h = c_g4.number_input("원정 후반 득점", min_value=0, value=2, key="in_away_2h")
         
         c_tac1, c_tac2 = st.columns(2)
-        home_tac = c_tac1.text_input("홈팀 전술(포메이션)", value="4-2-3-1")
-        away_tac = c_tac2.text_input("원정팀 전술(포메이션)", value="4-1-4-1")
+        home_tac = c_tac1.text_input("홈팀 전술(포메이션)", value="4-2-3-1", key="in_home_tac")
+        away_tac = c_tac2.text_input("원정팀 전술(포메이션)", value="4-1-4-1", key="in_away_tac")
 
     with st.expander("📊 슈팅 / 점유율 / 패스 / 파울 / xG 세부 스탯", expanded=True):
         c_st1, c_st2, c_st3, c_st4 = st.columns(4)
-        home_shots = c_st1.number_input("홈 슈팅", min_value=0, value=19)
-        away_shots = c_st2.number_input("원정 슈팅", min_value=0, value=10)
-        home_sot = c_st3.number_input("홈 유효슈팅", min_value=0, value=10)
-        away_sot = c_st4.number_input("원정 유효슈팅", min_value=0, value=3)
+        home_shots = c_st1.number_input("홈 슈팅", min_value=0, value=19, key="in_home_shots")
+        away_shots = c_st2.number_input("원정 슈팅", min_value=0, value=10, key="in_away_shots")
+        home_sot = c_st3.number_input("홈 유효슈팅", min_value=0, value=10, key="in_home_sot")
+        away_sot = c_st4.number_input("원정 유효슈팅", min_value=0, value=3, key="in_away_sot")
 
         c_ps1, c_ps2, c_ps3, c_ps4 = st.columns(4)
-        home_poss = c_ps1.number_input("홈 점유율 (%)", min_value=0.0, max_value=100.0, value=61.0, step=0.1)
-        away_poss = c_ps2.number_input("원정 점유율 (%)", min_value=0.0, max_value=100.0, value=39.0, step=0.1)
-        home_pass = c_ps3.number_input("홈 패스성공률 (%)", min_value=0.0, max_value=100.0, value=82.0, step=0.1)
-        away_pass = c_ps4.number_input("원정 패스성공률 (%)", min_value=0.0, max_value=100.0, value=70.0, step=0.1)
+        home_poss = c_ps1.number_input("홈 점유율 (%)", min_value=0.0, max_value=100.0, value=61.0, step=0.1, key="in_home_poss")
+        away_poss = c_ps2.number_input("원정 점유율 (%)", min_value=0.0, max_value=100.0, value=39.0, step=0.1, key="in_away_poss")
+        home_pass = c_ps3.number_input("홈 패스성공률 (%)", min_value=0.0, max_value=100.0, value=82.0, step=0.1, key="in_home_pass")
+        away_pass = c_ps4.number_input("원정 패스성공률 (%)", min_value=0.0, max_value=100.0, value=70.0, step=0.1, key="in_away_pass")
 
         c_cd1, c_cd2, c_cd3, c_cd4, c_xg1, c_xg2 = st.columns(6)
-        home_yc = c_cd1.number_input("홈 경고(옐로)", min_value=0, value=1)
-        away_yc = c_cd2.number_input("원정 경고(옐로)", min_value=0, value=2)
-        home_rc = c_cd3.number_input("홈 퇴장(레드)", min_value=0, value=0)
-        away_rc = c_cd4.number_input("원정 퇴장(레드)", min_value=0, value=0)
-        home_xg = c_xg1.number_input("홈 xG", min_value=0.0, value=2.21, step=0.01)
-        away_xg = c_xg2.number_input("원정 xG", min_value=0.0, value=1.70, step=0.01)
+        home_yc = c_cd1.number_input("홈 경고(옐로)", min_value=0, value=1, key="in_home_yc")
+        away_yc = c_cd2.number_input("원정 경고(옐로)", min_value=0, value=2, key="in_away_yc")
+        home_rc = c_cd3.number_input("홈 퇴장(레드)", min_value=0, value=0, key="in_home_rc")
+        away_rc = c_cd4.number_input("원정 퇴장(레드)", min_value=0, value=0, key="in_away_rc")
+        home_xg = c_xg1.number_input("홈 xG", min_value=0.0, value=2.21, step=0.01, key="in_home_xg")
+        away_xg = c_xg2.number_input("원정 xG", min_value=0.0, value=1.70, step=0.01, key="in_away_xg")
 
     home_score = home_1h + home_2h
     away_score = away_1h + away_2h
@@ -342,9 +342,9 @@ with tab_team_stats:
             teams_set.update(df_stats_all["원정팀"].dropna().unique())
     available_teams = sorted(list(teams_set)) if teams_set else ["맨체스터시티", "리버풀", "본머스"]
 
-    sel_season = c_f1.selectbox("시즌", available_seasons if available_seasons else ["전체"])
-    sel_league = c_f2.selectbox("경기구분 (리그)", available_leagues if available_leagues else ["전체"])
-    sel_team = c_f3.selectbox("경기목록 (팀이름)", available_teams if available_teams else ["팀 선택"])
+    sel_season = c_f1.selectbox("시즌", available_seasons if available_seasons else ["전체"], key="sel_stat_season")
+    sel_league = c_f2.selectbox("경기구분 (리그)", available_leagues if available_leagues else ["전체"], key="sel_stat_league")
+    sel_team = c_f3.selectbox("경기목록 (팀이름)", available_teams if available_teams else ["팀 선택"], key="sel_stat_team")
 
     st.markdown("---")
 
@@ -435,103 +435,103 @@ with tab_report:
     # 1. 기본 정보 및 상대 전적
     with st.expander("1️⃣ 기본 정보 & 상대전적 / 최근 10경기 입력", expanded=True):
         r1, r2, r3 = st.columns(3)
-        rep_home = r1.text_input("홈팀", value="리버풀")
-        rep_away = r2.text_input("원정팀", value="본머스")
-        rep_author = r3.text_input("작성자", value="Boro")
+        rep_home = r1.text_input("홈팀", value="리버풀", key="rep_home_team")
+        rep_away = r2.text_input("원정팀", value="본머스", key="rep_away_team")
+        rep_author = r3.text_input("작성자", value="Boro", key="rep_author_name")
 
         st.markdown("##### 📊 상대전적 (최근 5시즌)")
         c1, c2, c3, c4 = st.columns(4)
-        h2h_all_m = c1.text_input("전체 상대전적 (전)", value="10전")
-        h2h_all_w = c2.text_input("전체 승", value="8승")
-        h2h_all_d = c3.text_input("전체 무", value="1무")
-        h2h_all_l = c4.text_input("전체 패", value="1패")
+        h2h_all_m = c1.text_input("전체 상대전적 (전)", value="10전", key="rep_h2h_all_m")
+        h2h_all_w = c2.text_input("전체 승", value="8승", key="rep_h2h_all_w")
+        h2h_all_d = c3.text_input("전체 무", value="1무", key="rep_h2h_all_d")
+        h2h_all_l = c4.text_input("전체 패", value="1패", key="rep_h2h_all_l")
 
         c5, c6, c7, c8 = st.columns(4)
-        h2h_home_m = c5.text_input("홈 기준 상대전적 (전)", value="5전")
-        h2h_home_w = c6.text_input("홈 기준 승", value="5승")
-        h2h_home_d = c7.text_input("홈 기준 무", value="0무")
-        h2h_home_l = c8.text_input("홈 기준 패", value="0패")
+        h2h_home_m = c5.text_input("홈 기준 상대전적 (전)", value="5전", key="rep_h2h_home_m")
+        h2h_home_w = c6.text_input("홈 기준 승", value="5승", key="rep_h2h_home_w")
+        h2h_home_d = c7.text_input("홈 기준 무", value="0무", key="rep_h2h_home_d")
+        h2h_home_l = c8.text_input("홈 기준 패", value="0패", key="rep_h2h_home_l")
 
         st.markdown("##### ⚽ 상대전적 평균 득실점")
         g1, g2, g3, g4 = st.columns(4)
-        h2h_h_gf = g1.text_input("홈경기 평균 득점", value="3.2")
-        h2h_h_ga = g2.text_input("홈경기 평균 실점", value="0.6")
-        h2h_a_gf = g3.text_input("원정경기 평균 득점", value="2.0")
-        h2h_a_ga = g4.text_input("원정경기 평균 실점", value="1.0")
+        h2h_h_gf = g1.text_input("홈경기 평균 득점", value="3.2", key="rep_h2h_h_gf")
+        h2h_h_ga = g2.text_input("홈경기 평균 실점", value="0.6", key="rep_h2h_h_ga")
+        h2h_a_gf = g3.text_input("원정경기 평균 득점", value="2.0", key="rep_h2h_a_gf")
+        h2h_a_ga = g4.text_input("원정경기 평균 실점", value="1.0", key="rep_h2h_a_ga")
 
-        h2h_note = st.text_input("상대전적 특이사항", value="리버풀 홈 맞대결 5연승 중, 압도적 우세")
+        h2h_note = st.text_input("상대전적 특이사항", value="리버풀 홈 맞대결 5연승 중, 압도적 우세", key="rep_h2h_note")
 
         st.markdown("##### 📈 최근 10경기 승패 및 평균 득실점")
         t1, t2, t3, t4 = st.columns(4)
-        ten_h_m = t1.text_input("홈팀 최근 10경기", value="10전 7승 2무 1패")
-        ten_a_m = t2.text_input("원정팀 최근 10경기", value="10전 4승 2무 4패")
-        ten_h_g = t3.text_input("홈팀 최근10경기 득/실", value="2.4득 / 0.9실")
-        ten_a_g = t4.text_input("원정팀 최근10경기 득/실", value="1.2득 / 1.5실")
-        ten_note = st.text_input("최근 10경기 특이사항", value="리버풀 최근 홈 4연승 무패 행진")
+        ten_h_m = t1.text_input("홈팀 최근 10경기", value="10전 7승 2무 1패", key="rep_ten_h_m")
+        ten_a_m = t2.text_input("원정팀 최근 10경기", value="10전 4승 2무 4패", key="rep_ten_a_m")
+        ten_h_g = t3.text_input("홈팀 최근10경기 득/실", value="2.4득 / 0.9실", key="rep_ten_h_g")
+        ten_a_g = t4.text_input("원정팀 최근10경기 득/실", value="1.2득 / 1.5실", key="rep_ten_a_g")
+        ten_note = st.text_input("최근 10경기 특이사항", value="리버풀 최근 홈 4연승 무패 행진", key="rep_ten_note")
 
     # 2. 팀별 세부 스탯
     with st.expander("2️⃣ 홈/원정팀 최근 경기 세부 스탯 분석 (전술/지표)"):
         st.markdown(f"##### 🔵 [{rep_home}] 세부 분석")
         st_h1, st_h2 = st.columns(2)
-        h_tac_rank = st_h1.text_input("홈팀 전술 순위", value="1순위 4-2-3-1 (75%), 2순위 4-3-3 (25%)")
-        h_tac_home = st_h2.text_input("홈경기 주력 전술", value="4-2-3-1 (80%)")
+        h_tac_rank = st_h1.text_input("홈팀 전술 순위", value="1순위 4-2-3-1 (75%), 2순위 4-3-3 (25%)", key="rep_h_tac_rank")
+        h_tac_home = st_h2.text_input("홈경기 주력 전술", value="4-2-3-1 (80%)", key="rep_h_tac_home")
         
         st_h3, st_h4, st_h5 = st.columns(3)
-        h_goal_r = st_h3.text_input("홈 득점비율 (시즌전/후, 홈전/후)", value="전25% 후75% / 전30% 후70%")
-        h_poss_s = st_h4.text_input("홈 점유율 (홈/원정/시즌)", value="61% / 55% / 58%")
-        h_xg_s = st_h5.text_input("홈 xG (홈/원정/시즌)", value="2.21 / 1.80 / 2.01")
+        h_goal_r = st_h3.text_input("홈 득점비율 (시즌전/후, 홈전/후)", value="전25% 후75% / 전30% 후70%", key="rep_h_goal_r")
+        h_poss_s = st_h4.text_input("홈 점유율 (홈/원정/시즌)", value="61% / 55% / 58%", key="rep_h_poss_s")
+        h_xg_s = st_h5.text_input("홈 xG (홈/원정/시즌)", value="2.21 / 1.80 / 2.01", key="rep_h_xg_s")
         
         st_h6, st_h7, st_h8 = st.columns(3)
-        h_sot_r = st_h6.text_input("홈 유효슈팅비율 (홈/원정/시즌)", value="52.6% / 45.0% / 48.8%")
-        h_pass_s = st_h7.text_input("홈 패스성공률 (홈/원정/시즌)", value="82% / 78% / 80%")
-        h_card_s = st_h8.text_input("홈 경고/퇴장 (장)", value="1.2장 / 0.0장")
-        h_spec = st_text_h = st.text_input("홈팀 특이사항", value="후반전 득점 집중력이 매우 높음")
+        h_sot_r = st_h6.text_input("홈 유효슈팅비율 (홈/원정/시즌)", value="52.6% / 45.0% / 48.8%", key="rep_h_sot_r")
+        h_pass_s = st_h7.text_input("홈 패스성공률 (홈/원정/시즌)", value="82% / 78% / 80%", key="rep_h_pass_s")
+        h_card_s = st_h8.text_input("홈 경고/퇴장 (장)", value="1.2장 / 0.0장", key="rep_h_card_s")
+        h_spec = st.text_input("홈팀 특이사항", value="후반전 득점 집중력이 매우 높음", key="rep_h_spec")
 
         st.markdown(f"##### 🔴 [{rep_away}] 세부 분석")
         st_a1, st_a2 = st.columns(2)
-        a_tac_rank = st_a1.text_input("원정팀 전술 순위", value="1순위 4-1-4-1 (70%), 2순위 5-4-1 (30%)")
-        a_tac_away = st_a2.text_input("원정경기 주력 전술", value="4-1-4-1 (75%)")
+        a_tac_rank = st_a1.text_input("원정팀 전술 순위", value="1순위 4-1-4-1 (70%), 2순위 5-4-1 (30%)", key="rep_a_tac_rank")
+        a_tac_away = st_a2.text_input("원정경기 주력 전술", value="4-1-4-1 (75%)", key="rep_a_tac_away")
         
         st_a3, st_a4, st_a5 = st.columns(3)
-        a_goal_r = st_a3.text_input("원정 득점비율 (시즌전/후, 원정전/후)", value="전30% 후70% / 전20% 후80%")
-        a_poss_s = st_a4.text_input("원정 점유율 (홈/원정/시즌)", value="48% / 39% / 43.5%")
-        a_xg_s = st_a5.text_input("원정 xG (홈/원정/시즌)", value="1.50 / 1.10 / 1.30")
+        a_goal_r = st_a3.text_input("원정 득점비율 (시즌전/후, 원정전/후)", value="전30% 후70% / 전20% 후80%", key="rep_a_goal_r")
+        a_poss_s = st_a4.text_input("원정 점유율 (홈/원정/시즌)", value="48% / 39% / 43.5%", key="rep_a_poss_s")
+        a_xg_s = st_a5.text_input("원정 xG (홈/원정/시즌)", value="1.50 / 1.10 / 1.30", key="rep_a_xg_s")
         
         st_a6, st_a7, st_a8 = st.columns(3)
-        a_sot_r = st_a6.text_input("원정 유효슈팅비율 (홈/원정/시즌)", value="38.0% / 30.0% / 34.0%")
-        a_pass_s = st_a7.text_input("원정 패스성공률 (홈/원정/시즌)", value="76% / 70% / 73%")
-        a_card_s = st_a8.text_input("원정 경고/퇴장 (장)", value="2.1장 / 0.1장")
-        a_spec = st.text_input("원정팀 특이사항", value="원정 경기 시 점유율 및 유효슈팅 급감")
+        a_sot_r = st_a6.text_input("원정 유효슈팅비율 (홈/원정/시즌)", value="38.0% / 30.0% / 34.0%", key="rep_a_sot_r")
+        a_pass_s = st_a7.text_input("원정 패스성공률 (홈/원정/시즌)", value="76% / 70% / 73%", key="rep_a_pass_s")
+        a_card_s = st_a8.text_input("원정 경고/퇴장 (장)", value="2.1장 / 0.1장", key="rep_a_card_s")
+        a_spec = st.text_input("원정팀 특이사항", value="원정 경기 시 점유율 및 유효슈팅 급감", key="rep_a_spec")
 
     # 3. 배당/투표율/최종 픽
     with st.expander("3️⃣ 배당 절삭 / 배당조정 / 구매투표율 / 최종 픽"):
         st.markdown("##### 📉 배당 절삭률 & 배당조정")
         bc1, bc2, bc3 = st.columns(3)
-        cut_h = bc1.text_input("홈승 절삭률", value="-29.03%")
-        cut_d = bc2.text_input("무승부 절삭률", value="-13.68%")
-        cut_a = bc3.text_input("원정승 절삭률", value="-7.14%")
+        cut_h = bc1.text_input("홈승 절삭률", value="-29.03%", key="rep_cut_h")
+        cut_d = bc2.text_input("무승부 절삭률", value="-13.68%", key="rep_cut_d")
+        cut_a = bc3.text_input("원정승 절삭률", value="-7.14%", key="rep_cut_a")
 
         adj1, adj2, adj3 = st.columns(3)
-        adj_gen = adj1.text_input("일반 (국내조정 / 해외조정)", value="하락 2회 / 하락 4회")
-        adj_hnd = adj2.text_input("핸디캡 (국내조정 / 해외조정)", value="변동 없음 / 하락 1회")
-        adj_uno = adj3.text_input("언오버 (국내조정 / 해외조정)", value="오버 하락 3회 / 오버 하락 3회")
+        adj_gen = adj1.text_input("일반 (국내조정 / 해외조정)", value="하락 2회 / 하락 4회", key="rep_adj_gen")
+        adj_hnd = adj2.text_input("핸디캡 (국내조정 / 해외조정)", value="변동 없음 / 하락 1회", key="rep_adj_hnd")
+        adj_uno = adj3.text_input("언오버 (국내조정 / 해외조정)", value="오버 하락 3회 / 오버 하락 3회", key="rep_adj_uno")
 
         st.markdown("##### 🗳️ 구매투표율 (배트맨 기준)")
         vp1, vp2, vp3 = st.columns(3)
-        vote_gen = vp1.text_input("일반 투표율 (홈/무/원)", value="78.5% / 13.2% / 8.3%")
-        vote_hnd = vp2.text_input("핸디캡 투표율 (승/무/패)", value="58.0% / 22.0% / 20.0%")
-        vote_uno = vp3.text_input("언오버 투표율 (언더/오버)", value="28.0% / 72.0%")
+        vote_gen = vp1.text_input("일반 투표율 (홈/무/원)", value="78.5% / 13.2% / 8.3%", key="rep_vote_gen")
+        vote_hnd = vp2.text_input("핸디캡 투표율 (승/무/패)", value="58.0% / 22.0% / 20.0%", key="rep_vote_hnd")
+        vote_uno = vp3.text_input("언오버 투표율 (언더/오버)", value="28.0% / 72.0%", key="rep_vote_uno")
 
         st.markdown("##### 🎯 최종 픽 & 적중확률")
         p1, p2, p3 = st.columns(3)
-        main_pk = p1.text_input("주력픽 / 적중확률 / 배당", value="리버풀 승 | 80% | 1.22")
-        sub_pk = p2.text_input("부주력 / 적중확률 / 배당", value="리버풀 -1.0 핸승 | 65% | 1.65")
-        uno_pk = p3.text_input("언오버픽 / 적중확률 / 배당", value="3.5 오버 | 60% | 1.85")
-        extra_note = st.text_area("결장자 / 동기부여 / 최종 코멘트", value="리버풀은 홈 개막전 전력 풀가동 상태이며, 본머스는 중원 주전 미드필더 결장으로 전력 누수가 큽니다.")
+        main_pk = p1.text_input("주력픽 / 적중확률 / 배당", value="리버풀 승 | 80% | 1.22", key="rep_main_pk")
+        sub_pk = p2.text_input("부주력 / 적중확률 / 배당", value="리버풀 -1.0 핸승 | 65% | 1.65", key="rep_sub_pk")
+        uno_pk = p3.text_input("언오버픽 / 적중확률 / 배당", value="3.5 오버 | 60% | 1.85", key="rep_uno_pk")
+        extra_note = st.text_area("결장자 / 동기부여 / 최종 코멘트", value="리버풀은 홈 개막전 전력 풀가동 상태이며, 본머스는 중원 주전 미드필더 결장으로 전력 누수가 큽니다.", key="rep_extra_note")
 
     st.markdown("---")
 
-    if st.button("🚀 정밀 표(Table) 형식 리포트 생성", type="primary", use_container_width=True):
+    if st.button("🚀 정밀 표(Table) 형식 리포트 생성", type="primary", use_container_width=True, key="btn_gen_report"):
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
         
         # 1. 웹 화면용 HTML 표 리포트
@@ -621,7 +621,6 @@ with tab_report:
         st.markdown("---")
         st.subheader("📋 블로그/마크다운 전용 복사 텍스트 (표 완벽 지원)")
         
-        # 2. 마크다운 표 전용 텍스트
         md_table_text = f"""편집 저작물 - 저작권등록 제 C-2016-010109호
 작성자 : {rep_author} | 작성시간 : {now_str}
 
