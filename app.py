@@ -231,7 +231,6 @@ with tab_input:
                         except gspread.exceptions.WorksheetNotFound:
                             pass
 
-                    # 전술 날짜변환 방지 작은따옴표 강제 부여
                     h_1h_ratio = round((home_1h / home_score) * 100, 2) if home_score > 0 else 0.0
                     h_2h_ratio = round((home_2h / home_score) * 100, 2) if home_score > 0 else 0.0
                     a_1h_ratio = round((away_1h / away_score) * 100, 2) if away_score > 0 else 0.0
@@ -428,7 +427,7 @@ with tab_analysis:
         st.info(f"💡 현재 선택된 조건에 일치(오차 범위 ±{tol})하는 과거 경기 데이터가 없습니다.")
 
 # =========================================================
-# TAB 3: 단일 팀별 경기내용 평균계산기 (전술 횟수 통계 추가)
+# TAB 3: 단일 팀별 경기내용 평균계산기
 # =========================================================
 with tab_team_stats:
     st.subheader("📈 팀별 과거 세부 경기내용 평균계산기 (단일 팀 기준)")
@@ -513,9 +512,6 @@ with tab_team_stats:
         }
         st.dataframe(pd.DataFrame(stat_summary_data), use_container_width=True, hide_index=True)
 
-        # -------------------------------------------------------------
-        # 전술(포메이션) 사용 횟수 통계표 (신규 추가)
-        # -------------------------------------------------------------
         st.markdown("---")
         st.markdown("### ♟️ 팀 전술(포메이션) 사용 횟수 및 비율")
         
@@ -560,11 +556,11 @@ with tab_team_stats:
         st.info("💡 10번 '경기내용' 탭에 아직 데이터가 없습니다.")
 
 # =========================================================
-# TAB 4: 홈 vs 원정 맞대결(H2H) 종합 분석 (맞대결 전술 횟수 통계 추가)
+# TAB 4: 홈 vs 원정 맞대결(H2H) 종합 분석 (전/후반 득점비율 % 추가)
 # =========================================================
 with tab_h2h:
     st.subheader("⚔️ 홈팀 vs 원정팀 역대 맞대결(H2H) 종합 분석 및 세부 지표")
-    st.caption("두 팀을 선택하면 역대 맞대결 경기들의 평균 지표, 사용된 전술 횟수, 전/후반 득점 패턴 및 과거 맞대결 전체 리스트가 깔끔하게 출력됩니다.")
+    st.caption("두 팀을 선택하면 역대 맞대결 경기들의 평균 지표, 사용된 전술 횟수, 전/후반 득점 및 비율(%) 통계가 출력됩니다.")
 
     df_stats_h2h = load_sheet_data(STATS_SHEET_NAME)
 
@@ -647,9 +643,7 @@ with tab_h2h:
             }
             st.dataframe(pd.DataFrame(h2h_summary_table), use_container_width=True, hide_index=True)
 
-            # -------------------------------------------------------------
-            # 2. 맞대결 시 양 팀의 전술(포메이션) 사용 횟수 통계표 (신규 추가)
-            # -------------------------------------------------------------
+            # 2. 맞대결 전술 통계표
             st.markdown("---")
             st.markdown("### ♟️ 맞대결 시 양 팀의 전술(포메이션) 사용 횟수")
 
@@ -689,9 +683,9 @@ with tab_h2h:
                 else:
                     st.caption("기록 없음")
 
-            # 3. 맞대결 전/후반 득점 통계표
+            # 3. 맞대결 전/후반 득점 및 비율(%) 통계표 (비율 추가 ⭐)
             st.markdown("---")
-            st.markdown("### ⚽ 맞대결 전/후반 득점 통계표")
+            st.markdown("### ⚽ 맞대결 전/후반 득점 및 비율(%) 통계표")
 
             h_1h_list, h_2h_list = [], []
             a_1h_list, a_2h_list = [], []
@@ -720,11 +714,26 @@ with tab_h2h:
             avg_a_2h = round(sum_a_2h / total_h2h_count, 2)
             avg_a_tot = round(tot_a_score / total_h2h_count, 2)
 
+            # 전/후반 득점 비율 (%) 계산
+            ratio_h_1h = f"{round((sum_h_1h / tot_h_score) * 100, 1)}%" if tot_h_score > 0 else "0.0%"
+            ratio_h_2h = f"{round((sum_h_2h / tot_h_score) * 100, 1)}%" if tot_h_score > 0 else "0.0%"
+
+            ratio_a_1h = f"{round((sum_a_1h / tot_a_score) * 100, 1)}%" if tot_a_score > 0 else "0.0%"
+            ratio_a_2h = f"{round((sum_a_2h / tot_a_score) * 100, 1)}%" if tot_a_score > 0 else "0.0%"
+
+            tot_all_1h = sum_h_1h + sum_a_1h
+            tot_all_2h = sum_h_2h + sum_a_2h
+            tot_all_score = tot_h_score + tot_a_score
+            ratio_all_1h = f"{round((tot_all_1h / tot_all_score) * 100, 1)}%" if tot_all_score > 0 else "0.0%"
+            ratio_all_2h = f"{round((tot_all_2h / tot_all_score) * 100, 1)}%" if tot_all_score > 0 else "0.0%"
+
             h2h_goal_table = {
-                "구분": [sel_home_h2h, sel_away_h2h, "맞대결 합계 평균"],
-                "전반 총득점": [int(sum_h_1h), int(sum_a_1h), "-"],
-                "후반 총득점": [int(sum_h_2h), int(sum_a_2h), "-"],
-                "총점": [int(tot_h_score), int(tot_a_score), "-"],
+                "구분": [sel_home_h2h, sel_away_h2h, "맞대결 전체 합계"],
+                "전반 총득점": [int(sum_h_1h), int(sum_a_1h), int(tot_all_1h)],
+                "후반 총득점": [int(sum_h_2h), int(sum_a_2h), int(tot_all_2h)],
+                "총점": [int(tot_h_score), int(tot_a_score), int(tot_all_score)],
+                "전반 득점비율": [ratio_h_1h, ratio_a_1h, ratio_all_1h],
+                "후반 득점비율": [ratio_h_2h, ratio_a_2h, ratio_all_2h],
                 "전반 평균": [avg_h_1h, avg_a_1h, round(avg_h_1h + avg_a_1h, 2)],
                 "후반 평균": [avg_h_2h, avg_a_2h, round(avg_h_2h + avg_a_2h, 2)],
                 "경기당 평균득점": [avg_h_tot, avg_a_tot, round(avg_h_tot + avg_a_tot, 2)]
