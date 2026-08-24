@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
+from datetime import datetime
 
 # 1. 페이지 기본 설정
 st.set_page_config(
@@ -36,7 +37,7 @@ def get_gspread_client():
     except Exception:
         return None
 
-# 구글 시트 탭 실시간 데이터 캐시 로더
+# 구글 시트 탭 실시간 데이터 로더
 @st.cache_data(ttl=10, show_spinner=False)
 def load_sheet_data(sheet_name):
     client = get_gspread_client()
@@ -62,11 +63,12 @@ with st.sidebar:
         st.cache_data.clear()
         st.rerun()
 
-# 4. 3개 탭 구성
-tab_input, tab_analysis, tab_team_stats = st.tabs([
+# 4. 4개 탭 구성
+tab_input, tab_analysis, tab_team_stats, tab_injuries = st.tabs([
     "📝 데이터 입력 및 통합 저장", 
     "📊 9개사 동일 배당 승률 분석", 
-    "📈 팀별 세부 경기내용 평균계산기"
+    "📈 팀별 세부 경기내용 평균계산기",
+    "🚑 블로그용 부상자/결장자 명단 생성기"
 ])
 
 # =========================================================
@@ -425,3 +427,162 @@ with tab_team_stats:
         st.dataframe(pd.DataFrame(goal_table_data), use_container_width=True, hide_index=True)
     else:
         st.info("💡 10번 '경기내용' 탭에 아직 데이터가 없습니다.")
+
+# =========================================================
+# TAB 4: 블로그용 부상자/결장자 명단 생성기 (새로 추가)
+# =========================================================
+with tab_injuries:
+    st.subheader("🚑 블로그 전용 선수 결장/결장의심 명단 생성기")
+    st.caption("선수 데이터를 입력하면 블로그에 바로 붙여넣을 수 있는 스타일 표(분홍색 결장의심 자동 적용)가 생성됩니다.")
+
+    # 세션 상태에 결장자 리스트 초기화 (예시 기본 데이터 탑재)
+    if "injury_list" not in st.session_state:
+        st.session_state.injury_list = [
+            {"name_en": "Lucas Paquetá", "name_kr": "루카스 파케타", "pos": "MF", "start": 20, "sub": 3, "goals": 4, "assists": 0, "role": "주전", "reason": "부상", "note": "팀 내 득점 3위"},
+            {"name_en": "Michail Antonio", "name_kr": "미카일 안토니오", "pos": "FW", "start": 11, "sub": 3, "goals": 1, "assists": 1, "role": "-", "reason": "부상", "note": "-"},
+            {"name_en": "Niclas Füllkrug", "name_kr": "니클라스 퓔크루크", "pos": "FW", "start": 3, "sub": 6, "goals": 2, "assists": 1, "role": "-", "reason": "결장의심", "note": "경기 당일 테스트 예정"},
+            {"name_en": "Crysencio Summerville", "name_kr": "크리센시오 서머빌", "pos": "MF", "start": 7, "sub": 12, "goals": 1, "assists": 1, "role": "-", "reason": "부상", "note": "-"},
+        ]
+
+    # 1. 헤더 설정 (팀명, 리그)
+    c_th1, c_th2 = st.columns(2)
+    inj_team = c_th1.text_input("대상 팀명", value="웨스트햄", key="inj_team_name")
+    inj_league = c_th2.text_input("리그/대회 기준", value="잉글랜드 1부리그 기록", key="inj_league_title")
+
+    # 2. 선수 추가 입력창
+    with st.expander("➕ 선수 추가하기", expanded=True):
+        f1, f2, f3 = st.columns(3)
+        p_name_en = f1.text_input("선수 영문명", value="", placeholder="예: Lucas Paquetá", key="p_name_en")
+        p_name_kr = f2.text_input("선수 한글명", value="", placeholder="예: 루카스 파케타", key="p_name_kr")
+        p_pos = f3.selectbox("포지션", ["FW", "MF", "DF", "GK"], key="p_pos")
+
+        f4, f5, f6, f7 = st.columns(4)
+        p_start = f4.number_input("선발 출전", min_value=0, value=0, key="p_start")
+        p_sub = f5.number_input("교체 출전", min_value=0, value=0, key="p_sub")
+        p_goals = f6.number_input("골", min_value=0, value=0, key="p_goals")
+        p_assists = f7.number_input("도움", min_value=0, value=0, key="p_assists")
+
+        f8, f9, f10 = st.columns(3)
+        p_role = f8.text_input("팀 내 역할", value="주전", placeholder="예: 주전, 로테이션, -", key="p_role")
+        p_reason = f9.selectbox("결장 사유", ["부상", "결장의심", "징계/퇴장", "기타"], key="p_reason")
+        p_note = f10.text_input("특이사항", value="-", placeholder="예: 햄스트링 부상, 팀 내 최다 득점", key="p_note")
+
+        c_btn1, c_btn2 = st.columns([1, 4])
+        if c_btn1.button("➕ 선수 목록에 추가", type="primary", use_container_width=True):
+            if p_name_en.strip() or p_name_kr.strip():
+                st.session_state.injury_list.append({
+                    "name_en": p_name_en.strip(),
+                    "name_kr": p_name_kr.strip(),
+                    "pos": p_pos,
+                    "start": p_start,
+                    "sub": p_sub,
+                    "goals": p_goals,
+                    "assists": p_assists,
+                    "role": p_role if p_role.strip() else "-",
+                    "reason": p_reason,
+                    "note": p_note if p_note.strip() else "-"
+                })
+                st.success(f"{p_name_kr or p_name_en} 선수가 추가되었습니다.")
+                st.rerun()
+
+        if c_btn2.button("🗑️ 목록 전체 비우기"):
+            st.session_state.injury_list = []
+            st.rerun()
+
+    # 3. 현재 등록된 선수 목록 테이블
+    if st.session_state.injury_list:
+        st.markdown(f"### 📋 등록된 결장자 목록 ({len(st.session_state.injury_list)}명)")
+        
+        # 목록 미리보기 표
+        view_data = []
+        for idx, item in enumerate(st.session_state.injury_list):
+            name_full = f"{item['name_en']}\n({item['name_kr']})" if item['name_kr'] else item['name_en']
+            view_data.append({
+                "번호": idx + 1,
+                "선수명": name_full,
+                "포지션": item["pos"],
+                "선발": item["start"],
+                "교체": item["sub"],
+                "골": item["goals"],
+                "도움": item["assists"],
+                "역할": item["role"],
+                "사유": item["reason"],
+                "특이사항": item["note"]
+            })
+        st.dataframe(pd.DataFrame(view_data), use_container_width=True, hide_index=True)
+
+        st.markdown("---")
+        st.subheader("📰 블로그용 서식 결과 (드래그하여 블로그에 그대로 붙여넣기)")
+        
+        # HTML 표 생성 (분홍색 강조 적용)
+        html_rows = ""
+        for item in st.session_state.injury_list:
+            is_doubt = (item["reason"] == "결장의심")
+            # 결장의심이면 분홍색 배경 적용
+            bg_style = 'style="background-color: #ffebee; color: #c2185b; font-weight: bold;"' if is_doubt else ""
+            
+            name_display = f"<b>{item['name_en']}</b>" if item['name_en'] else ""
+            if item['name_kr']:
+                name_display += f"<br>({item['name_kr']})"
+                
+            html_rows += f"""
+            <tr {bg_style}>
+                <td style="padding: 8px 10px; border: 1px solid #ddd; text-align: center;">{name_display}</td>
+                <td style="padding: 8px 10px; border: 1px solid #ddd; text-align: center;">{item['pos']}</td>
+                <td style="padding: 8px 10px; border: 1px solid #ddd; text-align: center;">{item['start']}</td>
+                <td style="padding: 8px 10px; border: 1px solid #ddd; text-align: center;">{item['sub']}</td>
+                <td style="padding: 8px 10px; border: 1px solid #ddd; text-align: center;">{item['goals']}</td>
+                <td style="padding: 8px 10px; border: 1px solid #ddd; text-align: center;">{item['assists']}</td>
+                <td style="padding: 8px 10px; border: 1px solid #ddd; text-align: center;">{item['role']}</td>
+                <td style="padding: 8px 10px; border: 1px solid #ddd; text-align: center;"><b>{item['reason']}</b></td>
+                <td style="padding: 8px 10px; border: 1px solid #ddd; text-align: center;">{item['note']}</td>
+            </tr>
+            """
+
+        blog_html = f"""
+        <div style="font-family: 'Malgun Gothic', '맑은 고딕', sans-serif; line-height: 1.6; color: #333; max-width: 800px; margin: 0 auto;">
+            <div style="border-left: 4px solid #0066cc; padding-left: 10px; margin-bottom: 12px;">
+                <h3 style="margin: 0; font-size: 18px; color: #111;">{inj_team} 선수 예상결장명단</h3>
+                <p style="margin: 4px 0 0 0; font-size: 12px; color: #e91e63; font-weight: bold;">* 분홍색: 결장의심 (출전 불투명) *</p>
+                <p style="margin: 2px 0 0 0; font-size: 12px; color: #666;">기준: {inj_league}</p>
+            </div>
+            <table style="border-collapse: collapse; width: 100%; font-size: 13px; text-align: center; border: 1px solid #ddd;">
+                <thead>
+                    <tr style="background-color: #f7f9fa; color: #333; font-weight: bold; border-bottom: 2px solid #ccc;">
+                        <th style="padding: 10px; border: 1px solid #ddd;">이름</th>
+                        <th style="padding: 10px; border: 1px solid #ddd;">포지션</th>
+                        <th style="padding: 10px; border: 1px solid #ddd;">선발</th>
+                        <th style="padding: 10px; border: 1px solid #ddd;">교체</th>
+                        <th style="padding: 10px; border: 1px solid #ddd;">골</th>
+                        <th style="padding: 10px; border: 1px solid #ddd;">도움</th>
+                        <th style="padding: 10px; border: 1px solid #ddd;">역할</th>
+                        <th style="padding: 10px; border: 1px solid #ddd;">사유</th>
+                        <th style="padding: 10px; border: 1px solid #ddd;">특이사항</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {html_rows}
+                </tbody>
+            </table>
+        </div>
+        """
+        st.markdown(blog_html, unsafe_allow_html=True)
+
+        st.markdown("---")
+        st.subheader("📋 마크다운(Markdown) 텍스트 복사창")
+        
+        md_rows = ""
+        for item in st.session_state.injury_list:
+            name_str = f"{item['name_en']} ({item['name_kr']})" if item['name_kr'] else item['name_en']
+            reason_str = f"**{item['reason']}** (의심)" if item['reason'] == "결장의심" else item['reason']
+            md_rows += f"| {name_str} | {item['pos']} | {item['start']} | {item['sub']} | {item['goals']} | {item['assists']} | {item['role']} | {reason_str} | {item['note']} |\n"
+
+        md_output = f"""### {inj_team} 선수 예상결장명단
+*💡 분홍색/강조: 결장의심*
+*{inj_league}*
+
+| 이름 | 포지션 | 선발 | 교체 | 골 | 도움 | 역할 | 사유 | 특이사항 |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
+{md_rows}
+"""
+        st.text_area("📋 블로그/마크다운 전용 텍스트 복사", value=md_output, height=250)
