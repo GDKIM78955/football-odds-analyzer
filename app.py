@@ -13,10 +13,10 @@ st.set_page_config(
     layout="wide"
 )
 
-# 북메이커 순서 (배트맨 1번)
+# 변경된 북메이커 순서 적용
 BOOKMAKERS = [
-    "배트맨", "bwin", "10x10", "1xbet", 
-    "betway", "william hill", "bet365", "pinnacle", "stake"
+    "배트맨", "10x10", "1xbet", "betway", 
+    "bwin", "william hill", "bet365", "pinnacle", "stake"
 ]
 STATS_SHEET_NAME = "경기내용"
 INJURY_SHEET_NAME = "부상자명단"
@@ -885,7 +885,7 @@ with tab_h2h:
         st.info("💡 10번 '경기내용' 탭에 데이터가 없습니다.")
 
 # =========================================================
-# TAB 5: 11번 구글 시트 연동 팀별 부상자/결장자 카드 리포트 (선수 복귀/삭제 기능 추가 ⭐)
+# TAB 5: 11번 구글 시트 연동 팀별 부상자/결장자 카드 리포트
 # =========================================================
 with tab_injuries:
     st.subheader("🚑 팀별 부상자/결장자 명단 및 카드 리포트 (11번 시트 연동)")
@@ -898,87 +898,94 @@ with tab_injuries:
     
     inj_league_title = c_s2.text_input("리그/대회 기준 표기", value="잉글랜드 1부리그 기록", key="inj_custom_league")
 
-    # 1. 신규 부상자 등록
-    with st.expander(f"➕ [{selected_team}] 새로운 결장 선수 구글 시트에 추가", expanded=False):
-        f_s1, f_s2, f_s3 = st.columns(3)
-        add_season = f_s1.text_input("시즌", value="25-26", key="add_inj_season")
-        add_league = f_s2.text_input("리그명", value="PL", key="add_inj_league")
-        add_team = f_s3.text_input("팀명", value=selected_team, key="add_inj_team")
+    col_btn1, col_btn2 = st.columns(2)
 
-        f1, f2, f3 = st.columns(3)
-        p_name_en = f1.text_input("선수 영문명", placeholder="예: Lucas Paquetá", key="p_name_en")
-        p_name_kr = f2.text_input("선수 한글명", placeholder="예: 루카스 파케타", key="p_name_kr")
-        p_pos = f3.selectbox("포지션", ["FW", "MF", "DF", "GK"], key="p_pos")
+    # 1. 신규 부상자 등록 메뉴 (왼쪽)
+    with col_btn1:
+        with st.expander(f"➕ [{selected_team}] 새로운 결장 선수 추가", expanded=False):
+            f_s1, f_s2, f_s3 = st.columns(3)
+            add_season = f_s1.text_input("시즌", value="25-26", key="add_inj_season")
+            add_league = f_s2.text_input("리그명", value="PL", key="add_inj_league")
+            add_team = f_s3.text_input("팀명", value=selected_team, key="add_inj_team")
 
-        f4, f5, f6, f7 = st.columns(4)
-        p_start = f4.number_input("선발 출전", min_value=0, value=0, key="p_start")
-        p_sub = f5.number_input("교체 출전", min_value=0, value=0, key="p_sub")
-        p_goals = f6.number_input("골", min_value=0, value=0, key="p_goals")
-        p_assists = f7.number_input("도움", min_value=0, value=0, key="p_assists")
+            f1, f2, f3 = st.columns(3)
+            p_name_en = f1.text_input("선수 영문명", placeholder="예: Lucas Paquetá", key="p_name_en")
+            p_name_kr = f2.text_input("선수 한글명", placeholder="예: 루카스 파케타", key="p_name_kr")
+            p_pos = f3.selectbox("포지션", ["FW", "MF", "DF", "GK"], key="p_pos")
 
-        f8, f9, f10 = st.columns(3)
-        p_role = f8.text_input("팀 내 역할", value="주전", placeholder="예: 주전, 로테이션, 백업", key="p_role")
-        p_reason = f9.selectbox("결장 사유", ["부상", "결장의심", "징계/퇴장", "기타"], key="p_reason")
-        p_note = f10.text_input("특이사항", value="-", placeholder="예: 팀 내 득점 3위", key="p_note")
+            f4, f5, f6, f7 = st.columns(4)
+            p_start = f4.number_input("선발 출전", min_value=0, value=0, key="p_start")
+            p_sub = f5.number_input("교체 출전", min_value=0, value=0, key="p_sub")
+            p_goals = f6.number_input("골", min_value=0, value=0, key="p_goals")
+            p_assists = f7.number_input("도움", min_value=0, value=0, key="p_assists")
 
-        if st.button("💾 구글 시트 11번 탭(부상자명단)에 저장", type="primary", use_container_width=True):
-            if p_name_en.strip() or p_name_kr.strip():
-                client = get_gspread_client()
-                if client:
-                    try:
-                        spreadsheet = client.open_by_key(SPREADSHEET_ID)
-                        ws_inj = spreadsheet.worksheet(INJURY_SHEET_NAME)
-                        new_row = [
-                            add_season, add_league, add_team,
-                            p_name_en.strip(), p_name_kr.strip(),
-                            p_pos, p_start, p_sub, p_goals, p_assists,
-                            p_role.strip() if p_role.strip() else "-",
-                            p_reason,
-                            p_note.strip() if p_note.strip() else "-"
-                        ]
-                        ws_inj.append_row(new_row, value_input_option="USER_ENTERED")
-                        st.cache_data.clear()
-                        st.success(f"🎉 {add_team}의 [{p_name_kr or p_name_en}] 선수가 11번 시트에 성공적으로 저장되었습니다!")
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"저장 실패: {e}")
-            else:
-                st.warning("선수 이름을 최소 1개 이상 입력해 주세요.")
+            f8, f9, f10 = st.columns(3)
+            p_role = f8.text_input("팀 내 역할", value="주전", placeholder="예: 주전, 로테이션, 백업", key="p_role")
+            p_reason = f9.selectbox("결장 사유", ["부상", "결장의심", "징계/퇴장", "기타"], key="p_reason")
+            p_note = f10.text_input("특이사항", value="-", placeholder="예: 팀 내 득점 3위", key="p_note")
 
-    # 2. 복귀 선수 명단에서 제외 (행 삭제)
-    if not df_injuries.empty and "팀명" in df_injuries.columns:
-        filtered_df = df_injuries[df_injuries["팀명"] == selected_team]
-        
-        if not filtered_df.empty:
-            with st.expander(f"🗑️ [{selected_team}] 부상 복귀 선수 명단에서 제외하기", expanded=False):
-                player_options = []
-                for idx, row in filtered_df.iterrows():
-                    kr = row.get("선수한글명", "")
-                    en = row.get("선수영문명", "")
-                    name_display = f"{kr} ({en})" if kr and en else (kr or en)
-                    player_options.append((idx, name_display))
-                
-                sel_player_to_remove = st.selectbox(
-                    "복귀한 선수 선택", 
-                    player_options, 
-                    format_func=lambda x: x[1],
-                    key="sel_remove_player"
-                )
-                
-                if st.button("🚀 선택한 선수 복귀 완료 (시트에서 삭제)", type="secondary", use_container_width=True):
+            if st.button("💾 구글 시트 11번 탭(부상자명단)에 저장", type="primary", use_container_width=True):
+                if p_name_en.strip() or p_name_kr.strip():
                     client = get_gspread_client()
                     if client:
-                        with st.spinner("구글 시트에서 선수 삭제 중..."):
-                            try:
-                                spreadsheet = client.open_by_key(SPREADSHEET_ID)
-                                ws_inj = spreadsheet.worksheet(INJURY_SHEET_NAME)
-                                target_row_index = sel_player_to_remove[0] + 2  # 헤더 1행 + 0-index 보정
-                                ws_inj.delete_rows(target_row_index)
-                                st.cache_data.clear()
-                                st.success(f"🎉 [{sel_player_to_remove[1]}] 선수가 부상자 명단에서 정상적으로 제외되었습니다!")
-                                st.rerun()
-                            except Exception as e:
-                                st.error(f"삭제 실패: {e}")
+                        try:
+                            spreadsheet = client.open_by_key(SPREADSHEET_ID)
+                            ws_inj = spreadsheet.worksheet(INJURY_SHEET_NAME)
+                            new_row = [
+                                add_season, add_league, add_team,
+                                p_name_en.strip(), p_name_kr.strip(),
+                                p_pos, p_start, p_sub, p_goals, p_assists,
+                                p_role.strip() if p_role.strip() else "-",
+                                p_reason,
+                                p_note.strip() if p_note.strip() else "-"
+                            ]
+                            ws_inj.append_row(new_row, value_input_option="USER_ENTERED")
+                            st.cache_data.clear()
+                            st.success(f"🎉 {add_team}의 [{p_name_kr or p_name_en}] 선수가 11번 시트에 성공적으로 저장되었습니다!")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"저장 실패: {e}")
+                else:
+                    st.warning("선수 이름을 최소 1개 이상 입력해 주세요.")
+
+    # 2. 복귀 선수 명단에서 제외 (오른쪽)
+    with col_btn2:
+        with st.expander(f"🗑️ [{selected_team}] 부상 복귀 선수 명단에서 제외하기", expanded=False):
+            if not df_injuries.empty and "팀명" in df_injuries.columns:
+                filtered_df_rm = df_injuries[df_injuries["팀명"] == selected_team]
+                if not filtered_df_rm.empty:
+                    player_options = []
+                    for idx, row in filtered_df_rm.iterrows():
+                        kr = row.get("선수한글명", "")
+                        en = row.get("선수영문명", "")
+                        name_display = f"{kr} ({en})" if kr and en else (kr or en)
+                        player_options.append((idx, name_display))
+                    
+                    sel_player_to_remove = st.selectbox(
+                        "복귀한 선수 선택", 
+                        player_options, 
+                        format_func=lambda x: x[1],
+                        key="sel_remove_player"
+                    )
+                    
+                    if st.button("🚀 선택한 선수 복귀 완료 (시트에서 삭제)", type="secondary", use_container_width=True):
+                        client = get_gspread_client()
+                        if client:
+                            with st.spinner("구글 시트에서 선수 삭제 중..."):
+                                try:
+                                    spreadsheet = client.open_by_key(SPREADSHEET_ID)
+                                    ws_inj = spreadsheet.worksheet(INJURY_SHEET_NAME)
+                                    target_row_index = sel_player_to_remove[0] + 2  # 헤더 1행 + 0-index 보정
+                                    ws_inj.delete_rows(target_row_index)
+                                    st.cache_data.clear()
+                                    st.success(f"🎉 [{sel_player_to_remove[1]}] 선수가 부상자 명단에서 정상적으로 제외되었습니다!")
+                                    st.rerun()
+                                except Exception as e:
+                                    st.error(f"삭제 실패: {e}")
+                else:
+                    st.info(f"현재 [{selected_team}]에 등록된 선수가 없습니다.")
+            else:
+                st.info("시트에 등록된 선수 데이터가 없습니다.")
 
     st.markdown("---")
 
