@@ -180,7 +180,7 @@ with st.sidebar:
         st.cache_data.clear()
         st.rerun()
 
-# 4. 5개 탭 구성 (중앙 정렬 스타일 적용)
+# 4. 5개 탭 구성
 tab_input, tab_analysis, tab_team_stats, tab_h2h, tab_injuries = st.tabs([
     "📝 경기 데이터 입력 & 저장", 
     "📊 9개사 동일 배당 분석", 
@@ -542,7 +542,7 @@ with tab_analysis:
     else:
         st.info(f"💡 현재 선택된 조건에 일치(오차 범위 ±{tol})하는 과거 경기 데이터가 없습니다.")
 
-    # [출력 기능] 2번 탭 블로그 복사 & PDF (격리 뷰어 적용)
+    # [출력 기능] 2번 탭 블로그 복사 & PDF
     with st.expander("🖨️ / 📋 현재 분석 결과 블로그/PDF로 출력하기", expanded=False):
         print_pdf_button()
         st.markdown("##### 📝 블로그 본문 복사용 (아래 흰색 카드 영역을 마우스로 드래그하여 복사하세요)")
@@ -680,7 +680,7 @@ with tab_team_stats:
         df_goals = pd.DataFrame(goal_table_data)
         st.dataframe(df_goals, use_container_width=True, hide_index=True)
         
-        # [출력 기능] 3번 탭 블로그 복사 & PDF (격리 뷰어 적용)
+        # [출력 기능] 3번 탭 블로그 복사 & PDF
         with st.expander("🖨️ / 📋 현재 분석 결과 블로그/PDF로 출력하기", expanded=False):
             print_pdf_button()
             st.markdown("##### 📝 블로그 본문 복사용 (아래 흰색 카드 영역을 마우스로 드래그하여 복사하세요)")
@@ -860,7 +860,7 @@ with tab_h2h:
             df_h2h_goals = pd.DataFrame(h2h_goal_table)
             st.dataframe(df_h2h_goals, use_container_width=True, hide_index=True)
 
-            # [출력 기능] 4번 탭 블로그 복사 & PDF (격리 뷰어 적용)
+            # [출력 기능] 4번 탭 블로그 복사 & PDF
             with st.expander("🖨️ / 📋 현재 분석 결과 블로그/PDF로 출력하기", expanded=False):
                 print_pdf_button()
                 st.markdown("##### 📝 블로그 본문 복사용 (아래 흰색 카드 영역을 마우스로 드래그하여 복사하세요)")
@@ -885,7 +885,7 @@ with tab_h2h:
         st.info("💡 10번 '경기내용' 탭에 데이터가 없습니다.")
 
 # =========================================================
-# TAB 5: 11번 구글 시트 연동 팀별 부상자/결장자 카드 리포트
+# TAB 5: 11번 구글 시트 연동 팀별 부상자/결장자 카드 리포트 (선수 복귀/삭제 기능 추가 ⭐)
 # =========================================================
 with tab_injuries:
     st.subheader("🚑 팀별 부상자/결장자 명단 및 카드 리포트 (11번 시트 연동)")
@@ -898,6 +898,7 @@ with tab_injuries:
     
     inj_league_title = c_s2.text_input("리그/대회 기준 표기", value="잉글랜드 1부리그 기록", key="inj_custom_league")
 
+    # 1. 신규 부상자 등록
     with st.expander(f"➕ [{selected_team}] 새로운 결장 선수 구글 시트에 추가", expanded=False):
         f_s1, f_s2, f_s3 = st.columns(3)
         add_season = f_s1.text_input("시즌", value="25-26", key="add_inj_season")
@@ -943,6 +944,41 @@ with tab_injuries:
                         st.error(f"저장 실패: {e}")
             else:
                 st.warning("선수 이름을 최소 1개 이상 입력해 주세요.")
+
+    # 2. 복귀 선수 명단에서 제외 (행 삭제)
+    if not df_injuries.empty and "팀명" in df_injuries.columns:
+        filtered_df = df_injuries[df_injuries["팀명"] == selected_team]
+        
+        if not filtered_df.empty:
+            with st.expander(f"🗑️ [{selected_team}] 부상 복귀 선수 명단에서 제외하기", expanded=False):
+                player_options = []
+                for idx, row in filtered_df.iterrows():
+                    kr = row.get("선수한글명", "")
+                    en = row.get("선수영문명", "")
+                    name_display = f"{kr} ({en})" if kr and en else (kr or en)
+                    player_options.append((idx, name_display))
+                
+                sel_player_to_remove = st.selectbox(
+                    "복귀한 선수 선택", 
+                    player_options, 
+                    format_func=lambda x: x[1],
+                    key="sel_remove_player"
+                )
+                
+                if st.button("🚀 선택한 선수 복귀 완료 (시트에서 삭제)", type="secondary", use_container_width=True):
+                    client = get_gspread_client()
+                    if client:
+                        with st.spinner("구글 시트에서 선수 삭제 중..."):
+                            try:
+                                spreadsheet = client.open_by_key(SPREADSHEET_ID)
+                                ws_inj = spreadsheet.worksheet(INJURY_SHEET_NAME)
+                                target_row_index = sel_player_to_remove[0] + 2  # 헤더 1행 + 0-index 보정
+                                ws_inj.delete_rows(target_row_index)
+                                st.cache_data.clear()
+                                st.success(f"🎉 [{sel_player_to_remove[1]}] 선수가 부상자 명단에서 정상적으로 제외되었습니다!")
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"삭제 실패: {e}")
 
     st.markdown("---")
 
