@@ -13,14 +13,24 @@ st.set_page_config(
     layout="wide"
 )
 
-# 변경된 북메이커 순서 적용
+# 북메이커 순서 (배트맨 1번)
 BOOKMAKERS = [
     "배트맨", "10x10", "1xbet", "betway", 
+    "bwin", "william hill", "bet365", "pinnacle", "stake"
+]
+OVERSEAS_BOOKMAKERS = [
+    "10x10", "1xbet", "betway", 
     "bwin", "william hill", "bet365", "pinnacle", "stake"
 ]
 STATS_SHEET_NAME = "경기내용"
 INJURY_SHEET_NAME = "부상자명단"
 SPREADSHEET_ID = "1-b-QusmoSnsvMhToNFe1B1IK7dJUKjjANs89y5ZekAQ"
+
+# 세션 상태 초기화 (대기열 관리용)
+if "match_queue" not in st.session_state:
+    st.session_state.match_queue = []
+if "current_queue_idx" not in st.session_state:
+    st.session_state.current_queue_idx = 0
 
 # =========================================================
 # 상단 탭 중앙 정렬 & 인쇄 스타일
@@ -171,6 +181,145 @@ def load_sheet_data(sheet_name):
     except Exception:
         return pd.DataFrame()
 
+# =========================================================
+# 구글 시트 일괄 저장 처리 함수
+# =========================================================
+def save_match_data_to_sheets(match_info, odds_dict, stats_dict):
+    client = get_gspread_client()
+    if not client:
+        return False, "구글 시트 연동 실패: Secrets 설정을 확인하세요."
+    
+    try:
+        spreadsheet = client.open_by_key(SPREADSHEET_ID)
+        
+        season = match_info["season"]
+        league = match_info["league"]
+        match_date = match_info["date"]
+        home_team = match_info["home"]
+        away_team = match_info["away"]
+        
+        b_h, b_d, b_a = odds_dict.get("배트맨", (0.0, 0.0, 0.0))
+        if b_h > 0 and b_d > 0 and b_a > 0:
+            b_inv = (1/b_h) + (1/b_d) + (1/b_a)
+            b_payout = 1 / b_inv
+            b_prob_h = (1/b_h) / b_inv
+            b_prob_d = (1/b_d) / b_inv
+            b_prob_a = (1/b_a) / b_inv
+        else:
+            b_payout, b_prob_h, b_prob_d, b_prob_a = 0.0, 0.0, 0.0, 0.0
+
+        home_score = stats_dict["home_1h"] + stats_dict["home_2h"]
+        away_score = stats_dict["away_1h"] + stats_dict["away_2h"]
+
+        if home_score > away_score:
+            match_res = "홈승"
+        elif home_score == away_score:
+            match_res = "무승부"
+        else:
+            match_res = "원정승"
+
+        score_total = home_score + away_score
+        score_diff = home_score - away_score
+        score_diff_abs = abs(score_diff)
+        
+        saved_count = 0
+        
+        # 1~9번 배당 탭 저장
+        for bm_name in BOOKMAKERS:
+            if bm_name not in odds_dict:
+                continue
+            h, d, a = odds_dict[bm_name]
+            if h <= 0 or d <= 0 or a <= 0:
+                continue
+            
+            bm_inv = (1/h) + (1/d) + (1/a)
+            bm_payout = 1 / bm_inv
+            bm_prob_h = (1/h) / bm_inv
+            bm_prob_d = (1/d) / bm_inv
+            bm_prob_a = (1/a) / bm_inv
+            
+            diff_h = round(b_h - h, 2) if b_h > 0 else 0.0
+            diff_d = round(b_d - d, 2) if b_d > 0 else 0.0
+            diff_a = round(b_a - a, 2) if b_a > 0 else 0.0
+            
+            fair_h = round(b_payout / bm_prob_h, 6) if (b_payout > 0 and bm_prob_h > 0) else 0.0
+            fair_d = round(b_payout / bm_prob_d, 6) if (b_payout > 0 and bm_prob_d > 0) else 0.0
+            fair_a = round(b_payout / bm_prob_a, 6) if (b_payout > 0 and bm_prob_a > 0) else 0.0
+            
+            loss_h = round(((b_h - fair_h) / fair_h) * 100, 5) if fair_h > 0 else 0.0
+            loss_d = round(((b_d - fair_d) / fair_d) * 100, 5) if fair_d > 0 else 0.0
+            loss_a = round(((b_a - fair_a) / fair_a) * 100, 5) if fair_a > 0 else 0.0
+            
+            min_odd, max_odd = min(h, d, a), max(h, d, a)
+            win_odd = h if match_res == "홈승" else (d if match_res == "무승부" else a)
+            odd_type = "정배" if win_odd == min_odd else ("역배" if win_odd == max_odd else "중배")
+
+            row_data_odds = [
+                season, league, match_date, home_team, away_team,
+                b_h, b_d, b_a,
+                f"{round(b_payout * 100, 2)}%",
+                f"{round(b_prob_h * 100, 2)}%", f"{round(b_prob_d * 100, 2)}%", f"{round(b_prob_a * 100, 2)}%",
+                h, d, a,
+                f"{round(bm_payout * 100, 2)}%",
+                f"{round(bm_prob_h * 100, 2)}%", f"{round(bm_prob_d * 100, 2)}%", f"{round(bm_prob_a * 100, 2)}%",
+                diff_h, diff_d, diff_a,
+                loss_h, loss_d, loss_a,
+                fair_h, fair_d, fair_a,
+                home_score, away_score, score_total, score_diff, score_diff_abs,
+                odd_type, match_res, win_odd
+            ]
+            
+            try:
+                ws = spreadsheet.worksheet(bm_name)
+                ws.append_row(row_data_odds, value_input_option="USER_ENTERED")
+                saved_count += 1
+            except gspread.exceptions.WorksheetNotFound:
+                pass
+
+        # 10번 경기내용 탭 저장
+        h_1h = stats_dict["home_1h"]
+        h_2h = stats_dict["home_2h"]
+        a_1h = stats_dict["away_1h"]
+        a_2h = stats_dict["away_2h"]
+        h_shots = stats_dict["home_shots"]
+        a_shots = stats_dict["away_shots"]
+        h_sot = stats_dict["home_sot"]
+        a_sot = stats_dict["away_sot"]
+
+        h_1h_ratio = round((h_1h / home_score) * 100, 2) if home_score > 0 else 0.0
+        h_2h_ratio = round((h_2h / home_score) * 100, 2) if home_score > 0 else 0.0
+        a_1h_ratio = round((a_1h / away_score) * 100, 2) if away_score > 0 else 0.0
+        a_2h_ratio = round((a_2h / away_score) * 100, 2) if away_score > 0 else 0.0
+        
+        h_sot_ratio = round((h_sot / h_shots) * 100, 2) if h_shots > 0 else 0.0
+        a_sot_ratio = round((a_sot / a_shots) * 100, 2) if a_shots > 0 else 0.0
+
+        home_tac_safe = f"'{stats_dict['home_tac'].strip()}" if stats_dict['home_tac'].strip() else ""
+        away_tac_safe = f"'{stats_dict['away_tac'].strip()}" if stats_dict['away_tac'].strip() else ""
+
+        row_data_stats = [
+            season, league, match_date, home_team, away_team,
+            h_1h, h_2h, a_1h, a_2h,
+            f"{h_1h_ratio}%", f"{h_2h_ratio}%", f"{a_1h_ratio}%", f"{a_2h_ratio}%",
+            home_tac_safe, away_tac_safe,
+            h_shots, a_shots, h_sot, a_sot,
+            f"{h_sot_ratio}%", f"{a_sot_ratio}%",
+            f"{stats_dict['home_poss']}%", f"{stats_dict['away_poss']}%",
+            f"{stats_dict['home_pass']}%", f"{stats_dict['away_pass']}%",
+            stats_dict['home_yc'], stats_dict['away_yc'], stats_dict['home_rc'], stats_dict['away_rc'],
+            stats_dict['home_xg'], stats_dict['away_xg']
+        ]
+
+        try:
+            ws_stats = spreadsheet.worksheet(STATS_SHEET_NAME)
+            ws_stats.append_row(row_data_stats, value_input_option="USER_ENTERED")
+        except gspread.exceptions.WorksheetNotFound:
+            pass
+        
+        return True, f"배당 {saved_count}개 탭 & '경기내용' 탭 저장 완료"
+    except Exception as e:
+        return False, str(e)
+
 # 3. 사이드바 설정
 with st.sidebar:
     st.header("⚙️ 시스템 설정")
@@ -190,199 +339,288 @@ tab_input, tab_analysis, tab_team_stats, tab_h2h, tab_injuries = st.tabs([
 ])
 
 # =========================================================
-# TAB 1: 데이터 입력 및 저장
+# TAB 1: 데이터 입력 및 저장 (2단계 분할 입력 지원 ⭐)
 # =========================================================
 with tab_input:
-    st.subheader("1️⃣ 경기 기본 정보 & 팀명")
-    c_m1, c_m2, c_m3 = st.columns(3)
-    season = c_m1.text_input("시즌", value="25-26", key="in_season")
-    league = c_m2.text_input("리그명", value="PL", key="in_league")
-    match_date = c_m3.text_input("경기 날짜", value="25.08.16", key="in_match_date")
-    
-    c_t1, c_t2 = st.columns(2)
-    home_team = c_t1.text_input("홈팀", value="리버풀", key="in_home_team")
-    away_team = c_t2.text_input("원정팀", value="본머스", key="in_away_team")
-
+    input_mode = st.radio(
+        "입력 모드 선택",
+        ["🚀 2단계 분할 입력 (와이즈토토 먼저 모아서 ➔ 해외 배당 순차 입력)", "⚡ 기존 일괄 입력 (한 경기씩 모든 데이터 작성)"],
+        horizontal=True
+    )
     st.markdown("---")
-    st.subheader("2️⃣ 9대 북메이커 최종 배당 입력 (미제공 시 0으로 설정)")
-    
-    odds_inputs_t1 = {}
-    for i in range(0, len(BOOKMAKERS), 3):
-        cols = st.columns(3)
-        for j in range(3):
-            idx = i + j
-            if idx < len(BOOKMAKERS):
-                bm = BOOKMAKERS[idx]
-                with cols[j]:
-                    with st.container(border=True):
-                        st.markdown(f"**🏢 [{idx+1}] {bm.upper()}**")
-                        oh, od, oa = st.columns(3)
-                        def_h = 1.22 if bm == "배트맨" else (1.31 if bm == "bwin" else 0.0)
-                        def_d = 5.10 if bm == "배트맨" else (5.75 if bm == "bwin" else 0.0)
-                        def_a = 7.50 if bm == "배트맨" else (8.00 if bm == "bwin" else 0.0)
-                        
-                        h_val = oh.number_input("홈", value=def_h, step=0.01, min_value=0.0, key=f"t1_{bm}_h")
-                        d_val = od.number_input("무", value=def_d, step=0.01, min_value=0.0, key=f"t1_{bm}_d")
-                        a_val = oa.number_input("원정", value=def_a, step=0.01, min_value=0.0, key=f"t1_{bm}_a")
-                        odds_inputs_t1[bm] = (h_val, d_val, a_val)
 
-    st.markdown("---")
-    st.subheader("3️⃣ 인게임 세부 경기내용 스탯 입력 (10번 '경기내용' 탭용)")
-    
-    with st.expander("⚽ 전/후반 득점 및 포메이션(전술)", expanded=True):
-        c_g1, c_g2, c_g3, c_g4 = st.columns(4)
-        home_1h = c_g1.number_input("홈 전반 득점", min_value=0, value=1, key="in_home_1h")
-        home_2h = c_g2.number_input("홈 후반 득점", min_value=0, value=3, key="in_home_2h")
-        away_1h = c_g3.number_input("원정 전반 득점", min_value=0, value=0, key="in_away_1h")
-        away_2h = c_g4.number_input("원정 후반 득점", min_value=0, value=2, key="in_away_2h")
+    # -------------------------------------------------------------
+    # 모드 A: 2단계 분할 입력 (대기열/큐 방식)
+    # -------------------------------------------------------------
+    if "2단계 분할 입력" in input_mode:
+        col_step1, col_step2 = st.columns([1, 1], gap="large")
+
+        # [1단계] 와이즈토토 등록 영역
+        with col_step1:
+            st.subheader("1️⃣ [1단계] 와이즈토토 배트맨 경기 등록")
+            st.caption("와이즈토토를 보면서 배트맨 배당과 경기 정보를 등록해 대기열에 담아둡니다.")
+
+            with st.container(border=True):
+                c_q1, c_q2, c_q3 = st.columns(3)
+                q_season = c_q1.text_input("시즌", value="25-26", key="q_in_season")
+                q_league = c_q2.text_input("리그명", value="PL", key="q_in_league")
+                q_date = c_q3.text_input("경기 날짜", value="25.08.16", key="q_in_date")
+
+                c_qt1, c_qt2 = st.columns(2)
+                q_home = c_qt1.text_input("홈팀", value="리버풀", key="q_in_home")
+                q_away = c_qt2.text_input("원정팀", value="본머스", key="q_in_away")
+
+                st.markdown("**🏢 [1] 배트맨 최종 배당 입력**")
+                qb_h, qb_d, qb_a = st.columns(3)
+                q_bh_val = qb_h.number_input("홈", value=1.22, step=0.01, min_value=0.0, key="q_in_bh")
+                q_bd_val = qb_d.number_input("무", value=5.10, step=0.01, min_value=0.0, key="q_in_bd")
+                q_ba_val = qb_a.number_input("원정", value=7.50, step=0.01, min_value=0.0, key="q_in_ba")
+
+                st.markdown("**🌐 대상 해외 북메이커 선택 (체크한 업체만 배당 입력창 오픈)**")
+                selected_overseas = []
+                cols_chk = st.columns(4)
+                for idx, obm in enumerate(OVERSEAS_BOOKMAKERS):
+                    with cols_chk[idx % 4]:
+                        if st.checkbox(obm.upper(), value=True, key=f"chk_{obm}"):
+                            selected_overseas.append(obm)
+
+                if st.button("➕ 대기열에 경기 등록 (와이즈토토 계속 입력)", type="primary", use_container_width=True):
+                    if q_home.strip() and q_away.strip():
+                        st.session_state.match_queue.append({
+                            "season": q_season, "league": q_league, "date": q_date,
+                            "home": q_home.strip(), "away": q_away.strip(),
+                            "batman_odds": (q_bh_val, q_bd_val, q_ba_val),
+                            "target_bms": selected_overseas
+                        })
+                        st.success(f"🎉 [{q_home} vs {q_away}] 경기가 대기열에 추가되었습니다! (총 {len(st.session_state.match_queue)}경기 대기 중)")
+                    else:
+                        st.warning("홈팀과 원정팀명을 입력해 주세요.")
+
+            # 대기열 목록 미리보기
+            if st.session_state.match_queue:
+                st.markdown("##### 📋 현재 대기열에 등록된 경기 목록")
+                q_preview = []
+                for i, m in enumerate(st.session_state.match_queue):
+                    status = "👉 [작성 차례]" if i == st.session_state.current_queue_idx else ("⏳ [대기 중]" if i > st.session_state.current_queue_idx else "✅ [완료]")
+                    q_preview.append({
+                        "순번": i + 1, "상태": status,
+                        "경기": f"{m['home']} vs {m['away']}", "리그/날짜": f"{m['league']} ({m['date']})",
+                        "배트맨 배당": f"{m['batman_odds'][0]} / {m['batman_odds'][1]} / {m['batman_odds'][2]}",
+                        "대상 해외사": f"{len(m['target_bms'])}개사"
+                    })
+                st.dataframe(pd.DataFrame(q_preview), use_container_width=True, hide_index=True)
+                if st.button("🗑️ 대기열 전체 비우기"):
+                    st.session_state.match_queue = []
+                    st.session_state.current_queue_idx = 0
+                    st.rerun()
+
+        # [2단계] 해외 배당 순차 입력 영역
+        with col_step2:
+            st.subheader("2️⃣ [2단계] 해외 배당 및 경기내용 순차 입력")
+            
+            queue_len = len(st.session_state.match_queue)
+            cur_idx = st.session_state.current_queue_idx
+
+            if queue_len == 0:
+                st.info("💡 1단계에서 경기를 먼저 등록하시면 여기에 해외 배당 입력창이 순서대로 나타납니다.")
+            elif cur_idx >= queue_len:
+                st.success(f"🎉 대기열에 등록된 모든 경기(총 {queue_len}경기) 저장이 완료되었습니다!")
+                if st.button("🔄 새 대기열 시작하기"):
+                    st.session_state.match_queue = []
+                    st.session_state.current_queue_idx = 0
+                    st.rerun()
+            else:
+                cur_match = st.session_state.match_queue[cur_idx]
+                next_match = st.session_state.match_queue[cur_idx + 1] if cur_idx + 1 < queue_len else None
+
+                # 현재 작성 경기 안내 배너
+                st.markdown(f"""
+                <div style="background-color: #1e3a8a; color: white; padding: 15px; border-radius: 8px; margin-bottom: 15px;">
+                    <div style="font-size: 13px; color: #93c5fd;">[진행 중: {cur_idx + 1} / {queue_len} 번째 경기]</div>
+                    <div style="font-size: 18px; font-weight: bold; margin-top: 4px;">👉 {cur_match['home']} vs {cur_match['away']} ({cur_match['league']})</div>
+                    <div style="font-size: 13px; margin-top: 4px;">배트맨 배당: {cur_match['batman_odds'][0]} / {cur_match['batman_odds'][1]} / {cur_match['batman_odds'][2]} | 날짜: {cur_match['date']}</div>
+                </div>
+                """, unsafe_allow_html=True)
+
+                if next_match:
+                    st.caption(f"⏭️ **다음 대기 경기:** [{next_match['home']} vs {next_match['away']}] ({next_match['league']})")
+                else:
+                    st.caption("🏁 이번 경기가 대기열의 마지막 경기입니다.")
+
+                # 해외 북메이커 배당 입력
+                st.markdown("##### 🏢 해외 배당 입력 (1단계에서 선택된 업체만 표시)")
+                q_odds_inputs = {"배트맨": cur_match["batman_odds"]}
+                
+                target_bms = cur_match["target_bms"]
+                if target_bms:
+                    for i in range(0, len(target_bms), 2):
+                        cols_obm = st.columns(2)
+                        for j in range(2):
+                            idx = i + j
+                            if idx < len(target_bms):
+                                bm = target_bms[idx]
+                                with cols_obm[j]:
+                                    with st.container(border=True):
+                                        st.markdown(f"**🏢 {bm.upper()}**")
+                                        oh, od, oa = st.columns(3)
+                                        def_h = 1.31 if bm == "bwin" else 0.0
+                                        def_d = 5.75 if bm == "bwin" else 0.0
+                                        def_a = 8.00 if bm == "bwin" else 0.0
+                                        
+                                        h_val = oh.number_input("홈", value=def_h, step=0.01, min_value=0.0, key=f"q_{cur_idx}_{bm}_h")
+                                        d_val = od.number_input("무", value=def_d, step=0.01, min_value=0.0, key=f"q_{cur_idx}_{bm}_d")
+                                        a_val = oa.number_input("원정", value=def_a, step=0.01, min_value=0.0, key=f"q_{cur_idx}_{bm}_a")
+                                        q_odds_inputs[bm] = (h_val, d_val, a_val)
+
+                # 경기내용 스탯 입력
+                st.markdown("##### ⚽ 인게임 스탯 (10번 경기내용 탭용)")
+                with st.expander("⚽ 득점 & 포메이션 & 세부 스탯", expanded=True):
+                    c_g1, c_g2, c_g3, c_g4 = st.columns(4)
+                    q_home_1h = c_g1.number_input("홈 전반 득점", min_value=0, value=1, key=f"q_{cur_idx}_home_1h")
+                    q_home_2h = c_g2.number_input("홈 후반 득점", min_value=0, value=3, key=f"q_{cur_idx}_home_2h")
+                    q_away_1h = c_g3.number_input("원정 전반 득점", min_value=0, value=0, key=f"q_{cur_idx}_away_1h")
+                    q_away_2h = c_g4.number_input("원정 후반 득점", min_value=0, value=2, key=f"q_{cur_idx}_away_2h")
+                    
+                    c_tac1, c_tac2 = st.columns(2)
+                    q_home_tac = c_tac1.text_input("홈팀 전술(포메이션)", value="4-2-3-1", key=f"q_{cur_idx}_home_tac")
+                    q_away_tac = c_tac2.text_input("원정팀 전술(포메이션)", value="4-1-4-1", key=f"q_{cur_idx}_away_tac")
+
+                    c_st1, c_st2, c_st3, c_st4 = st.columns(4)
+                    q_home_shots = c_st1.number_input("홈 슈팅", min_value=0, value=19, key=f"q_{cur_idx}_home_shots")
+                    q_away_shots = c_st2.number_input("원정 슈팅", min_value=0, value=10, key=f"q_{cur_idx}_away_shots")
+                    q_home_sot = c_st3.number_input("홈 유효슈팅", min_value=0, value=10, key=f"q_{cur_idx}_home_sot")
+                    q_away_sot = c_st4.number_input("원정 유효슈팅", min_value=0, value=3, key=f"q_{cur_idx}_away_sot")
+
+                    c_ps1, c_ps2, c_ps3, c_ps4 = st.columns(4)
+                    q_home_poss = c_ps1.number_input("홈 점유율 (%)", min_value=0.0, max_value=100.0, value=61.0, step=0.1, key=f"q_{cur_idx}_home_poss")
+                    q_away_poss = c_ps2.number_input("원정 점유율 (%)", min_value=0.0, max_value=100.0, value=39.0, step=0.1, key=f"q_{cur_idx}_away_poss")
+                    q_home_pass = c_ps3.number_input("홈 패스성공률 (%)", min_value=0.0, max_value=100.0, value=82.0, step=0.1, key=f"q_{cur_idx}_home_pass")
+                    q_away_pass = c_ps4.number_input("원정 패스성공률 (%)", min_value=0.0, max_value=100.0, value=70.0, step=0.1, key=f"q_{cur_idx}_away_pass")
+
+                    c_cd1, c_cd2, c_cd3, c_cd4, c_xg1, c_xg2 = st.columns(6)
+                    q_home_yc = c_cd1.number_input("홈 경고", min_value=0, value=1, key=f"q_{cur_idx}_home_yc")
+                    q_away_yc = c_cd2.number_input("원정 경고", min_value=0, value=2, key=f"q_{cur_idx}_away_yc")
+                    q_home_rc = c_cd3.number_input("홈 퇴장", min_value=0, value=0, key=f"q_{cur_idx}_home_rc")
+                    q_away_rc = c_cd4.number_input("원정 퇴장", min_value=0, value=0, key=f"q_{cur_idx}_away_rc")
+                    q_home_xg = c_xg1.number_input("홈 xG", min_value=0.0, value=2.21, step=0.01, key=f"q_{cur_idx}_home_xg")
+                    q_away_xg = c_xg2.number_input("원정 xG", min_value=0.0, value=1.70, step=0.01, key=f"q_{cur_idx}_away_xg")
+
+                q_stats_dict = {
+                    "home_1h": q_home_1h, "home_2h": q_home_2h, "away_1h": q_away_1h, "away_2h": q_away_2h,
+                    "home_tac": q_home_tac, "away_tac": q_away_tac,
+                    "home_shots": q_home_shots, "away_shots": q_away_shots,
+                    "home_sot": q_home_sot, "away_sot": q_away_sot,
+                    "home_poss": q_home_poss, "away_poss": q_away_poss,
+                    "home_pass": q_home_pass, "away_pass": q_away_pass,
+                    "home_yc": q_home_yc, "away_yc": q_away_yc,
+                    "home_rc": q_home_rc, "away_rc": q_away_rc,
+                    "home_xg": q_home_xg, "away_xg": q_away_xg
+                }
+
+                if st.button("💾 구글 시트 저장 및 다음 경기로 넘어가기 ➔", type="primary", use_container_width=True):
+                    with st.spinner("구글 시트에 저장 중..."):
+                        success, msg = save_match_data_to_sheets(cur_match, q_odds_inputs, q_stats_dict)
+                        if success:
+                            st.session_state.current_queue_idx += 1
+                            st.cache_data.clear()
+                            st.success(f"🎉 [{cur_match['home']} vs {cur_match['away']}] 저장 완료!")
+                            st.rerun()
+                        else:
+                            st.error(f"저장 실패: {msg}")
+
+    # -------------------------------------------------------------
+    # 모드 B: 기존 일괄 입력 (1경기씩 즉시 저장)
+    # -------------------------------------------------------------
+    else:
+        st.subheader("1️⃣ 경기 기본 정보 & 팀명")
+        c_m1, c_m2, c_m3 = st.columns(3)
+        season = c_m1.text_input("시즌", value="25-26", key="in_season")
+        league = c_m2.text_input("리그명", value="PL", key="in_league")
+        match_date = c_m3.text_input("경기 날짜", value="25.08.16", key="in_match_date")
         
-        c_tac1, c_tac2 = st.columns(2)
-        home_tac = c_tac1.text_input("홈팀 전술(포메이션)", value="4-2-3-1", key="in_home_tac")
-        away_tac = c_tac2.text_input("원정팀 전술(포메이션)", value="4-1-4-1", key="in_away_tac")
+        c_t1, c_t2 = st.columns(2)
+        home_team = c_t1.text_input("홈팀", value="리버풀", key="in_home_team")
+        away_team = c_t2.text_input("원정팀", value="본머스", key="in_away_team")
 
-    with st.expander("📊 슈팅 / 점유율 / 패스 / 파울 / xG 세부 스탯", expanded=True):
-        c_st1, c_st2, c_st3, c_st4 = st.columns(4)
-        home_shots = c_st1.number_input("홈 슈팅", min_value=0, value=19, key="in_home_shots")
-        away_shots = c_st2.number_input("원정 슈팅", min_value=0, value=10, key="in_away_shots")
-        home_sot = c_st3.number_input("홈 유효슈팅", min_value=0, value=10, key="in_home_sot")
-        away_sot = c_st4.number_input("원정 유효슈팅", min_value=0, value=3, key="in_away_sot")
+        st.markdown("---")
+        st.subheader("2️⃣ 9대 북메이커 최종 배당 입력 (미제공 시 0으로 설정)")
+        
+        odds_inputs_t1 = {}
+        for i in range(0, len(BOOKMAKERS), 3):
+            cols = st.columns(3)
+            for j in range(3):
+                idx = i + j
+                if idx < len(BOOKMAKERS):
+                    bm = BOOKMAKERS[idx]
+                    with cols[j]:
+                        with st.container(border=True):
+                            st.markdown(f"**🏢 [{idx+1}] {bm.upper()}**")
+                            oh, od, oa = st.columns(3)
+                            def_h = 1.22 if bm == "배트맨" else (1.31 if bm == "bwin" else 0.0)
+                            def_d = 5.10 if bm == "배트맨" else (5.75 if bm == "bwin" else 0.0)
+                            def_a = 7.50 if bm == "배트맨" else (8.00 if bm == "bwin" else 0.0)
+                            
+                            h_val = oh.number_input("홈", value=def_h, step=0.01, min_value=0.0, key=f"t1_{bm}_h")
+                            d_val = od.number_input("무", value=def_d, step=0.01, min_value=0.0, key=f"t1_{bm}_d")
+                            a_val = oa.number_input("원정", value=def_a, step=0.01, min_value=0.0, key=f"t1_{bm}_a")
+                            odds_inputs_t1[bm] = (h_val, d_val, a_val)
 
-        c_ps1, c_ps2, c_ps3, c_ps4 = st.columns(4)
-        home_poss = c_ps1.number_input("홈 점유율 (%)", min_value=0.0, max_value=100.0, value=61.0, step=0.1, key="in_home_poss")
-        away_poss = c_ps2.number_input("원정 점유율 (%)", min_value=0.0, max_value=100.0, value=39.0, step=0.1, key="in_away_poss")
-        home_pass = c_ps3.number_input("홈 패스성공률 (%)", min_value=0.0, max_value=100.0, value=82.0, step=0.1, key="in_home_pass")
-        away_pass = c_ps4.number_input("원정 패스성공률 (%)", min_value=0.0, max_value=100.0, value=70.0, step=0.1, key="in_away_pass")
+        st.markdown("---")
+        st.subheader("3️⃣ 인게임 세부 경기내용 스탯 입력 (10번 '경기내용' 탭용)")
+        
+        with st.expander("⚽ 전/후반 득점 및 포메이션(전술)", expanded=True):
+            c_g1, c_g2, c_g3, c_g4 = st.columns(4)
+            home_1h = c_g1.number_input("홈 전반 득점", min_value=0, value=1, key="in_home_1h")
+            home_2h = c_g2.number_input("홈 후반 득점", min_value=0, value=3, key="in_home_2h")
+            away_1h = c_g3.number_input("원정 전반 득점", min_value=0, value=0, key="in_away_1h")
+            away_2h = c_g4.number_input("원정 후반 득점", min_value=0, value=2, key="in_away_2h")
+            
+            c_tac1, c_tac2 = st.columns(2)
+            home_tac = c_tac1.text_input("홈팀 전술(포메이션)", value="4-2-3-1", key="in_home_tac")
+            away_tac = c_tac2.text_input("원정팀 전술(포메이션)", value="4-1-4-1", key="in_away_tac")
 
-        c_cd1, c_cd2, c_cd3, c_cd4, c_xg1, c_xg2 = st.columns(6)
-        home_yc = c_cd1.number_input("홈 경고(옐로)", min_value=0, value=1, key="in_home_yc")
-        away_yc = c_cd2.number_input("원정 경고(옐로)", min_value=0, value=2, key="in_away_yc")
-        home_rc = c_cd3.number_input("홈 퇴장(레드)", min_value=0, value=0, key="in_home_rc")
-        away_rc = c_cd4.number_input("원정 퇴장(레드)", min_value=0, value=0, key="in_away_rc")
-        home_xg = c_xg1.number_input("홈 xG", min_value=0.0, value=2.21, step=0.01, key="in_home_xg")
-        away_xg = c_xg2.number_input("원정 xG", min_value=0.0, value=1.70, step=0.01, key="in_away_xg")
+        with st.expander("📊 슈팅 / 점유율 / 패스 / 파울 / xG 세부 스탯", expanded=True):
+            c_st1, c_st2, c_st3, c_st4 = st.columns(4)
+            home_shots = c_st1.number_input("홈 슈팅", min_value=0, value=19, key="in_home_shots")
+            away_shots = c_st2.number_input("원정 슈팅", min_value=0, value=10, key="in_away_shots")
+            home_sot = c_st3.number_input("홈 유효슈팅", min_value=0, value=10, key="in_home_sot")
+            away_sot = c_st4.number_input("원정 유효슈팅", min_value=0, value=3, key="in_away_sot")
 
-    home_score = home_1h + home_2h
-    away_score = away_1h + away_2h
+            c_ps1, c_ps2, c_ps3, c_ps4 = st.columns(4)
+            home_poss = c_ps1.number_input("홈 점유율 (%)", min_value=0.0, max_value=100.0, value=61.0, step=0.1, key="in_home_poss")
+            away_poss = c_ps2.number_input("원정 점유율 (%)", min_value=0.0, max_value=100.0, value=39.0, step=0.1, key="in_away_poss")
+            home_pass = c_ps3.number_input("홈 패스성공률 (%)", min_value=0.0, max_value=100.0, value=82.0, step=0.1, key="in_home_pass")
+            away_pass = c_ps4.number_input("원정 패스성공률 (%)", min_value=0.0, max_value=100.0, value=70.0, step=0.1, key="in_away_pass")
 
-    st.markdown("---")
-    if st.button("💾 구글 시트 1~9번 배당 탭 & 10번 경기내용 탭 일괄 저장 실행", type="primary", use_container_width=True):
-        client = get_gspread_client()
-        if client:
+            c_cd1, c_cd2, c_cd3, c_cd4, c_xg1, c_xg2 = st.columns(6)
+            home_yc = c_cd1.number_input("홈 경고(옐로)", min_value=0, value=1, key="in_home_yc")
+            away_yc = c_cd2.number_input("원정 경고(옐로)", min_value=0, value=2, key="in_away_yc")
+            home_rc = c_cd3.number_input("홈 퇴장(레드)", min_value=0, value=0, key="in_home_rc")
+            away_rc = c_cd4.number_input("원정 퇴장(레드)", min_value=0, value=0, key="in_away_rc")
+            home_xg = c_xg1.number_input("홈 xG", min_value=0.0, value=2.21, step=0.01, key="in_home_xg")
+            away_xg = c_xg2.number_input("원정 xG", min_value=0.0, value=1.70, step=0.01, key="in_away_xg")
+
+        st.markdown("---")
+        if st.button("💾 구글 시트 1~9번 배당 탭 & 10번 경기내용 탭 일괄 저장 실행", type="primary", use_container_width=True):
+            match_info_single = {"season": season, "league": league, "date": match_date, "home": home_team, "away": away_team}
+            stats_dict_single = {
+                "home_1h": home_1h, "home_2h": home_2h, "away_1h": away_1h, "away_2h": away_2h,
+                "home_tac": home_tac, "away_tac": away_tac,
+                "home_shots": home_shots, "away_shots": away_shots,
+                "home_sot": home_sot, "away_sot": away_sot,
+                "home_poss": home_poss, "away_poss": away_poss,
+                "home_pass": home_pass, "away_pass": away_pass,
+                "home_yc": home_yc, "away_yc": away_yc,
+                "home_rc": home_rc, "away_rc": away_rc,
+                "home_xg": home_xg, "away_xg": away_xg
+            }
             with st.spinner("구글 스프레드시트에 저장 중..."):
-                try:
-                    spreadsheet = client.open_by_key(SPREADSHEET_ID)
-                    
-                    b_h, b_d, b_a = odds_inputs_t1.get("배트맨", (0.0, 0.0, 0.0))
-                    if b_h > 0 and b_d > 0 and b_a > 0:
-                        b_inv = (1/b_h) + (1/b_d) + (1/b_a)
-                        b_payout = 1 / b_inv
-                        b_prob_h = (1/b_h) / b_inv
-                        b_prob_d = (1/b_d) / b_inv
-                        b_prob_a = (1/b_a) / b_inv
-                    else:
-                        b_payout, b_prob_h, b_prob_d, b_prob_a = 0.0, 0.0, 0.0, 0.0
-
-                    if home_score > away_score:
-                        match_res = "홈승"
-                    elif home_score == away_score:
-                        match_res = "무승부"
-                    else:
-                        match_res = "원정승"
-
-                    score_total = home_score + away_score
-                    score_diff = home_score - away_score
-                    score_diff_abs = abs(score_diff)
-                    
-                    saved_odds_count = 0
-                    skipped_list = []
-                    
-                    for bm_name in BOOKMAKERS:
-                        h, d, a = odds_inputs_t1[bm_name]
-                        if h <= 0 or d <= 0 or a <= 0:
-                            skipped_list.append(bm_name)
-                            continue
-                        
-                        bm_inv = (1/h) + (1/d) + (1/a)
-                        bm_payout = 1 / bm_inv
-                        bm_prob_h = (1/h) / bm_inv
-                        bm_prob_d = (1/d) / bm_inv
-                        bm_prob_a = (1/a) / bm_inv
-                        
-                        diff_h = round(b_h - h, 2) if b_h > 0 else 0.0
-                        diff_d = round(b_d - d, 2) if b_d > 0 else 0.0
-                        diff_a = round(b_a - a, 2) if b_a > 0 else 0.0
-                        
-                        fair_h = round(b_payout / bm_prob_h, 6) if (b_payout > 0 and bm_prob_h > 0) else 0.0
-                        fair_d = round(b_payout / bm_prob_d, 6) if (b_payout > 0 and bm_prob_d > 0) else 0.0
-                        fair_a = round(b_payout / bm_prob_a, 6) if (b_payout > 0 and bm_prob_a > 0) else 0.0
-                        
-                        loss_h = round(((b_h - fair_h) / fair_h) * 100, 5) if fair_h > 0 else 0.0
-                        loss_d = round(((b_d - fair_d) / fair_d) * 100, 5) if fair_d > 0 else 0.0
-                        loss_a = round(((b_a - fair_a) / fair_a) * 100, 5) if fair_a > 0 else 0.0
-                        
-                        min_odd, max_odd = min(h, d, a), max(h, d, a)
-                        win_odd = h if match_res == "홈승" else (d if match_res == "무승부" else a)
-                        odd_type = "정배" if win_odd == min_odd else ("역배" if win_odd == max_odd else "중배")
-
-                        row_data_odds = [
-                            season, league, match_date, home_team, away_team,
-                            b_h, b_d, b_a,
-                            f"{round(b_payout * 100, 2)}%",
-                            f"{round(b_prob_h * 100, 2)}%", f"{round(b_prob_d * 100, 2)}%", f"{round(b_prob_a * 100, 2)}%",
-                            h, d, a,
-                            f"{round(bm_payout * 100, 2)}%",
-                            f"{round(bm_prob_h * 100, 2)}%", f"{round(bm_prob_d * 100, 2)}%", f"{round(bm_prob_a * 100, 2)}%",
-                            diff_h, diff_d, diff_a,
-                            loss_h, loss_d, loss_a,
-                            fair_h, fair_d, fair_a,
-                            home_score, away_score, score_total, score_diff, score_diff_abs,
-                            odd_type, match_res, win_odd
-                        ]
-                        
-                        try:
-                            ws = spreadsheet.worksheet(bm_name)
-                            ws.append_row(row_data_odds, value_input_option="USER_ENTERED")
-                            saved_odds_count += 1
-                        except gspread.exceptions.WorksheetNotFound:
-                            pass
-
-                    # 10번 경기내용 탭 저장 (전술 작은따옴표 강제 부여)
-                    h_1h_ratio = round((home_1h / home_score) * 100, 2) if home_score > 0 else 0.0
-                    h_2h_ratio = round((home_2h / home_score) * 100, 2) if home_score > 0 else 0.0
-                    a_1h_ratio = round((away_1h / away_score) * 100, 2) if away_score > 0 else 0.0
-                    a_2h_ratio = round((away_2h / away_score) * 100, 2) if away_score > 0 else 0.0
-                    
-                    h_sot_ratio = round((home_sot / home_shots) * 100, 2) if home_shots > 0 else 0.0
-                    a_sot_ratio = round((away_sot / away_shots) * 100, 2) if away_shots > 0 else 0.0
-
-                    home_tac_safe = f"'{home_tac.strip()}" if home_tac.strip() else ""
-                    away_tac_safe = f"'{away_tac.strip()}" if away_tac.strip() else ""
-
-                    row_data_stats = [
-                        season, league, match_date, home_team, away_team,
-                        home_1h, home_2h, away_1h, away_2h,
-                        f"{h_1h_ratio}%", f"{h_2h_ratio}%", f"{a_1h_ratio}%", f"{a_2h_ratio}%",
-                        home_tac_safe, away_tac_safe,
-                        home_shots, away_shots, home_sot, away_sot,
-                        f"{h_sot_ratio}%", f"{a_sot_ratio}%",
-                        f"{home_poss}%", f"{away_poss}%",
-                        f"{home_pass}%", f"{away_pass}%",
-                        home_yc, away_yc, home_rc, away_rc,
-                        home_xg, away_xg
-                    ]
-
-                    try:
-                        ws_stats = spreadsheet.worksheet(STATS_SHEET_NAME)
-                        ws_stats.append_row(row_data_stats, value_input_option="USER_ENTERED")
-                    except gspread.exceptions.WorksheetNotFound:
-                        pass
-                    
+                success, msg = save_match_data_to_sheets(match_info_single, odds_inputs_t1, stats_dict_single)
+                if success:
                     st.cache_data.clear()
-                    st.success(f"🎉 성공: 배당 {saved_odds_count}개 탭 & '경기내용' 탭에 저장이 완료되었습니다!")
-                    if skipped_list:
-                        st.info(f"ℹ️ 배당 미입력 건너뜀: {', '.join(skipped_list)}")
-                except Exception as e:
-                    st.error(f"저장 중 오류 발생: {e}")
+                    st.success(f"🎉 성공: {msg}")
+                else:
+                    st.error(f"저장 중 오류 발생: {msg}")
 
 # =========================================================
 # TAB 2: 독립 배당 분석 랩
