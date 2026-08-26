@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import gspread
+import time
 import streamlit.components.v1 as components
 from oauth2client.service_account import ServiceAccountCredentials
 from datetime import datetime
@@ -148,7 +149,7 @@ def print_pdf_button():
     """, height=50)
 
 # =========================================================
-# 2. 구글 시트 연동 클라이언트
+# 2. 구글 시트 연동 클라이언트 (호출 제한 방지 캐시 강화)
 # =========================================================
 @st.cache_resource(show_spinner=False)
 def get_gspread_client():
@@ -165,24 +166,31 @@ def get_gspread_client():
     except Exception:
         return None
 
-@st.cache_data(ttl=10, show_spinner=False)
+@st.cache_data(ttl=60, show_spinner=False)
 def load_sheet_data(sheet_name):
     client = get_gspread_client()
     if not client:
         return pd.DataFrame()
-    try:
-        spreadsheet = client.open_by_key(SPREADSHEET_ID)
-        ws = spreadsheet.worksheet(sheet_name)
-        data = ws.get_all_values()
-        if len(data) > 1:
-            df = pd.DataFrame(data[1:], columns=data[0])
-            return df
-        return pd.DataFrame()
-    except Exception:
-        return pd.DataFrame()
+    
+    # 429 에러 방지용 자동 재시도 로직
+    for attempt in range(3):
+        try:
+            spreadsheet = client.open_by_key(SPREADSHEET_ID)
+            ws = spreadsheet.worksheet(sheet_name)
+            data = ws.get_all_values()
+            if len(data) > 1:
+                df = pd.DataFrame(data[1:], columns=data[0])
+                return df
+            return pd.DataFrame()
+        except Exception as e:
+            if "429" in str(e) or "Quota exceeded" in str(e):
+                time.sleep(1.5 * (attempt + 1))
+                continue
+            return pd.DataFrame()
+    return pd.DataFrame()
 
 # =========================================================
-# 구글 시트 일괄 저장 처리 함수
+# 구글 시트 일괄 저장 처리 함수 (429 Rate Limit 방지 딜레이 적용)
 # =========================================================
 def save_match_data_to_sheets(match_info, odds_dict, stats_dict):
     client = get_gspread_client()
@@ -273,6 +281,7 @@ def save_match_data_to_sheets(match_info, odds_dict, stats_dict):
                 ws = spreadsheet.worksheet(bm_name)
                 ws.append_row(row_data_odds, value_input_option="USER_ENTERED")
                 saved_count += 1
+                time.sleep(0.12)  # 구글 429 방지용 미세 딜레이
             except gspread.exceptions.WorksheetNotFound:
                 pass
 
@@ -313,6 +322,7 @@ def save_match_data_to_sheets(match_info, odds_dict, stats_dict):
         try:
             ws_stats = spreadsheet.worksheet(STATS_SHEET_NAME)
             ws_stats.append_row(row_data_stats, value_input_option="USER_ENTERED")
+            time.sleep(0.12)
         except gspread.exceptions.WorksheetNotFound:
             pass
         
@@ -339,7 +349,7 @@ tab_input, tab_analysis, tab_team_stats, tab_h2h, tab_injuries = st.tabs([
 ])
 
 # =========================================================
-# TAB 1: 데이터 입력 및 저장 (2단계 분할 입력 지원 ⭐)
+# TAB 1: 데이터 입력 및 저장 (2단계 분할 입력 지원)
 # =========================================================
 with tab_input:
     input_mode = st.radio(
@@ -524,6 +534,7 @@ with tab_input:
                             st.session_state.current_queue_idx += 1
                             st.cache_data.clear()
                             st.success(f"🎉 [{cur_match['home']} vs {cur_match['away']}] 저장 완료!")
+                            time.sleep(0.5)
                             st.rerun()
                         else:
                             st.error(f"저장 실패: {msg}")
@@ -1178,6 +1189,7 @@ with tab_injuries:
                                 p_note.strip() if p_note.strip() else "-"
                             ]
                             ws_inj.append_row(new_row, value_input_option="USER_ENTERED")
+                            time.sleep(0.2)
                             st.cache_data.clear()
                             st.success(f"🎉 {add_team}의 [{p_name_kr or p_name_en}] 선수가 11번 시트에 성공적으로 저장되었습니다!")
                             st.rerun()
@@ -1215,6 +1227,7 @@ with tab_injuries:
                                     ws_inj = spreadsheet.worksheet(INJURY_SHEET_NAME)
                                     target_row_index = sel_player_to_remove[0] + 2  # 헤더 1행 + 0-index 보정
                                     ws_inj.delete_rows(target_row_index)
+                                    time.sleep(0.2)
                                     st.cache_data.clear()
                                     st.success(f"🎉 [{sel_player_to_remove[1]}] 선수가 부상자 명단에서 정상적으로 제외되었습니다!")
                                     st.rerun()
