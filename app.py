@@ -328,14 +328,13 @@ def generate_naver_team_stats_infographic(team_name, season, league, match_count
     return html
 
 # =========================================================
-# 4번 탭 전용: 맞대결 인포그래픽 도표 (우세 지표 하이라이트 테이블 ⭐)
+# 4번 탭 전용: 맞대결 인포그래픽 도표 (우세 하이라이트 테이블)
 # =========================================================
 def generate_naver_match_infographic(home_team, away_team, stats_data, goal_df=None, h2h_all_str="", h2h_exact_str=""):
     html = f"""
     <table align="center" border="0" cellpadding="0" cellspacing="0" style="width: 100%; max-width: 620px; margin: 0 auto; font-family: 'Malgun Gothic', '맑은 고딕', AppleSDGothicNeo-Regular, sans-serif; background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 10px; border-collapse: separate; color: #1e293b;">
         <tr>
             <td style="padding: 20px;">
-                <!-- 타이틀 -->
                 <table border="0" cellpadding="0" cellspacing="0" style="width: 100%; border-bottom: 2px solid #0f172a; margin-bottom: 14px;">
                     <tr>
                         <td align="center" style="padding-bottom: 10px; text-align: center;">
@@ -353,7 +352,6 @@ def generate_naver_match_infographic(home_team, away_team, stats_data, goal_df=N
 
                 <div style="font-size: 13px; font-weight: bold; color: #1e293b; margin-bottom: 8px;">⚔️ 양 팀 맞대결 세부 지표 비교 (우세팀 하이라이트)</div>
                 
-                <!-- 견고한 3분할 테이블 (우세 수치 자동 강조) -->
                 <table border="1" cellpadding="0" cellspacing="0" style="width: 100%; border-collapse: collapse; font-size: 13px; text-align: center; border: 1px solid #cbd5e1; margin-bottom: 14px;">
                     <tr style="background-color: #f8fafc;">
                         <th style="padding: 8px; border: 1px solid #cbd5e1; color: #dc2626; width: 35%;">🔴 {home_team}</th>
@@ -362,7 +360,6 @@ def generate_naver_match_infographic(home_team, away_team, stats_data, goal_df=N
                     </tr>
     """
     for label, (val_h, val_a) in stats_data.items():
-        # 우세 판별
         if val_h > val_a:
             h_style = "background-color: #fee2e2; font-weight: bold; color: #dc2626;"
             a_style = "color: #64748b;"
@@ -561,7 +558,7 @@ def load_sheet_data(sheet_name):
             return pd.DataFrame()
     return pd.DataFrame()
 
-# 구글 시트 일괄 저장 처리 함수
+# 구글 시트 일괄 저장 처리 함수 (home_2h 오타 완벽 수정 ⭐)
 def save_match_data_to_sheets(match_info, odds_dict, stats_dict):
     client = get_gspread_client()
     if not client:
@@ -664,7 +661,7 @@ def save_match_data_to_sheets(match_info, odds_dict, stats_dict):
         a_sot = stats_dict["away_sot"]
 
         h_1h_ratio = round((h_1h / home_score) * 100, 2) if home_score > 0 else 0.0
-        h_2h_ratio = round((home_2h / home_score) * 100, 2) if home_score > 0 else 0.0
+        h_2h_ratio = round((h_2h / home_score) * 100, 2) if home_score > 0 else 0.0
         a_1h_ratio = round((a_1h / away_score) * 100, 2) if away_score > 0 else 0.0
         a_2h_ratio = round((a_2h / away_score) * 100, 2) if away_score > 0 else 0.0
         
