@@ -14,7 +14,7 @@ st.set_page_config(
     layout="wide"
 )
 
-# 북메이커 순서 (배트맨 1번)
+# 북메이커 순서
 BOOKMAKERS = [
     "배트맨", "10x10", "1xbet", "betway", 
     "bwin", "william hill", "bet365", "pinnacle", "stake"
@@ -27,30 +27,24 @@ STATS_SHEET_NAME = "경기내용"
 INJURY_SHEET_NAME = "부상자명단"
 SPREADSHEET_ID = "1-b-QusmoSnsvMhToNFe1B1IK7dJUKjjANs89y5ZekAQ"
 
-# 세션 상태 초기화 (대기열 관리용)
 if "match_queue" not in st.session_state:
     st.session_state.match_queue = []
 if "current_queue_idx" not in st.session_state:
     st.session_state.current_queue_idx = 0
 
-# =========================================================
 # 상단 탭 중앙 정렬 & 인쇄 스타일
-# =========================================================
 st.markdown("""
 <style>
-/* 상단 탭 목록을 화면 중앙으로 정렬 */
 .stTabs [data-baseweb="tab-list"] {
     justify-content: center !important;
     gap: 15px !important;
     margin-bottom: 20px !important;
 }
-
 .stTabs [data-baseweb="tab"] {
     font-size: 15px !important;
     font-weight: bold !important;
     padding: 10px 18px !important;
 }
-
 @media print {
     section[data-testid="stSidebar"] { display: none !important; }
     header[data-testid="stHeader"] { display: none !important; }
@@ -63,83 +57,185 @@ st.markdown("""
 st.markdown("<h2 style='text-align: center; margin-bottom: 25px;'>⚽ 축구 9대 배당 업체 & 경기 세부 스탯 통합 분석 허브</h2>", unsafe_allow_html=True)
 
 # =========================================================
-# 공통 헬퍼 함수: 다크모드 완벽 격리 블로그용 HTML 생성 뷰어
+# 2번 탭 전용: 네이버 블로그/카페 100% 안깨지는 표준 테이블 배당 도표
 # =========================================================
-def render_blog_component(title, df_dict, height=450):
+def generate_naver_odds_infographic(b_odds, overseas_name, o_odds, league_name=""):
+    b_h, b_d, b_a = b_odds
+    o_h, o_d, o_a = o_odds
+
+    if b_h > 0 and b_d > 0 and b_a > 0:
+        b_inv = (1/b_h) + (1/b_d) + (1/b_a)
+        b_payout = (1 / b_inv) * 100
+        b_prob_h = ((1/b_h) / b_inv) * 100
+        b_prob_d = ((1/b_d) / b_inv) * 100
+        b_prob_a = ((1/b_a) / b_inv) * 100
+    else:
+        b_payout, b_prob_h, b_prob_d, b_prob_a = 0.0, 33.3, 33.3, 33.4
+
+    if o_h > 0 and o_d > 0 and o_a > 0:
+        o_inv = (1/o_h) + (1/o_d) + (1/o_a)
+        o_payout = (1 / o_inv) * 100
+        o_prob_h = ((1/o_h) / o_inv) * 100
+        o_prob_d = ((1/o_d) / o_inv) * 100
+        o_prob_a = ((1/o_a) / o_inv) * 100
+        fair_h = round((b_payout / 100) / (o_prob_h / 100), 2) if o_prob_h > 0 else 0.0
+        fair_d = round((b_payout / 100) / (o_prob_d / 100), 2) if o_prob_d > 0 else 0.0
+        fair_a = round((b_payout / 100) / (o_prob_a / 100), 2) if o_prob_a > 0 else 0.0
+    else:
+        o_payout, o_prob_h, o_prob_d, o_prob_a = 0.0, 0.0, 0.0, 0.0
+        fair_h, fair_d, fair_a = 0.0, 0.0, 0.0
+
+    diff_h = round(b_h - o_h, 2) if (b_h > 0 and o_h > 0) else 0.0
+    diff_d = round(b_d - o_d, 2) if (b_d > 0 and o_d > 0) else 0.0
+    diff_a = round(b_a - o_a, 2) if (b_a > 0 and o_a > 0) else 0.0
+
+    diff_h_str = f"+{diff_h}" if diff_h > 0 else f"{diff_h}"
+    diff_d_str = f"+{diff_d}" if diff_d > 0 else f"{diff_d}"
+    diff_a_str = f"+{diff_a}" if diff_a > 0 else f"{diff_a}"
+
+    lg_badge = f"<span style='background-color: #2563eb; color: #ffffff; padding: 2px 7px; border-radius: 4px; font-size: 11px; margin-right: 6px;'>{league_name}</span>" if league_name else ""
+
     html = f"""
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <meta charset="utf-8">
-        <style>
-            body {{
-                background-color: #ffffff !important;
-                color: #111111 !important;
-                font-family: -apple-system, BlinkMacSystemFont, "Malgun Gothic", "맑은 고딕", sans-serif;
-                margin: 0;
-                padding: 15px;
-            }}
-            .report-card {{
-                background: #ffffff;
-                border: 1px solid #dcdcdc;
-                border-radius: 8px;
-                padding: 18px;
-            }}
-            h3 {{
-                color: #111111 !important;
-                border-bottom: 2px solid #222222;
-                padding-bottom: 8px;
-                margin-top: 0;
-                margin-bottom: 16px;
-                font-size: 17px;
-            }}
-            h4 {{
-                color: #0056b3 !important;
-                margin-bottom: 8px;
-                margin-top: 15px;
-                font-size: 14px;
-            }}
-            table {{
-                border-collapse: collapse;
-                width: 100%;
-                font-size: 13px;
-                text-align: center;
-                border: 1px solid #cccccc;
-                margin-bottom: 18px;
-                background-color: #ffffff !important;
-            }}
-            th {{
-                background-color: #f1f3f5 !important;
-                color: #111111 !important;
-                padding: 8px 6px;
-                border: 1px solid #cccccc;
-                font-weight: bold;
-            }}
-            td {{
-                background-color: #ffffff !important;
-                color: #222222 !important;
-                padding: 8px 6px;
-                border: 1px solid #e5e5e5;
-            }}
-        </style>
-    </head>
-    <body>
-        <div class="report-card">
-            <h3>{title}</h3>
+    <table align="center" border="0" cellpadding="0" cellspacing="0" style="width: 100%; max-width: 620px; margin: 0 auto; font-family: 'Malgun Gothic', '맑은 고딕', AppleSDGothicNeo-Regular, sans-serif; background-color: #ffffff; border: 1px solid #cbd5e1; border-radius: 10px; border-collapse: separate; color: #0f172a;">
+        <tr>
+            <td style="padding: 20px;">
+                <!-- 타이틀 -->
+                <table border="0" cellpadding="0" cellspacing="0" style="width: 100%; border-bottom: 2px solid #0f172a; margin-bottom: 16px;">
+                    <tr>
+                        <td align="center" style="padding-bottom: 10px;">
+                            <div style="font-size: 11px; font-weight: bold; color: #64748b; letter-spacing: 1px;">ODDS & PROBABILITY REPORT</div>
+                            <div style="font-size: 18px; font-weight: bold; color: #0f172a; margin-top: 4px;">{lg_badge}배당 및 승률 정밀 분석 리포트</div>
+                            <div style="font-size: 12px; color: #475569; margin-top: 4px;">기준: <b>배트맨</b> vs <b>{overseas_name.upper()}</b></div>
+                        </td>
+                    </tr>
+                </table>
+
+                <!-- 승률 게이지 바 -->
+                <div style="font-size: 13px; font-weight: bold; color: #1e293b; margin-bottom: 6px;">📊 경기 승/무/패 예측 확률 분포</div>
+                <table border="0" cellpadding="0" cellspacing="0" style="width: 100%; height: 16px; border-collapse: collapse; margin-bottom: 6px;">
+                    <tr>
+                        <td style="width: {round(b_prob_h, 1)}%; background-color: #ef4444; height: 16px;"></td>
+                        <td style="width: {round(b_prob_d, 1)}%; background-color: #10b981; height: 16px;"></td>
+                        <td style="width: {round(b_prob_a, 1)}%; background-color: #3b82f6; height: 16px;"></td>
+                    </tr>
+                </table>
+
+                <!-- 게이지 바 텍스트 설명 (순수 테이블 좌/중/우 배치로 깨짐 방지) -->
+                <table border="0" cellpadding="0" cellspacing="0" style="width: 100%; font-size: 12px; font-weight: bold; margin-bottom: 18px;">
+                    <tr>
+                        <td align="left" style="width: 33%; color: #dc2626;">🔴 홈 승 {round(b_prob_h, 1)}%</td>
+                        <td align="center" style="width: 34%; color: #059669;">🟢 무승부 {round(b_prob_d, 1)}%</td>
+                        <td align="right" style="width: 33%; color: #2563eb;">🔵 원정승 {round(b_prob_a, 1)}%</td>
+                    </tr>
+                </table>
+
+                <!-- 배당 정밀 비교 도표 -->
+                <table border="1" cellpadding="0" cellspacing="0" style="width: 100%; border-collapse: collapse; font-size: 13px; text-align: center; border: 1px solid #cbd5e1; margin-bottom: 14px;">
+                    <tr style="background-color: #f8fafc;">
+                        <th style="padding: 8px 4px; border: 1px solid #cbd5e1; color: #334155;">구 분</th>
+                        <th style="padding: 8px 4px; border: 1px solid #cbd5e1; color: #dc2626;">홈 승 (Home)</th>
+                        <th style="padding: 8px 4px; border: 1px solid #cbd5e1; color: #059669;">무승부 (Draw)</th>
+                        <th style="padding: 8px 4px; border: 1px solid #cbd5e1; color: #2563eb;">원정승 (Away)</th>
+                    </tr>
+                    <tr>
+                        <td style="padding: 8px 4px; border: 1px solid #e2e8f0; background-color: #f8fafc; font-weight: bold;">배트맨 배당</td>
+                        <td style="padding: 8px 4px; border: 1px solid #e2e8f0; font-weight: bold; color: #0f172a;">{b_h}</td>
+                        <td style="padding: 8px 4px; border: 1px solid #e2e8f0; font-weight: bold; color: #0f172a;">{b_d}</td>
+                        <td style="padding: 8px 4px; border: 1px solid #e2e8f0; font-weight: bold; color: #0f172a;">{b_a}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 8px 4px; border: 1px solid #e2e8f0; background-color: #f8fafc; font-weight: bold;">해외 ({overseas_name})</td>
+                        <td style="padding: 8px 4px; border: 1px solid #e2e8f0; color: #334155;">{o_h}</td>
+                        <td style="padding: 8px 4px; border: 1px solid #e2e8f0; color: #334155;">{o_d}</td>
+                        <td style="padding: 8px 4px; border: 1px solid #e2e8f0; color: #334155;">{o_a}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 8px 4px; border: 1px solid #e2e8f0; background-color: #f8fafc; font-weight: bold;">적정 배당</td>
+                        <td style="padding: 8px 4px; border: 1px solid #e2e8f0; color: #475569;">{fair_h}</td>
+                        <td style="padding: 8px 4px; border: 1px solid #e2e8f0; color: #475569;">{fair_d}</td>
+                        <td style="padding: 8px 4px; border: 1px solid #e2e8f0; color: #475569;">{fair_a}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 8px 4px; border: 1px solid #e2e8f0; background-color: #f8fafc; font-weight: bold;">배당 편차</td>
+                        <td style="padding: 8px 4px; border: 1px solid #e2e8f0; font-weight: bold; color: {'#dc2626' if diff_h < 0 else '#2563eb'};">{diff_h_str}</td>
+                        <td style="padding: 8px 4px; border: 1px solid #e2e8f0; font-weight: bold; color: {'#dc2626' if diff_d < 0 else '#2563eb'};">{diff_d_str}</td>
+                        <td style="padding: 8px 4px; border: 1px solid #e2e8f0; font-weight: bold; color: {'#dc2626' if diff_a < 0 else '#2563eb'};">{diff_a_str}</td>
+                    </tr>
+                </table>
+
+                <!-- 하단 정보 바 -->
+                <table border="0" cellpadding="0" cellspacing="0" style="width: 100%; background-color: #f1f5f9; border-radius: 6px; font-size: 12px; color: #334155;">
+                    <tr>
+                        <td align="left" style="padding: 8px 10px;">💰 환급률: <b>배트맨 {round(b_payout, 2)}%</b> / <b>{overseas_name} {round(o_payout, 2)}%</b></td>
+                        <td align="right" style="padding: 8px 10px;">⚡ 오차 허용: <b>±0.03</b></td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
     """
-    for subtitle, df in df_dict.items():
-        if df is not None and not df.empty:
-            table_html = df.to_html(index=False, escape=False)
-            table_html = table_html.replace('<table border="1" class="dataframe">', '<table>')
-            html += f"<h4>▶ {subtitle}</h4>"
-            html += table_html
-            
+    return html
+
+# =========================================================
+# 4번 탭 전용: 네이버 블로그/카페 100% 안깨지는 맞대결 도표
+# =========================================================
+def generate_naver_match_infographic(home_team, away_team, stats_data, goal_df=None):
+    html = f"""
+    <table align="center" border="0" cellpadding="0" cellspacing="0" style="width: 100%; max-width: 620px; margin: 0 auto; font-family: 'Malgun Gothic', '맑은 고딕', AppleSDGothicNeo-Regular, sans-serif; background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 10px; border-collapse: separate; color: #1e293b;">
+        <tr>
+            <td style="padding: 20px;">
+                <!-- 헤더 타이틀 -->
+                <table border="0" cellpadding="0" cellspacing="0" style="width: 100%; border-bottom: 2px solid #0f172a; margin-bottom: 18px;">
+                    <tr>
+                        <td align="center" style="padding-bottom: 10px;">
+                            <div style="font-size: 11px; font-weight: bold; color: #2563eb; letter-spacing: 1px;">HEAD TO HEAD STATS</div>
+                            <div style="font-size: 19px; font-weight: bold; color: #0f172a; margin-top: 4px;">
+                                <span style="color: #dc2626;">{home_team}</span> <span style="font-size: 14px; color: #64748b;">VS</span> <span style="color: #2563eb;">{away_team}</span>
+                            </div>
+                        </td>
+                    </tr>
+                </table>
+
+                <!-- 지표 비교 게이지 바 반복 (순수 테이블 행/열 배치) -->
+    """
+    for label, (val_h, val_a) in stats_data.items():
+        tot = val_h + val_a
+        pct_h = round((val_h / tot) * 100, 1) if tot > 0 else 50.0
+        pct_a = 100.0 - pct_h
+
+        html += f"""
+                <table border="0" cellpadding="0" cellspacing="0" style="width: 100%; font-size: 12px; font-weight: bold; margin-bottom: 3px;">
+                    <tr>
+                        <td align="left" style="width: 30%; color: #dc2626;">{val_h}</td>
+                        <td align="center" style="width: 40%; color: #475569;">{label}</td>
+                        <td align="right" style="width: 30%; color: #2563eb;">{val_a}</td>
+                    </tr>
+                </table>
+                <table border="0" cellpadding="0" cellspacing="0" style="width: 100%; height: 9px; border-collapse: collapse; margin-bottom: 12px;">
+                    <tr>
+                        <td style="width: {pct_h}%; background-color: #ef4444; height: 9px;"></td>
+                        <td style="width: {pct_a}%; background-color: #3b82f6; height: 9px;"></td>
+                    </tr>
+                </table>
+        """
+
+    if goal_df is not None and not goal_df.empty:
+        table_html = goal_df.to_html(index=False, escape=False)
+        table_html = table_html.replace('<table border="1" class="dataframe">', '<table border="1" cellpadding="0" cellspacing="0" style="width: 100%; border-collapse: collapse; font-size: 12px; text-align: center; border: 1px solid #cbd5e1; margin-top: 10px;">')
+        table_html = table_html.replace('<th>', '<th style="background-color: #f8fafc; color: #334155; padding: 7px 3px; border: 1px solid #cbd5e1; font-weight: bold;">')
+        table_html = table_html.replace('<td>', '<td style="background-color: #ffffff; color: #1e293b; padding: 6px 3px; border: 1px solid #e2e8f0;">')
+
+        html += f"""
+                <div style="font-size: 13px; font-weight: bold; color: #0f172a; margin-top: 14px; margin-bottom: 6px;">⚽ 전/후반 득점 통계표</div>
+                {table_html}
+        """
+
     html += """
-        </div>
-    </body>
-    </html>
+            </td>
+        </tr>
+    </table>
     """
-    components.html(html, height=height, scrolling=True)
+    return html
 
 def print_pdf_button():
     components.html("""
@@ -149,7 +245,7 @@ def print_pdf_button():
     """, height=50)
 
 # =========================================================
-# 2. 구글 시트 연동 클라이언트 (호출 제한 방지 캐시 강화)
+# 2. 구글 시트 연동 클라이언트
 # =========================================================
 @st.cache_resource(show_spinner=False)
 def get_gspread_client():
@@ -171,8 +267,6 @@ def load_sheet_data(sheet_name):
     client = get_gspread_client()
     if not client:
         return pd.DataFrame()
-    
-    # 429 에러 방지용 자동 재시도 로직
     for attempt in range(3):
         try:
             spreadsheet = client.open_by_key(SPREADSHEET_ID)
@@ -189,9 +283,7 @@ def load_sheet_data(sheet_name):
             return pd.DataFrame()
     return pd.DataFrame()
 
-# =========================================================
-# 구글 시트 일괄 저장 처리 함수 (429 Rate Limit 방지 딜레이 적용)
-# =========================================================
+# 구글 시트 일괄 저장 처리 함수
 def save_match_data_to_sheets(match_info, odds_dict, stats_dict):
     client = get_gspread_client()
     if not client:
@@ -232,7 +324,6 @@ def save_match_data_to_sheets(match_info, odds_dict, stats_dict):
         
         saved_count = 0
         
-        # 1~9번 배당 탭 저장
         for bm_name in BOOKMAKERS:
             if bm_name not in odds_dict:
                 continue
@@ -281,11 +372,10 @@ def save_match_data_to_sheets(match_info, odds_dict, stats_dict):
                 ws = spreadsheet.worksheet(bm_name)
                 ws.append_row(row_data_odds, value_input_option="USER_ENTERED")
                 saved_count += 1
-                time.sleep(0.12)  # 구글 429 방지용 미세 딜레이
+                time.sleep(0.12)
             except gspread.exceptions.WorksheetNotFound:
                 pass
 
-        # 10번 경기내용 탭 저장
         h_1h = stats_dict["home_1h"]
         h_2h = stats_dict["home_2h"]
         a_1h = stats_dict["away_1h"]
@@ -296,7 +386,7 @@ def save_match_data_to_sheets(match_info, odds_dict, stats_dict):
         a_sot = stats_dict["away_sot"]
 
         h_1h_ratio = round((h_1h / home_score) * 100, 2) if home_score > 0 else 0.0
-        h_2h_ratio = round((h_2h / home_score) * 100, 2) if home_score > 0 else 0.0
+        h_2h_ratio = round((home_2h / home_score) * 100, 2) if home_score > 0 else 0.0
         a_1h_ratio = round((a_1h / away_score) * 100, 2) if away_score > 0 else 0.0
         a_2h_ratio = round((a_2h / away_score) * 100, 2) if away_score > 0 else 0.0
         
@@ -349,7 +439,7 @@ tab_input, tab_analysis, tab_team_stats, tab_h2h, tab_injuries = st.tabs([
 ])
 
 # =========================================================
-# TAB 1: 데이터 입력 및 저장 (2단계 분할 입력 지원)
+# TAB 1: 데이터 입력 및 저장
 # =========================================================
 with tab_input:
     input_mode = st.radio(
@@ -359,13 +449,9 @@ with tab_input:
     )
     st.markdown("---")
 
-    # -------------------------------------------------------------
-    # 모드 A: 2단계 분할 입력 (대기열/큐 방식)
-    # -------------------------------------------------------------
     if "2단계 분할 입력" in input_mode:
         col_step1, col_step2 = st.columns([1, 1], gap="large")
 
-        # [1단계] 와이즈토토 등록 영역
         with col_step1:
             st.subheader("1️⃣ [1단계] 와이즈토토 배트맨 경기 등록")
             st.caption("와이즈토토를 보면서 배트맨 배당과 경기 정보를 등록해 대기열에 담아둡니다.")
@@ -386,7 +472,7 @@ with tab_input:
                 q_bd_val = qb_d.number_input("무", value=5.10, step=0.01, min_value=0.0, key="q_in_bd")
                 q_ba_val = qb_a.number_input("원정", value=7.50, step=0.01, min_value=0.0, key="q_in_ba")
 
-                st.markdown("**🌐 대상 해외 북메이커 선택 (체크한 업체만 배당 입력창 오픈)**")
+                st.markdown("**🌐 대상 해외 북메이커 선택**")
                 selected_overseas = []
                 cols_chk = st.columns(4)
                 for idx, obm in enumerate(OVERSEAS_BOOKMAKERS):
@@ -406,7 +492,6 @@ with tab_input:
                     else:
                         st.warning("홈팀과 원정팀명을 입력해 주세요.")
 
-            # 대기열 목록 미리보기
             if st.session_state.match_queue:
                 st.markdown("##### 📋 현재 대기열에 등록된 경기 목록")
                 q_preview = []
@@ -424,10 +509,8 @@ with tab_input:
                     st.session_state.current_queue_idx = 0
                     st.rerun()
 
-        # [2단계] 해외 배당 순차 입력 영역
         with col_step2:
             st.subheader("2️⃣ [2단계] 해외 배당 및 경기내용 순차 입력")
-            
             queue_len = len(st.session_state.match_queue)
             cur_idx = st.session_state.current_queue_idx
 
@@ -443,7 +526,6 @@ with tab_input:
                 cur_match = st.session_state.match_queue[cur_idx]
                 next_match = st.session_state.match_queue[cur_idx + 1] if cur_idx + 1 < queue_len else None
 
-                # 현재 작성 경기 안내 배너
                 st.markdown(f"""
                 <div style="background-color: #1e3a8a; color: white; padding: 15px; border-radius: 8px; margin-bottom: 15px;">
                     <div style="font-size: 13px; color: #93c5fd;">[진행 중: {cur_idx + 1} / {queue_len} 번째 경기]</div>
@@ -457,10 +539,8 @@ with tab_input:
                 else:
                     st.caption("🏁 이번 경기가 대기열의 마지막 경기입니다.")
 
-                # 해외 북메이커 배당 입력
-                st.markdown("##### 🏢 해외 배당 입력 (1단계에서 선택된 업체만 표시)")
+                st.markdown("##### 🏢 해외 배당 입력")
                 q_odds_inputs = {"배트맨": cur_match["batman_odds"]}
-                
                 target_bms = cur_match["target_bms"]
                 if target_bms:
                     for i in range(0, len(target_bms), 2):
@@ -482,7 +562,6 @@ with tab_input:
                                         a_val = oa.number_input("원정", value=def_a, step=0.01, min_value=0.0, key=f"q_{cur_idx}_{bm}_a")
                                         q_odds_inputs[bm] = (h_val, d_val, a_val)
 
-                # 경기내용 스탯 입력
                 st.markdown("##### ⚽ 인게임 스탯 (10번 경기내용 탭용)")
                 with st.expander("⚽ 득점 & 포메이션 & 세부 스탯", expanded=True):
                     c_g1, c_g2, c_g3, c_g4 = st.columns(4)
@@ -539,9 +618,6 @@ with tab_input:
                         else:
                             st.error(f"저장 실패: {msg}")
 
-    # -------------------------------------------------------------
-    # 모드 B: 기존 일괄 입력 (1경기씩 즉시 저장)
-    # -------------------------------------------------------------
     else:
         st.subheader("1️⃣ 경기 기본 정보 & 팀명")
         c_m1, c_m2, c_m3 = st.columns(3)
@@ -619,7 +695,7 @@ with tab_input:
                 "home_tac": home_tac, "away_tac": away_tac,
                 "home_shots": home_shots, "away_shots": away_shots,
                 "home_sot": home_sot, "away_sot": away_sot,
-                "home_poss": home_poss, "away_poss": away_poss,
+                "home_poss": home_poss, "away_poss": home_poss,
                 "home_pass": home_pass, "away_pass": away_pass,
                 "home_yc": home_yc, "away_yc": away_yc,
                 "home_rc": home_rc, "away_rc": away_rc,
@@ -776,6 +852,24 @@ with tab_analysis:
     st.subheader(f"2️⃣ [{target_league} 동일 리그 전용] 동일 배당 승률 분석표")
     st.dataframe(df_target_league, use_container_width=True, hide_index=True)
 
+    # [신규 도표 템플릿] 2번 탭 네이버 블로그/카페용 프리미엄 배당 카드 (표준 테이블 방식)
+    with st.expander("📊 / 📋 네이버 블로그/카페용 배당 인포그래픽 도표 복사 (추천 ⭐)", expanded=True):
+        st.markdown("##### 🌟 [네이버 블로그/카페 전용] 배당 & 승률 인포그래픽 카드")
+        st.caption("비교할 해외 북메이커를 선택하면 아래에 화려한 분석 카드가 생성됩니다. 마우스로 드래그하여 블로그에 붙여넣으세요!")
+
+        sel_compare_bm = st.selectbox("비교할 해외 북메이커 선택", OVERSEAS_BOOKMAKERS, index=5, key="sel_compare_bm_t2")
+        
+        b_odds_val = odds_inputs_t2.get("배트맨", (0.0, 0.0, 0.0))
+        o_odds_val = odds_inputs_t2.get(sel_compare_bm, (0.0, 0.0, 0.0))
+        
+        naver_odds_html = generate_naver_odds_infographic(b_odds_val, sel_compare_bm, o_odds_val, league_name=target_league)
+
+        components.html(f"""
+        <div style="background-color: #f8fafc; padding: 15px; border-radius: 8px;">
+            {naver_odds_html}
+        </div>
+        """, height=440, scrolling=True)
+
     st.markdown("---")
     st.subheader("📋 매칭된 과거 경기 상세 리스트 (업체별 전체 내역)")
     
@@ -790,15 +884,6 @@ with tab_analysis:
                 st.dataframe(m_df[show_cols] if show_cols else m_df, use_container_width=True, hide_index=True)
     else:
         st.info(f"💡 현재 선택된 조건에 일치(오차 범위 ±{tol})하는 과거 경기 데이터가 없습니다.")
-
-    # [출력 기능] 2번 탭 블로그 복사 & PDF
-    with st.expander("🖨️ / 📋 현재 분석 결과 블로그/PDF로 출력하기", expanded=False):
-        print_pdf_button()
-        st.markdown("##### 📝 블로그 본문 복사용 (아래 흰색 카드 영역을 마우스로 드래그하여 복사하세요)")
-        render_blog_component("⚽ 동일 배당 승률 분석 리포트", {
-            "[전체 리그 기준] 승률 통계": df_all_league,
-            f"[{target_league} 전용] 승률 통계": df_target_league
-        }, height=420)
 
 # =========================================================
 # TAB 3: 단일 팀별 경기내용 평균계산기
@@ -929,7 +1014,6 @@ with tab_team_stats:
         df_goals = pd.DataFrame(goal_table_data)
         st.dataframe(df_goals, use_container_width=True, hide_index=True)
         
-        # [출력 기능] 3번 탭 블로그 복사 & PDF
         with st.expander("🖨️ / 📋 현재 분석 결과 블로그/PDF로 출력하기", expanded=False):
             print_pdf_button()
             st.markdown("##### 📝 블로그 본문 복사용 (아래 흰색 카드 영역을 마우스로 드래그하여 복사하세요)")
@@ -1004,7 +1088,6 @@ with tab_h2h:
 
             st.info(f"🏆 **역대 상대전적 종합:** **{sel_home_h2h}** 기준 **{total_h2h_count}전 {h_wins}승 {draws}무 {a_wins}패** (승률: {round((h_wins/total_h2h_count)*100, 1)}%)")
 
-            # 1. 맞대결 요약
             def get_h2h_stat_avg(col_h, col_a):
                 home_team_vals, away_team_vals = [], []
                 for _, r in df_h2h_all.iterrows():
@@ -1034,7 +1117,6 @@ with tab_h2h:
             df_h2h_summary = pd.DataFrame(h2h_summary_table)
             st.dataframe(df_h2h_summary, use_container_width=True, hide_index=True)
 
-            # 2. 맞대결 전술 통계표
             st.markdown("---")
             st.markdown("### ♟️ 맞대결 시 양 팀의 전술(포메이션) 사용 횟수")
 
@@ -1062,7 +1144,6 @@ with tab_h2h:
                     df_a_tac = pd.DataFrame({"전술": a_tac_vc.index, "사용 횟수": [f"{c}회 ({round((c/total_h2h_count)*100, 1)}%)" for c in a_tac_vc.values]})
                     st.dataframe(df_a_tac, use_container_width=True, hide_index=True)
 
-            # 3. 득점 비율 통계표
             st.markdown("---")
             st.markdown("### ⚽ 맞대결 전/후반 득점 및 비율(%) 통계표")
 
@@ -1109,19 +1190,26 @@ with tab_h2h:
             df_h2h_goals = pd.DataFrame(h2h_goal_table)
             st.dataframe(df_h2h_goals, use_container_width=True, hide_index=True)
 
-            # [출력 기능] 4번 탭 블로그 복사 & PDF
-            with st.expander("🖨️ / 📋 현재 분석 결과 블로그/PDF로 출력하기", expanded=False):
-                print_pdf_button()
-                st.markdown("##### 📝 블로그 본문 복사용 (아래 흰색 카드 영역을 마우스로 드래그하여 복사하세요)")
-                
-                blog_dict_h2h = {"맞대결 세부 지표 평균": df_h2h_summary}
-                if not df_h_tac.empty: blog_dict_h2h[f"[{sel_home_h2h}] 전술 빈도"] = df_h_tac
-                if not df_a_tac.empty: blog_dict_h2h[f"[{sel_away_h2h}] 전술 빈도"] = df_a_tac
-                blog_dict_h2h["전/후반 득점 및 비율 통계"] = df_h2h_goals
-                
-                render_blog_component(f"⚔️ [{sel_home_h2h}] vs [{sel_away_h2h}] 역대 맞대결 리포트", blog_dict_h2h, height=650)
+            with st.expander("📊 / 📋 네이버 블로그/카페용 인포그래픽 도표 복사 (깨짐 방지)", expanded=True):
+                st.markdown("##### 🌟 [네이버 블로그/카페 100% 호환] 시각화 게이지 도표")
+                st.caption("아래 박스 안의 내용을 마우스로 쭉 드래그해서 네이버 블로그 글쓰기(스마트에디터 ONE)에 붙여넣으시면 막대그래프와 표가 예쁘게 들어갑니다.")
 
-            # 4. 역대 맞대결 리스트
+                gauge_stats = {
+                    "점유율 (%)": (poss_h, poss_a),
+                    "기대득점 (xG)": (xg_h, xg_a),
+                    "유효슈팅 (회)": (sot_h, sot_a),
+                    "패스성공률 (%)": (pass_h, pass_a),
+                    "경기당 평균득점": (avg_h_tot, avg_a_tot)
+                }
+                
+                naver_info_html = generate_naver_match_infographic(sel_home_h2h, sel_away_h2h, gauge_stats, df_h2h_goals)
+                
+                components.html(f"""
+                <div style="background-color: #f8fafc; padding: 15px; border-radius: 8px;">
+                    {naver_info_html}
+                </div>
+                """, height=520, scrolling=True)
+
             st.markdown("---")
             st.markdown("### 📋 역대 맞대결 전체 경기 세부 내역")
             pref_h2h_cols = ["시즌", "리그명", "경기날짜", "홈팀", "원정팀", "전반득점_홈", "후반득점_홈", "전반득점_원", "후반득점_원", "전술_홈", "전술_원", "점유율_홈", "점유율_원", "슈팅_홈", "슈팅_원", "유효슈팅_홈", "유효슈팅_원", "xG_홈", "xG_원"]
@@ -1149,7 +1237,6 @@ with tab_injuries:
 
     col_btn1, col_btn2 = st.columns(2)
 
-    # 1. 신규 부상자 등록 메뉴 (왼쪽)
     with col_btn1:
         with st.expander(f"➕ [{selected_team}] 새로운 결장 선수 추가", expanded=False):
             f_s1, f_s2, f_s3 = st.columns(3)
@@ -1198,7 +1285,6 @@ with tab_injuries:
                 else:
                     st.warning("선수 이름을 최소 1개 이상 입력해 주세요.")
 
-    # 2. 복귀 선수 명단에서 제외 (오른쪽)
     with col_btn2:
         with st.expander(f"🗑️ [{selected_team}] 부상 복귀 선수 명단에서 제외하기", expanded=False):
             if not df_injuries.empty and "팀명" in df_injuries.columns:
@@ -1225,7 +1311,7 @@ with tab_injuries:
                                 try:
                                     spreadsheet = client.open_by_key(SPREADSHEET_ID)
                                     ws_inj = spreadsheet.worksheet(INJURY_SHEET_NAME)
-                                    target_row_index = sel_player_to_remove[0] + 2  # 헤더 1행 + 0-index 보정
+                                    target_row_index = sel_player_to_remove[0] + 2
                                     ws_inj.delete_rows(target_row_index)
                                     time.sleep(0.2)
                                     st.cache_data.clear()
@@ -1298,7 +1384,6 @@ with tab_injuries:
 
             st.markdown(card_text)
 
-            # [출력 기능] 5번 탭 블로그 복사 & PDF
             with st.expander("🖨️ / 📋 현재 분석 결과 블로그/PDF로 출력하기", expanded=False):
                 print_pdf_button()
                 st.markdown("##### 📝 블로그 본문 텍스트 복사용 (텍스트 박스 클릭 후 전체 복사)")
