@@ -57,86 +57,9 @@ st.markdown("""
 st.markdown("<h2 style='text-align: center; margin-bottom: 25px;'>⚽ 축구 9대 배당 업체 & 경기 세부 스탯 통합 분석 허브</h2>", unsafe_allow_html=True)
 
 # =========================================================
-# 공통 헬퍼 함수: 다크모드 완벽 격리 블로그용 HTML 생성 뷰어
+# 2번 탭 전용: 배당 인포그래픽 도표 (팀명 반영 지원 ⭐)
 # =========================================================
-def render_blog_component(title, df_dict, height=450):
-    html = f"""
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <meta charset="utf-8">
-        <style>
-            body {{
-                background-color: #ffffff !important;
-                color: #111111 !important;
-                font-family: -apple-system, BlinkMacSystemFont, "Malgun Gothic", "맑은 고딕", sans-serif;
-                margin: 0;
-                padding: 15px;
-            }}
-            .report-card {{
-                background: #ffffff;
-                border: 1px solid #dcdcdc;
-                border-radius: 8px;
-                padding: 18px;
-            }}
-            h3 {{
-                color: #111111 !important;
-                border-bottom: 2px solid #222222;
-                padding-bottom: 8px;
-                margin-top: 0;
-                margin-bottom: 16px;
-                font-size: 17px;
-            }}
-            h4 {{
-                color: #0056b3 !important;
-                margin-bottom: 8px;
-                margin-top: 15px;
-                font-size: 14px;
-            }}
-            table {{
-                border-collapse: collapse;
-                width: 100%;
-                font-size: 13px;
-                text-align: center;
-                border: 1px solid #cccccc;
-                margin-bottom: 18px;
-                background-color: #ffffff !important;
-            }}
-            th {{
-                background-color: #f1f3f5 !important;
-                color: #111111 !important;
-                padding: 8px 6px;
-                border: 1px solid #cccccc;
-                font-weight: bold;
-            }}
-            td {{
-                background-color: #ffffff !important;
-                color: #222222 !important;
-                padding: 8px 6px;
-                border: 1px solid #e5e5e5;
-            }}
-        </style>
-    </head>
-    <body>
-        <div class="report-card">
-            <h3>{title}</h3>
-    """
-    for subtitle, df in df_dict.items():
-        if df is not None and not df.empty:
-            table_html = df.to_html(index=False, escape=False)
-            table_html = table_html.replace('<table border="1" class="dataframe">', '<table>')
-            html += f"<h4>▶ {subtitle}</h4>"
-            html += table_html
-            
-    html += """
-        </div>
-    </body>
-    </html>
-    """
-    components.html(html, height=height, scrolling=True)
-
-# 2번 탭 전용: 네이버 블로그/카페 100% 안깨지는 표준 테이블 배당 도표 (종합가중평균 대응)
-def generate_naver_odds_infographic(b_odds, overseas_name, o_odds, league_name=""):
+def generate_naver_odds_infographic(b_odds, overseas_name, o_odds, league_name="", home_team="", away_team=""):
     b_h, b_d, b_a = b_odds
     o_h, o_d, o_a = o_odds
 
@@ -171,6 +94,15 @@ def generate_naver_odds_infographic(b_odds, overseas_name, o_odds, league_name="
     diff_a_str = f"+{diff_a}" if diff_a > 0 else f"{diff_a}"
 
     lg_badge = f"<span style='background-color: #2563eb; color: #ffffff; padding: 2px 7px; border-radius: 4px; font-size: 11px; margin-right: 6px;'>{league_name}</span>" if league_name else ""
+    
+    match_title = ""
+    if home_team or away_team:
+        match_title = f"<div style='font-size: 19px; font-weight: bold; color: #0f172a; margin-top: 4px;'><span style='color: #dc2626;'>{home_team}</span> <span style='font-size: 14px; color: #64748b;'>VS</span> <span style='color: #2563eb;'>{away_team}</span></div>"
+    else:
+        match_title = f"<div style='font-size: 18px; font-weight: bold; color: #0f172a; margin-top: 4px;'>{lg_badge}배당 및 승률 정밀 분석 리포트</div>"
+
+    h_col_name = f"홈 ({home_team})" if home_team else "홈 승 (Home)"
+    a_col_name = f"원정 ({away_team})" if away_team else "원정승 (Away)"
 
     html = f"""
     <table align="center" border="0" cellpadding="0" cellspacing="0" style="width: 100%; max-width: 620px; margin: 0 auto; font-family: 'Malgun Gothic', '맑은 고딕', AppleSDGothicNeo-Regular, sans-serif; background-color: #ffffff; border: 1px solid #cbd5e1; border-radius: 10px; border-collapse: separate; color: #0f172a;">
@@ -180,8 +112,8 @@ def generate_naver_odds_infographic(b_odds, overseas_name, o_odds, league_name="
                     <tr>
                         <td align="center" style="padding-bottom: 10px;">
                             <div style="font-size: 11px; font-weight: bold; color: #64748b; letter-spacing: 1px;">ODDS & PROBABILITY REPORT</div>
-                            <div style="font-size: 18px; font-weight: bold; color: #0f172a; margin-top: 4px;">{lg_badge}배당 및 승률 정밀 분석 리포트</div>
-                            <div style="font-size: 12px; color: #475569; margin-top: 4px;">기준: <b>배트맨</b> vs <b>{overseas_name.upper()}</b></div>
+                            {match_title}
+                            <div style="font-size: 12px; color: #475569; margin-top: 4px;">{lg_badge}기준: <b>배트맨</b> vs <b>{overseas_name.upper()}</b></div>
                         </td>
                     </tr>
                 </table>
@@ -197,18 +129,18 @@ def generate_naver_odds_infographic(b_odds, overseas_name, o_odds, league_name="
 
                 <table border="0" cellpadding="0" cellspacing="0" style="width: 100%; font-size: 12px; font-weight: bold; margin-bottom: 18px;">
                     <tr>
-                        <td align="left" style="width: 33%; color: #dc2626;">🔴 홈 승 {round(b_prob_h, 1)}%</td>
+                        <td align="left" style="width: 33%; color: #dc2626;">🔴 홈 {round(b_prob_h, 1)}%</td>
                         <td align="center" style="width: 34%; color: #059669;">🟢 무승부 {round(b_prob_d, 1)}%</td>
-                        <td align="right" style="width: 33%; color: #2563eb;">🔵 원정승 {round(b_prob_a, 1)}%</td>
+                        <td align="right" style="width: 33%; color: #2563eb;">🔵 원정 {round(b_prob_a, 1)}%</td>
                     </tr>
                 </table>
 
                 <table border="1" cellpadding="0" cellspacing="0" style="width: 100%; border-collapse: collapse; font-size: 13px; text-align: center; border: 1px solid #cbd5e1; margin-bottom: 14px;">
                     <tr style="background-color: #f8fafc;">
                         <th style="padding: 8px 4px; border: 1px solid #cbd5e1; color: #334155;">구 분</th>
-                        <th style="padding: 8px 4px; border: 1px solid #cbd5e1; color: #dc2626;">홈 승 (Home)</th>
+                        <th style="padding: 8px 4px; border: 1px solid #cbd5e1; color: #dc2626;">{h_col_name}</th>
                         <th style="padding: 8px 4px; border: 1px solid #cbd5e1; color: #059669;">무승부 (Draw)</th>
-                        <th style="padding: 8px 4px; border: 1px solid #cbd5e1; color: #2563eb;">원정승 (Away)</th>
+                        <th style="padding: 8px 4px; border: 1px solid #cbd5e1; color: #2563eb;">{a_col_name}</th>
                     </tr>
                     <tr>
                         <td style="padding: 8px 4px; border: 1px solid #e2e8f0; background-color: #f8fafc; font-weight: bold;">배트맨 배당</td>
@@ -248,22 +180,93 @@ def generate_naver_odds_infographic(b_odds, overseas_name, o_odds, league_name="
     """
     return html
 
-# 4번 탭 전용: 네이버 블로그/카페 100% 안깨지는 맞대결 도표
-def generate_naver_match_infographic(home_team, away_team, stats_data, goal_df=None):
+# 3번 탭 전용: 단일 팀 시즌 평균 리포트 인포그래픽 도표
+def generate_naver_team_stats_infographic(team_name, season, league, match_count_info, df_summary, tac_df, df_goals):
+    html = f"""
+    <table align="center" border="0" cellpadding="0" cellspacing="0" style="width: 100%; max-width: 620px; margin: 0 auto; font-family: 'Malgun Gothic', '맑은 고딕', AppleSDGothicNeo-Regular, sans-serif; background-color: #ffffff; border: 1px solid #cbd5e1; border-radius: 10px; border-collapse: separate; color: #0f172a;">
+        <tr>
+            <td style="padding: 20px;">
+                <table border="0" cellpadding="0" cellspacing="0" style="width: 100%; border-bottom: 2px solid #0f172a; margin-bottom: 16px;">
+                    <tr>
+                        <td align="center" style="padding-bottom: 10px;">
+                            <div style="font-size: 11px; font-weight: bold; color: #2563eb; letter-spacing: 1px;">TEAM PERFORMANCE STATS</div>
+                            <div style="font-size: 19px; font-weight: bold; color: #0f172a; margin-top: 4px;">
+                                📋 [{team_name}] 시즌 지표 종합 리포트
+                            </div>
+                            <div style="font-size: 12px; color: #64748b; margin-top: 4px;">
+                                시즌: <b>{season}</b> | 리그: <b>{league}</b> ({match_count_info})
+                            </div>
+                        </td>
+                    </tr>
+                </table>
+
+                <div style="font-size: 13px; font-weight: bold; color: #1e293b; margin-bottom: 6px;">📊 주요 세부 경기 지표 평균</div>
+    """
+    if df_summary is not None and not df_summary.empty:
+        table_html = df_summary.to_html(index=False, escape=False)
+        table_html = table_html.replace('<table border="1" class="dataframe">', '<table border="1" cellpadding="0" cellspacing="0" style="width: 100%; border-collapse: collapse; font-size: 12px; text-align: center; border: 1px solid #cbd5e1; margin-bottom: 16px;">')
+        table_html = table_html.replace('<th>', '<th style="background-color: #f8fafc; color: #334155; padding: 7px 3px; border: 1px solid #cbd5e1; font-weight: bold;">')
+        table_html = table_html.replace('<td>', '<td style="background-color: #ffffff; color: #1e293b; padding: 6px 3px; border: 1px solid #e2e8f0;">')
+        html += table_html
+
+    if tac_df is not None and not tac_df.empty:
+        html += f"""
+                <div style="font-size: 13px; font-weight: bold; color: #1e293b; margin-top: 10px; margin-bottom: 6px;">♟️ 팀 전술(포메이션) 사용 비율</div>
+                <table border="1" cellpadding="0" cellspacing="0" style="width: 100%; border-collapse: collapse; font-size: 12px; text-align: center; border: 1px solid #cbd5e1; margin-bottom: 16px;">
+                    <tr style="background-color: #f8fafc;">
+                        <th style="padding: 7px 3px; border: 1px solid #cbd5e1; color: #334155;">포메이션</th>
+                        <th style="padding: 7px 3px; border: 1px solid #cbd5e1; color: #334155;">전체 사용(비율)</th>
+                        <th style="padding: 7px 3px; border: 1px solid #cbd5e1; color: #dc2626;">홈 경기</th>
+                        <th style="padding: 7px 3px; border: 1px solid #cbd5e1; color: #2563eb;">원정 경기</th>
+                    </tr>
+        """
+        for _, r in tac_df.iterrows():
+            html += f"""
+                    <tr>
+                        <td style="padding: 6px 3px; border: 1px solid #e2e8f0; font-weight: bold;">{r.get('전술 (포메이션)', '-')}</td>
+                        <td style="padding: 6px 3px; border: 1px solid #e2e8f0; color: #0284c7; font-weight: bold;">{r.get('전체 사용 횟수', '-')}</td>
+                        <td style="padding: 6px 3px; border: 1px solid #e2e8f0;">{r.get('홈경기 사용', '-')}</td>
+                        <td style="padding: 6px 3px; border: 1px solid #e2e8f0;">{r.get('원정경기 사용', '-')}</td>
+                    </tr>
+            """
+        html += "</table>"
+
+    if df_goals is not None and not df_goals.empty:
+        goal_table_html = df_goals.to_html(index=False, escape=False)
+        goal_table_html = goal_table_html.replace('<table border="1" class="dataframe">', '<table border="1" cellpadding="0" cellspacing="0" style="width: 100%; border-collapse: collapse; font-size: 12px; text-align: center; border: 1px solid #cbd5e1; margin-bottom: 6px;">')
+        goal_table_html = goal_table_html.replace('<th>', '<th style="background-color: #f8fafc; color: #334155; padding: 7px 3px; border: 1px solid #cbd5e1; font-weight: bold;">')
+        goal_table_html = goal_table_html.replace('<td>', '<td style="background-color: #ffffff; color: #1e293b; padding: 6px 3px; border: 1px solid #e2e8f0;">')
+        html += f"""
+                <div style="font-size: 13px; font-weight: bold; color: #1e293b; margin-top: 10px; margin-bottom: 6px;">⚽ 전/후반 득점 통계표</div>
+                {goal_table_html}
+        """
+
+    html += """
+            </td>
+        </tr>
+    </table>
+    """
+    return html
+
+# 4번 탭 전용: 맞대결 인포그래픽 도표
+def generate_naver_match_infographic(home_team, away_team, stats_data, goal_df=None, h2h_record_str=""):
     html = f"""
     <table align="center" border="0" cellpadding="0" cellspacing="0" style="width: 100%; max-width: 620px; margin: 0 auto; font-family: 'Malgun Gothic', '맑은 고딕', AppleSDGothicNeo-Regular, sans-serif; background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 10px; border-collapse: separate; color: #1e293b;">
         <tr>
             <td style="padding: 20px;">
-                <table border="0" cellpadding="0" cellspacing="0" style="width: 100%; border-bottom: 2px solid #0f172a; margin-bottom: 18px;">
+                <table border="0" cellpadding="0" cellspacing="0" style="width: 100%; border-bottom: 2px solid #0f172a; margin-bottom: 14px;">
                     <tr>
                         <td align="center" style="padding-bottom: 10px;">
                             <div style="font-size: 11px; font-weight: bold; color: #2563eb; letter-spacing: 1px;">HEAD TO HEAD STATS</div>
                             <div style="font-size: 19px; font-weight: bold; color: #0f172a; margin-top: 4px;">
                                 <span style="color: #dc2626;">{home_team}</span> <span style="font-size: 14px; color: #64748b;">VS</span> <span style="color: #2563eb;">{away_team}</span>
                             </div>
+                            {f'<div style="font-size: 12px; color: #475569; margin-top: 5px;">🏆 상대 전적: <b>{h2h_record_str}</b></div>' if h2h_record_str else ''}
                         </td>
                     </tr>
                 </table>
+
+                <div style="font-size: 13px; font-weight: bold; color: #1e293b; margin-bottom: 8px;">⚔️ 양 팀 맞대결 세부 지표 비교</div>
     """
     for label, (val_h, val_a) in stats_data.items():
         tot = val_h + val_a
@@ -293,7 +296,7 @@ def generate_naver_match_infographic(home_team, away_team, stats_data, goal_df=N
         table_html = table_html.replace('<td>', '<td style="background-color: #ffffff; color: #1e293b; padding: 6px 3px; border: 1px solid #e2e8f0;">')
 
         html += f"""
-                <div style="font-size: 13px; font-weight: bold; color: #0f172a; margin-top: 14px; margin-bottom: 6px;">⚽ 전/후반 득점 통계표</div>
+                <div style="font-size: 13px; font-weight: bold; color: #0f172a; margin-top: 14px; margin-bottom: 6px;">⚽ 맞대결 전/후반 득점 통계표</div>
                 {table_html}
         """
 
@@ -304,12 +307,105 @@ def generate_naver_match_infographic(home_team, away_team, stats_data, goal_df=N
     """
     return html
 
-def print_pdf_button():
-    components.html("""
-        <button onclick="window.parent.print()" style="width: 100%; padding: 11px; font-size: 15px; font-weight: bold; background-color: #1f2937; color: #ffffff; border: none; border-radius: 6px; cursor: pointer; box-shadow: 0 3px 5px rgba(0,0,0,0.15);">
-            🖨️ 현재 화면 PDF로 저장 / 보고서 인쇄하기
-        </button>
-    """, height=50)
+# 5번 탭 전용: 부상자 인포그래픽 도표
+def generate_naver_injury_infographic(team_name, league_title, confirmed_list, doubt_list):
+    html = f"""
+    <table align="center" border="0" cellpadding="0" cellspacing="0" style="width: 100%; max-width: 620px; margin: 0 auto; font-family: 'Malgun Gothic', '맑은 고딕', AppleSDGothicNeo-Regular, sans-serif; background-color: #ffffff; border: 1px solid #cbd5e1; border-radius: 10px; border-collapse: separate; color: #0f172a;">
+        <tr>
+            <td style="padding: 20px;">
+                <table border="0" cellpadding="0" cellspacing="0" style="width: 100%; border-bottom: 2px solid #0f172a; margin-bottom: 16px;">
+                    <tr>
+                        <td align="center" style="padding-bottom: 10px;">
+                            <div style="font-size: 11px; font-weight: bold; color: #dc2626; letter-spacing: 1px;">INJURY & SUSPENSION REPORT</div>
+                            <div style="font-size: 18px; font-weight: bold; color: #0f172a; margin-top: 4px;">
+                                🚑 [{team_name}] 결장 및 결장의심 명단
+                            </div>
+                            <div style="font-size: 12px; color: #64748b; margin-top: 4px;">기준: <b>{league_title}</b></div>
+                        </td>
+                    </tr>
+                </table>
+    """
+
+    if confirmed_list:
+        html += """
+                <div style="font-size: 13px; font-weight: bold; color: #dc2626; margin-bottom: 6px;">🔴 결장 확정 명단</div>
+                <table border="1" cellpadding="0" cellspacing="0" style="width: 100%; border-collapse: collapse; font-size: 12px; text-align: center; border: 1px solid #cbd5e1; margin-bottom: 16px;">
+                    <tr style="background-color: #fee2e2;">
+                        <th style="padding: 7px 3px; border: 1px solid #cbd5e1; color: #991b1b;">선수명</th>
+                        <th style="padding: 7px 3px; border: 1px solid #cbd5e1; color: #991b1b;">포지션/역할</th>
+                        <th style="padding: 7px 3px; border: 1px solid #cbd5e1; color: #991b1b;">시즌 기록</th>
+                        <th style="padding: 7px 3px; border: 1px solid #cbd5e1; color: #991b1b;">사유/비고</th>
+                    </tr>
+        """
+        for p in confirmed_list:
+            kr = p.get("선수한글명", "")
+            en = p.get("선수영문명", "")
+            name_str = f"<b>{kr}</b><br><span style='font-size: 10px; color: #64748b;'>{en}</span>" if kr and en else f"<b>{kr or en}</b>"
+            pos = p.get("포지션", "MF")
+            role = p.get("역할", "-")
+            start = p.get("선발", 0)
+            sub = p.get("교체", 0)
+            goals = p.get("골", 0)
+            assists = p.get("도움", 0)
+            reason = p.get("결장사유", p.get("사유", "부상"))
+            note = p.get("특이사항", "-")
+            note_str = f"<br><span style='font-size: 10px; color: #64748b;'>({note})</span>" if note != "-" else ""
+
+            role_badge = f"<span style='background-color: #ef4444; color: white; padding: 1px 5px; border-radius: 3px; font-size: 10px;'>{role}</span>" if "주전" in str(role) else f"<span style='background-color: #64748b; color: white; padding: 1px 5px; border-radius: 3px; font-size: 10px;'>{role}</span>"
+
+            html += f"""
+                    <tr>
+                        <td style="padding: 6px 3px; border: 1px solid #e2e8f0;">{name_str}</td>
+                        <td style="padding: 6px 3px; border: 1px solid #e2e8f0;">`{pos}`<br>{role_badge}</td>
+                        <td style="padding: 6px 3px; border: 1px solid #e2e8f0;">{start}선발 {sub}교체<br><b>{goals}골 {assists}도움</b></td>
+                        <td style="padding: 6px 3px; border: 1px solid #e2e8f0; color: #dc2626;"><b>{reason}</b>{note_str}</td>
+                    </tr>
+            """
+        html += "</table>"
+
+    if doubt_list:
+        html += """
+                <div style="font-size: 13px; font-weight: bold; color: #d97706; margin-bottom: 6px;">🟡 결장 의심 명단 (GTD)</div>
+                <table border="1" cellpadding="0" cellspacing="0" style="width: 100%; border-collapse: collapse; font-size: 12px; text-align: center; border: 1px solid #cbd5e1; margin-bottom: 10px;">
+                    <tr style="background-color: #fef3c7;">
+                        <th style="padding: 7px 3px; border: 1px solid #cbd5e1; color: #92400e;">선수명</th>
+                        <th style="padding: 7px 3px; border: 1px solid #cbd5e1; color: #92400e;">포지션/역할</th>
+                        <th style="padding: 7px 3px; border: 1px solid #cbd5e1; color: #92400e;">시즌 기록</th>
+                        <th style="padding: 7px 3px; border: 1px solid #cbd5e1; color: #92400e;">사유/비고</th>
+                    </tr>
+        """
+        for p in doubt_list:
+            kr = p.get("선수한글명", "")
+            en = p.get("선수영문명", "")
+            name_str = f"<b>{kr}</b><br><span style='font-size: 10px; color: #64748b;'>{en}</span>" if kr and en else f"<b>{kr or en}</b>"
+            pos = p.get("포지션", "MF")
+            role = p.get("역할", "-")
+            start = p.get("선발", 0)
+            sub = p.get("교체", 0)
+            goals = p.get("골", 0)
+            assists = p.get("도움", 0)
+            reason = p.get("결장사유", p.get("사유", "결장의심"))
+            note = p.get("특이사항", "-")
+            note_str = f"<br><span style='font-size: 10px; color: #64748b;'>({note})</span>" if note != "-" else ""
+
+            role_badge = f"<span style='background-color: #f59e0b; color: white; padding: 1px 5px; border-radius: 3px; font-size: 10px;'>{role}</span>"
+
+            html += f"""
+                    <tr>
+                        <td style="padding: 6px 3px; border: 1px solid #e2e8f0;">{name_str}</td>
+                        <td style="padding: 6px 3px; border: 1px solid #e2e8f0;">`{pos}`<br>{role_badge}</td>
+                        <td style="padding: 6px 3px; border: 1px solid #e2e8f0;">{start}선발 {sub}교체<br><b>{goals}골 {assists}도움</b></td>
+                        <td style="padding: 6px 3px; border: 1px solid #e2e8f0; color: #d97706;"><b>{reason}</b>{note_str}</td>
+                    </tr>
+            """
+        html += "</table>"
+
+    html += """
+            </td>
+        </tr>
+    </table>
+    """
+    return html
 
 # =========================================================
 # 2. 구글 시트 연동 클라이언트
@@ -762,7 +858,7 @@ with tab_input:
                 "home_tac": home_tac, "away_tac": away_tac,
                 "home_shots": home_shots, "away_shots": away_shots,
                 "home_sot": home_sot, "away_sot": away_sot,
-                "home_poss": home_poss, "away_poss": away_poss,
+                "home_poss": home_poss, "away_poss": home_poss,
                 "home_pass": home_pass, "away_pass": away_pass,
                 "home_yc": home_yc, "away_yc": away_yc,
                 "home_rc": home_rc, "away_rc": away_rc,
@@ -777,14 +873,15 @@ with tab_input:
                     st.error(f"저장 중 오류 발생: {msg}")
 
 # =========================================================
-# TAB 2: 독립 배당 분석 랩
+# TAB 2: 독립 배당 분석 랩 (팀명 입력 지원 ⭐)
 # =========================================================
 with tab_analysis:
     st.subheader("🔬 2번 탭: 9대 북메이커 배당 입력 및 승률 분석")
 
-    c_an_l1, c_an_l2 = st.columns([1, 2])
-    target_league = c_an_l1.text_input("🔍 분석 대상 리그명 (동일리그 필터용)", value="PL", key="t2_target_league")
-    c_an_l2.info(f"💡 현재 분석 기준: **[전체 리그]** 및 **[{target_league} 리그 전용]**으로 각각 분리되어 자동 계산됩니다.")
+    c_an_l1, c_an_l2, c_an_l3 = st.columns([1, 1, 1])
+    target_league = c_an_l1.text_input("🔍 리그명", value="PL", key="t2_target_league")
+    t2_home_team = c_an_l2.text_input("🏠 홈팀명 (블로그 도표용)", value="리버풀", key="t2_home_team")
+    t2_away_team = c_an_l3.text_input("🚗 원정팀명 (블로그 도표용)", value="본머스", key="t2_away_team")
 
     st.markdown("##### 🏢 분석할 9대 북메이커 배당 입력")
     odds_inputs_t2 = {}
@@ -919,17 +1016,16 @@ with tab_analysis:
     st.subheader(f"2️⃣ [{target_league} 동일 리그 전용] 동일 배당 승률 분석표")
     st.dataframe(df_target_league, use_container_width=True, hide_index=True)
 
-    # [신규 도표 템플릿] 2번 탭 네이버 블로그/카페용 프리미엄 배당 카드 (종합 가중평균 옵션 추가 ⭐)
+    # 2번 탭 네이버 블로그/카페용 프리미엄 배당 카드 (홈/원정 팀명 반영 ⭐)
     with st.expander("📊 / 📋 네이버 블로그/카페용 배당 인포그래픽 도표 복사 (추천 ⭐)", expanded=True):
         st.markdown("##### 🌟 [네이버 블로그/카페 전용] 배당 & 승률 인포그래픽 카드")
-        st.caption("비교할 대상(개별 북메이커 또는 해외 전체 평균)을 선택하면 아래에 화려한 분석 카드가 생성됩니다. 마우스로 드래그하여 블로그에 붙여넣으세요!")
+        st.caption("상단에 입력한 [홈팀명]과 [원정팀명]이 카드에 자동 반영됩니다. 마우스로 드래그하여 블로그에 붙여넣으세요!")
 
         compare_options = ["🌟 해외 종합 가중평균 (전체 평균)"] + OVERSEAS_BOOKMAKERS
         sel_compare_target = st.selectbox("비교할 대상 선택", compare_options, index=0, key="sel_compare_bm_t2")
 
         b_odds_val = odds_inputs_t2.get("배트맨", (0.0, 0.0, 0.0))
 
-        # 종합 가중평균 선택 시 해외 8개사의 유효 배당 평균값 계산
         if "종합 가중평균" in sel_compare_target:
             valid_h, valid_d, valid_a = [], [], []
             for obm in OVERSEAS_BOOKMAKERS:
@@ -952,13 +1048,16 @@ with tab_analysis:
             o_odds_val = odds_inputs_t2.get(sel_compare_target, (0.0, 0.0, 0.0))
             display_name = sel_compare_target
 
-        naver_odds_html = generate_naver_odds_infographic(b_odds_val, display_name, o_odds_val, league_name=target_league)
+        naver_odds_html = generate_naver_odds_infographic(
+            b_odds_val, display_name, o_odds_val, 
+            league_name=target_league, home_team=t2_home_team.strip(), away_team=t2_away_team.strip()
+        )
 
         components.html(f"""
         <div style="background-color: #f8fafc; padding: 15px; border-radius: 8px;">
             {naver_odds_html}
         </div>
-        """, height=440, scrolling=True)
+        """, height=450, scrolling=True)
 
     st.markdown("---")
     st.subheader("📋 매칭된 과거 경기 상세 리스트 (업체별 전체 내역)")
@@ -976,7 +1075,7 @@ with tab_analysis:
         st.info(f"💡 현재 선택된 조건에 일치(오차 범위 ±{tol})하는 과거 경기 데이터가 없습니다.")
 
 # =========================================================
-# TAB 3: 단일 팀별 경기내용 평균계산기
+# TAB 3: 단일 팀별 경기내용 평균계산기 (네이버 도표 지원 ⭐)
 # =========================================================
 with tab_team_stats:
     st.subheader("📈 팀별 과거 세부 경기내용 평균계산기 (단일 팀 기준)")
@@ -1104,20 +1203,28 @@ with tab_team_stats:
         df_goals = pd.DataFrame(goal_table_data)
         st.dataframe(df_goals, use_container_width=True, hide_index=True)
         
-        with st.expander("🖨️ / 📋 현재 분석 결과 블로그/PDF로 출력하기", expanded=False):
-            print_pdf_button()
-            st.markdown("##### 📝 블로그 본문 복사용 (아래 흰색 카드 영역을 마우스로 드래그하여 복사하세요)")
-            render_blog_component(f"📊 [{sel_team}] 시즌 평균 지표 리포트", {
-                "지표 종합 요약": df_summary,
-                "전술(포메이션) 사용 비율": tac_df,
-                "전/후반 득점 통계": df_goals
-            }, height=550)
+        # 3번 탭 네이버 블로그/카페용 프리미엄 팀 리포트 카드
+        with st.expander("📊 / 📋 네이버 블로그/카페용 팀 지표 인포그래픽 도표 복사 (추천 ⭐)", expanded=True):
+            st.markdown(f"##### 🌟 [네이버 블로그/카페 전용] [{sel_team}] 시즌 지표 인포그래픽 카드")
+            st.caption("아래 박스 안의 내용을 마우스로 쭉 드래그해서 네이버 블로그 글쓰기(스마트에디터 ONE)에 붙여넣으세요!")
+
+            match_info_str = f"총 {total_cnt}경기: 홈 {h_cnt} / 원정 {a_cnt}"
+            naver_team_html = generate_naver_team_stats_infographic(
+                sel_team, sel_season, sel_league, match_info_str, 
+                df_summary, tac_df, df_goals
+            )
+
+            components.html(f"""
+            <div style="background-color: #f8fafc; padding: 15px; border-radius: 8px;">
+                {naver_team_html}
+            </div>
+            """, height=580, scrolling=True)
             
     else:
         st.info("💡 10번 '경기내용' 탭에 아직 데이터가 없습니다.")
 
 # =========================================================
-# TAB 4: 홈 vs 원정 맞대결(H2H) 종합 분석
+# TAB 4: 홈 vs 원정 맞대결(H2H) 종합 분석 (네이버 도표 지원 ⭐)
 # =========================================================
 with tab_h2h:
     st.subheader("⚔️ 홈팀 vs 원정팀 역대 맞대결(H2H) 종합 분석 및 세부 지표")
@@ -1176,7 +1283,8 @@ with tab_h2h:
                     elif a_g == h_g: draws += 1
                     else: a_wins += 1
 
-            st.info(f"🏆 **역대 상대전적 종합:** **{sel_home_h2h}** 기준 **{total_h2h_count}전 {h_wins}승 {draws}무 {a_wins}패** (승률: {round((h_wins/total_h2h_count)*100, 1)}%)")
+            h2h_record_text = f"{sel_home_h2h} 기준 {total_h2h_count}전 {h_wins}승 {draws}무 {a_wins}패 (승률: {round((h_wins/total_h2h_count)*100, 1)}%)"
+            st.info(f"🏆 **역대 상대전적 종합:** {h2h_record_text}")
 
             def get_h2h_stat_avg(col_h, col_a):
                 home_team_vals, away_team_vals = [], []
@@ -1280,9 +1388,9 @@ with tab_h2h:
             df_h2h_goals = pd.DataFrame(h2h_goal_table)
             st.dataframe(df_h2h_goals, use_container_width=True, hide_index=True)
 
-            with st.expander("📊 / 📋 네이버 블로그/카페용 인포그래픽 도표 복사 (깨짐 방지)", expanded=True):
-                st.markdown("##### 🌟 [네이버 블로그/카페 100% 호환] 시각화 게이지 도표")
-                st.caption("아래 박스 안의 내용을 마우스로 쭉 드래그해서 네이버 블로그 글쓰기(스마트에디터 ONE)에 붙여넣으시면 막대그래프와 표가 예쁘게 들어갑니다.")
+            with st.expander("📊 / 📋 네이버 블로그/카페용 맞대결 인포그래픽 도표 복사 (추천 ⭐)", expanded=True):
+                st.markdown("##### 🌟 [네이버 블로그/카페 전용] 맞대결 시각화 게이지 도표")
+                st.caption("아래 박스 안의 내용을 마우스로 쭉 드래그해서 네이버 블로그 글쓰기(스마트에디터 ONE)에 붙여넣으세요!")
 
                 gauge_stats = {
                     "점유율 (%)": (poss_h, poss_a),
@@ -1292,7 +1400,9 @@ with tab_h2h:
                     "경기당 평균득점": (avg_h_tot, avg_a_tot)
                 }
                 
-                naver_info_html = generate_naver_match_infographic(sel_home_h2h, sel_away_h2h, gauge_stats, df_h2h_goals)
+                naver_info_html = generate_naver_match_infographic(
+                    sel_home_h2h, sel_away_h2h, gauge_stats, df_h2h_goals, h2h_record_str=h2h_record_text
+                )
                 
                 components.html(f"""
                 <div style="background-color: #f8fafc; padding: 15px; border-radius: 8px;">
@@ -1312,7 +1422,7 @@ with tab_h2h:
         st.info("💡 10번 '경기내용' 탭에 데이터가 없습니다.")
 
 # =========================================================
-# TAB 5: 11번 구글 시트 연동 팀별 부상자/결장자 카드 리포트
+# TAB 5: 11번 구글 시트 연동 팀별 부상자/결장자 카드 리포트 (네이버 도표 지원 ⭐)
 # =========================================================
 with tab_injuries:
     st.subheader("🚑 팀별 부상자/결장자 명단 및 카드 리포트 (11번 시트 연동)")
@@ -1426,6 +1536,21 @@ with tab_injuries:
             confirmed_players = filtered_df[filtered_df[reason_col] != "결장의심"].to_dict("records")
             doubt_players = filtered_df[filtered_df[reason_col] == "결장의심"].to_dict("records")
 
+            # 5번 탭 네이버 블로그/카페용 프리미엄 부상자 인포그래픽 카드
+            with st.expander("📊 / 📋 네이버 블로그/카페용 결장자 인포그래픽 도표 복사 (추천 ⭐)", expanded=True):
+                st.markdown(f"##### 🌟 [네이버 블로그/카페 전용] [{selected_team}] 결장자 리포트 카드")
+                st.caption("아래 박스 안의 내용을 마우스로 쭉 드래그해서 네이버 블로그 글쓰기(스마트에디터 ONE)에 붙여넣으세요!")
+
+                naver_inj_html = generate_naver_injury_infographic(
+                    selected_team, inj_league_title, confirmed_players, doubt_players
+                )
+
+                components.html(f"""
+                <div style="background-color: #f8fafc; padding: 15px; border-radius: 8px;">
+                    {naver_inj_html}
+                </div>
+                """, height=520, scrolling=True)
+
             card_text = f"### 🚑 {selected_team} 결장 & 결장의심 명단\n"
             card_text += f"*({inj_league_title})*\n\n"
 
@@ -1443,10 +1568,8 @@ with tab_injuries:
                     assists = p.get("도움", 0)
                     reason = p.get(reason_col, "부상")
                     note = p.get("특이사항", "-")
-                    
                     icon = "👑" if "주전" in role else "🏃"
                     note_str = f" *({note})*" if note != "-" else ""
-                    
                     card_text += f"* {icon} **{name_str}** | `{pos}` · `{role}`\n"
                     card_text += f"  * 📊 **기록**: {start}선발 {sub}교체 / {goals}골 {assists}도움\n"
                     card_text += f"  * ⚠️ **사유**: {reason}{note_str}\n\n"
@@ -1465,19 +1588,13 @@ with tab_injuries:
                     assists = p.get("도움", 0)
                     reason = p.get(reason_col, "결장의심")
                     note = p.get("특이사항", "-")
-                    
                     note_str = f" *({note})*" if note != "-" else ""
-                    
                     card_text += f"* ❓ **{name_str}** | `{pos}` · `{role}`\n"
                     card_text += f"  * 📊 **기록**: {start}선발 {sub}교체 / {goals}골 {assists}도움\n"
                     card_text += f"  * ⚠️ **사유**: {reason}{note_str}\n\n"
 
-            st.markdown(card_text)
-
-            with st.expander("🖨️ / 📋 현재 분석 결과 블로그/PDF로 출력하기", expanded=False):
-                print_pdf_button()
-                st.markdown("##### 📝 블로그 본문 텍스트 복사용 (텍스트 박스 클릭 후 전체 복사)")
-                st.text_area("복사창", value=card_text, height=350)
+            with st.expander("📝 심플 텍스트 복사용"):
+                st.text_area("텍스트 복사창", value=card_text, height=250)
             
             with st.expander("🔍 시트에 저장된 원본 데이터 표 보기"):
                 st.dataframe(filtered_df, use_container_width=True, hide_index=True)
