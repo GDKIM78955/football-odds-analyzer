@@ -57,8 +57,85 @@ st.markdown("""
 st.markdown("<h2 style='text-align: center; margin-bottom: 25px;'>⚽ 축구 9대 배당 업체 & 경기 세부 스탯 통합 분석 허브</h2>", unsafe_allow_html=True)
 
 # =========================================================
-# 2번 탭 전용: 네이버 블로그/카페 100% 안깨지는 표준 테이블 배당 도표
+# 공통 헬퍼 함수: 다크모드 완벽 격리 블로그용 HTML 생성 뷰어
 # =========================================================
+def render_blog_component(title, df_dict, height=450):
+    html = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="utf-8">
+        <style>
+            body {{
+                background-color: #ffffff !important;
+                color: #111111 !important;
+                font-family: -apple-system, BlinkMacSystemFont, "Malgun Gothic", "맑은 고딕", sans-serif;
+                margin: 0;
+                padding: 15px;
+            }}
+            .report-card {{
+                background: #ffffff;
+                border: 1px solid #dcdcdc;
+                border-radius: 8px;
+                padding: 18px;
+            }}
+            h3 {{
+                color: #111111 !important;
+                border-bottom: 2px solid #222222;
+                padding-bottom: 8px;
+                margin-top: 0;
+                margin-bottom: 16px;
+                font-size: 17px;
+            }}
+            h4 {{
+                color: #0056b3 !important;
+                margin-bottom: 8px;
+                margin-top: 15px;
+                font-size: 14px;
+            }}
+            table {{
+                border-collapse: collapse;
+                width: 100%;
+                font-size: 13px;
+                text-align: center;
+                border: 1px solid #cccccc;
+                margin-bottom: 18px;
+                background-color: #ffffff !important;
+            }}
+            th {{
+                background-color: #f1f3f5 !important;
+                color: #111111 !important;
+                padding: 8px 6px;
+                border: 1px solid #cccccc;
+                font-weight: bold;
+            }}
+            td {{
+                background-color: #ffffff !important;
+                color: #222222 !important;
+                padding: 8px 6px;
+                border: 1px solid #e5e5e5;
+            }}
+        </style>
+    </head>
+    <body>
+        <div class="report-card">
+            <h3>{title}</h3>
+    """
+    for subtitle, df in df_dict.items():
+        if df is not None and not df.empty:
+            table_html = df.to_html(index=False, escape=False)
+            table_html = table_html.replace('<table border="1" class="dataframe">', '<table>')
+            html += f"<h4>▶ {subtitle}</h4>"
+            html += table_html
+            
+    html += """
+        </div>
+    </body>
+    </html>
+    """
+    components.html(html, height=height, scrolling=True)
+
+# 2번 탭 전용: 네이버 블로그/카페 100% 안깨지는 표준 테이블 배당 도표 (종합가중평균 대응)
 def generate_naver_odds_infographic(b_odds, overseas_name, o_odds, league_name=""):
     b_h, b_d, b_a = b_odds
     o_h, o_d, o_a = o_odds
@@ -99,7 +176,6 @@ def generate_naver_odds_infographic(b_odds, overseas_name, o_odds, league_name="
     <table align="center" border="0" cellpadding="0" cellspacing="0" style="width: 100%; max-width: 620px; margin: 0 auto; font-family: 'Malgun Gothic', '맑은 고딕', AppleSDGothicNeo-Regular, sans-serif; background-color: #ffffff; border: 1px solid #cbd5e1; border-radius: 10px; border-collapse: separate; color: #0f172a;">
         <tr>
             <td style="padding: 20px;">
-                <!-- 타이틀 -->
                 <table border="0" cellpadding="0" cellspacing="0" style="width: 100%; border-bottom: 2px solid #0f172a; margin-bottom: 16px;">
                     <tr>
                         <td align="center" style="padding-bottom: 10px;">
@@ -110,7 +186,6 @@ def generate_naver_odds_infographic(b_odds, overseas_name, o_odds, league_name="
                     </tr>
                 </table>
 
-                <!-- 승률 게이지 바 -->
                 <div style="font-size: 13px; font-weight: bold; color: #1e293b; margin-bottom: 6px;">📊 경기 승/무/패 예측 확률 분포</div>
                 <table border="0" cellpadding="0" cellspacing="0" style="width: 100%; height: 16px; border-collapse: collapse; margin-bottom: 6px;">
                     <tr>
@@ -120,7 +195,6 @@ def generate_naver_odds_infographic(b_odds, overseas_name, o_odds, league_name="
                     </tr>
                 </table>
 
-                <!-- 게이지 바 텍스트 설명 (순수 테이블 좌/중/우 배치로 깨짐 방지) -->
                 <table border="0" cellpadding="0" cellspacing="0" style="width: 100%; font-size: 12px; font-weight: bold; margin-bottom: 18px;">
                     <tr>
                         <td align="left" style="width: 33%; color: #dc2626;">🔴 홈 승 {round(b_prob_h, 1)}%</td>
@@ -129,7 +203,6 @@ def generate_naver_odds_infographic(b_odds, overseas_name, o_odds, league_name="
                     </tr>
                 </table>
 
-                <!-- 배당 정밀 비교 도표 -->
                 <table border="1" cellpadding="0" cellspacing="0" style="width: 100%; border-collapse: collapse; font-size: 13px; text-align: center; border: 1px solid #cbd5e1; margin-bottom: 14px;">
                     <tr style="background-color: #f8fafc;">
                         <th style="padding: 8px 4px; border: 1px solid #cbd5e1; color: #334155;">구 분</th>
@@ -144,7 +217,7 @@ def generate_naver_odds_infographic(b_odds, overseas_name, o_odds, league_name="
                         <td style="padding: 8px 4px; border: 1px solid #e2e8f0; font-weight: bold; color: #0f172a;">{b_a}</td>
                     </tr>
                     <tr>
-                        <td style="padding: 8px 4px; border: 1px solid #e2e8f0; background-color: #f8fafc; font-weight: bold;">해외 ({overseas_name})</td>
+                        <td style="padding: 8px 4px; border: 1px solid #e2e8f0; background-color: #f8fafc; font-weight: bold;">{overseas_name}</td>
                         <td style="padding: 8px 4px; border: 1px solid #e2e8f0; color: #334155;">{o_h}</td>
                         <td style="padding: 8px 4px; border: 1px solid #e2e8f0; color: #334155;">{o_d}</td>
                         <td style="padding: 8px 4px; border: 1px solid #e2e8f0; color: #334155;">{o_a}</td>
@@ -163,7 +236,6 @@ def generate_naver_odds_infographic(b_odds, overseas_name, o_odds, league_name="
                     </tr>
                 </table>
 
-                <!-- 하단 정보 바 -->
                 <table border="0" cellpadding="0" cellspacing="0" style="width: 100%; background-color: #f1f5f9; border-radius: 6px; font-size: 12px; color: #334155;">
                     <tr>
                         <td align="left" style="padding: 8px 10px;">💰 환급률: <b>배트맨 {round(b_payout, 2)}%</b> / <b>{overseas_name} {round(o_payout, 2)}%</b></td>
@@ -176,15 +248,12 @@ def generate_naver_odds_infographic(b_odds, overseas_name, o_odds, league_name="
     """
     return html
 
-# =========================================================
 # 4번 탭 전용: 네이버 블로그/카페 100% 안깨지는 맞대결 도표
-# =========================================================
 def generate_naver_match_infographic(home_team, away_team, stats_data, goal_df=None):
     html = f"""
     <table align="center" border="0" cellpadding="0" cellspacing="0" style="width: 100%; max-width: 620px; margin: 0 auto; font-family: 'Malgun Gothic', '맑은 고딕', AppleSDGothicNeo-Regular, sans-serif; background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 10px; border-collapse: separate; color: #1e293b;">
         <tr>
             <td style="padding: 20px;">
-                <!-- 헤더 타이틀 -->
                 <table border="0" cellpadding="0" cellspacing="0" style="width: 100%; border-bottom: 2px solid #0f172a; margin-bottom: 18px;">
                     <tr>
                         <td align="center" style="padding-bottom: 10px;">
@@ -195,8 +264,6 @@ def generate_naver_match_infographic(home_team, away_team, stats_data, goal_df=N
                         </td>
                     </tr>
                 </table>
-
-                <!-- 지표 비교 게이지 바 반복 (순수 테이블 행/열 배치) -->
     """
     for label, (val_h, val_a) in stats_data.items():
         tot = val_h + val_a
@@ -695,7 +762,7 @@ with tab_input:
                 "home_tac": home_tac, "away_tac": away_tac,
                 "home_shots": home_shots, "away_shots": away_shots,
                 "home_sot": home_sot, "away_sot": away_sot,
-                "home_poss": home_poss, "away_poss": home_poss,
+                "home_poss": home_poss, "away_poss": away_poss,
                 "home_pass": home_pass, "away_pass": away_pass,
                 "home_yc": home_yc, "away_yc": away_yc,
                 "home_rc": home_rc, "away_rc": away_rc,
@@ -852,17 +919,40 @@ with tab_analysis:
     st.subheader(f"2️⃣ [{target_league} 동일 리그 전용] 동일 배당 승률 분석표")
     st.dataframe(df_target_league, use_container_width=True, hide_index=True)
 
-    # [신규 도표 템플릿] 2번 탭 네이버 블로그/카페용 프리미엄 배당 카드 (표준 테이블 방식)
+    # [신규 도표 템플릿] 2번 탭 네이버 블로그/카페용 프리미엄 배당 카드 (종합 가중평균 옵션 추가 ⭐)
     with st.expander("📊 / 📋 네이버 블로그/카페용 배당 인포그래픽 도표 복사 (추천 ⭐)", expanded=True):
         st.markdown("##### 🌟 [네이버 블로그/카페 전용] 배당 & 승률 인포그래픽 카드")
-        st.caption("비교할 해외 북메이커를 선택하면 아래에 화려한 분석 카드가 생성됩니다. 마우스로 드래그하여 블로그에 붙여넣으세요!")
+        st.caption("비교할 대상(개별 북메이커 또는 해외 전체 평균)을 선택하면 아래에 화려한 분석 카드가 생성됩니다. 마우스로 드래그하여 블로그에 붙여넣으세요!")
 
-        sel_compare_bm = st.selectbox("비교할 해외 북메이커 선택", OVERSEAS_BOOKMAKERS, index=5, key="sel_compare_bm_t2")
-        
+        compare_options = ["🌟 해외 종합 가중평균 (전체 평균)"] + OVERSEAS_BOOKMAKERS
+        sel_compare_target = st.selectbox("비교할 대상 선택", compare_options, index=0, key="sel_compare_bm_t2")
+
         b_odds_val = odds_inputs_t2.get("배트맨", (0.0, 0.0, 0.0))
-        o_odds_val = odds_inputs_t2.get(sel_compare_bm, (0.0, 0.0, 0.0))
-        
-        naver_odds_html = generate_naver_odds_infographic(b_odds_val, sel_compare_bm, o_odds_val, league_name=target_league)
+
+        # 종합 가중평균 선택 시 해외 8개사의 유효 배당 평균값 계산
+        if "종합 가중평균" in sel_compare_target:
+            valid_h, valid_d, valid_a = [], [], []
+            for obm in OVERSEAS_BOOKMAKERS:
+                oh, od, oa = odds_inputs_t2.get(obm, (0.0, 0.0, 0.0))
+                if oh > 0 and od > 0 and oa > 0:
+                    valid_h.append(oh)
+                    valid_d.append(od)
+                    valid_a.append(oa)
+            
+            if valid_h:
+                avg_oh = round(float(np.mean(valid_h)), 2)
+                avg_od = round(float(np.mean(valid_d)), 2)
+                avg_oa = round(float(np.mean(valid_a)), 2)
+                o_odds_val = (avg_oh, avg_od, avg_oa)
+            else:
+                o_odds_val = (0.0, 0.0, 0.0)
+            
+            display_name = f"해외 종합평균 (유효 {len(valid_h)}개사)"
+        else:
+            o_odds_val = odds_inputs_t2.get(sel_compare_target, (0.0, 0.0, 0.0))
+            display_name = sel_compare_target
+
+        naver_odds_html = generate_naver_odds_infographic(b_odds_val, display_name, o_odds_val, league_name=target_league)
 
         components.html(f"""
         <div style="background-color: #f8fafc; padding: 15px; border-radius: 8px;">
