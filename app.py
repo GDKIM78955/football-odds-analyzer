@@ -57,7 +57,7 @@ st.markdown("""
 st.markdown("<h2 style='text-align: center; margin-bottom: 25px;'>⚽ 축구 9대 배당 업체 & 경기 세부 스탯 통합 분석 허브</h2>", unsafe_allow_html=True)
 
 # =========================================================
-# 🌟 네이버 블로그 원클릭 복사 전용 렌더러 컴포넌트
+# 🌟 네이버 블로그 원클릭 복사 렌더러 컴포넌트
 # =========================================================
 def render_clipboard_component(html_content, component_id, height=520):
     escaped_html = json.dumps(html_content)
@@ -85,7 +85,6 @@ def render_clipboard_component(html_content, component_id, height=520):
                 cursor: pointer;
                 box-shadow: 0 4px 6px rgba(0,0,0,0.1);
                 margin-bottom: 12px;
-                transition: background-color 0.2s ease;
             }}
             .copy-btn:hover {{
                 background-color: #02b150;
@@ -117,7 +116,7 @@ def render_clipboard_component(html_content, component_id, height=520):
                 navigator.clipboard.write(data).then(() => {{
                     alert('🎉 네이버 블로그/카페용 서식이 복사되었습니다! 블로그 글쓰기 창에서 [Ctrl + V]를 누르세요.');
                 }}).catch(err => {{
-                    alert('복사 실패 (권한 문제): 박스 안을 직접 드래그해서 복사해주세요.');
+                    alert('복사 권한이 제한되었습니다. 아래 미리보기 영역을 직접 드래그(Ctrl+C)해주세요.');
                 }});
             }}
         </script>
@@ -125,13 +124,6 @@ def render_clipboard_component(html_content, component_id, height=520):
     </html>
     """
     components.html(wrapper_html, height=height, scrolling=True)
-
-def print_pdf_button():
-    components.html("""
-        <button onclick="window.parent.print()" style="width: 100%; padding: 11px; font-size: 15px; font-weight: bold; background-color: #1f2937; color: #ffffff; border: none; border-radius: 6px; cursor: pointer; box-shadow: 0 3px 5px rgba(0,0,0,0.15);">
-            🖨️ 현재 화면 PDF로 저장 / 보고서 인쇄하기
-        </button>
-    """, height=50)
 
 # =========================================================
 # 2번 탭 전용: 배당 인포그래픽 도표
@@ -196,52 +188,49 @@ def generate_naver_odds_infographic(b_odds, overseas_name, o_odds, league_name="
                 </table>
 
                 <div style="font-size: 13px; font-weight: bold; color: #1e293b; margin-bottom: 6px;">📊 경기 승/무/패 예측 확률 분포</div>
-                <table border="0" cellpadding="0" cellspacing="0" style="width: 100%; height: 16px; border-collapse: collapse; margin-bottom: 6px;">
-                    <tr>
-                        <td style="width: {round(b_prob_h, 1)}%; background-color: #ef4444; height: 16px; padding: 0;"></td>
-                        <td style="width: {round(b_prob_d, 1)}%; background-color: #10b981; height: 16px; padding: 0;"></td>
-                        <td style="width: {round(b_prob_a, 1)}%; background-color: #3b82f6; height: 16px; padding: 0;"></td>
+                <table border="1" cellpadding="0" cellspacing="0" style="width: 100%; border-collapse: collapse; font-size: 13px; text-align: center; border: 1px solid #cbd5e1; margin-bottom: 14px;">
+                    <tr style="background-color: #f8fafc;">
+                        <th style="padding: 8px; border: 1px solid #cbd5e1; color: #dc2626; width: 33%;">🔴 홈 승</th>
+                        <th style="padding: 8px; border: 1px solid #cbd5e1; color: #059669; width: 34%;">🟢 무승부</th>
+                        <th style="padding: 8px; border: 1px solid #cbd5e1; color: #2563eb; width: 33%;">🔵 원정승</th>
                     </tr>
-                </table>
-
-                <table border="0" cellpadding="0" cellspacing="0" style="width: 100%; font-size: 12px; font-weight: bold; margin-bottom: 18px;">
                     <tr>
-                        <td align="center" style="width: 33%; color: #dc2626; text-align: center;">🔴 홈 {round(b_prob_h, 1)}%</td>
-                        <td align="center" style="width: 34%; color: #059669; text-align: center;">🟢 무승부 {round(b_prob_d, 1)}%</td>
-                        <td align="center" style="width: 33%; color: #2563eb; text-align: center;">🔵 원정 {round(b_prob_a, 1)}%</td>
+                        <td style="padding: 8px; border: 1px solid #e2e8f0; font-weight: bold; color: #dc2626; font-size: 15px;">{round(b_prob_h, 1)}%</td>
+                        <td style="padding: 8px; border: 1px solid #e2e8f0; font-weight: bold; color: #059669; font-size: 15px;">{round(b_prob_d, 1)}%</td>
+                        <td style="padding: 8px; border: 1px solid #e2e8f0; font-weight: bold; color: #2563eb; font-size: 15px;">{round(b_prob_a, 1)}%</td>
                     </tr>
                 </table>
 
                 <table border="1" cellpadding="0" cellspacing="0" style="width: 100%; border-collapse: collapse; font-size: 13px; text-align: center; border: 1px solid #cbd5e1; margin-bottom: 14px;">
                     <tr style="background-color: #f8fafc;">
-                        <th align="center" style="padding: 8px 4px; border: 1px solid #cbd5e1; color: #334155; text-align: center; white-space: nowrap;">구 분</th>
-                        <th align="center" style="padding: 8px 4px; border: 1px solid #cbd5e1; color: #dc2626; text-align: center; white-space: nowrap;">{h_col_name}</th>
-                        <th align="center" style="padding: 8px 4px; border: 1px solid #cbd5e1; color: #059669; text-align: center; white-space: nowrap;">무승부 (Draw)</th>
-                        <th align="center" style="padding: 8px 4px; border: 1px solid #cbd5e1; color: #2563eb; text-align: center; white-space: nowrap;">{a_col_name}</th>
+                        <th style="padding: 8px 4px; border: 1px solid #cbd5e1; color: #334155;">구 분</th>
+                        <th style="padding: 8px 4px; border: 1px solid #cbd5e1; color: #dc2626;">{h_col_name}</th>
+                        <th style="padding: 8px 4px; border: 1px solid #cbd5e1; color: #059669;">무승부 (Draw)</th>
+                        <th style="padding: 8px 4px; border: 1px solid #cbd5e1; color: #2563eb;">{a_col_name}</th>
                     </tr>
                     <tr>
-                        <td align="center" style="padding: 8px 4px; border: 1px solid #e2e8f0; background-color: #f8fafc; font-weight: bold; text-align: center; white-space: nowrap;">배트맨 배당</td>
-                        <td align="center" style="padding: 8px 4px; border: 1px solid #e2e8f0; font-weight: bold; color: #0f172a; text-align: center; white-space: nowrap;">{b_h}</td>
-                        <td align="center" style="padding: 8px 4px; border: 1px solid #e2e8f0; font-weight: bold; color: #0f172a; text-align: center; white-space: nowrap;">{b_d}</td>
-                        <td align="center" style="padding: 8px 4px; border: 1px solid #e2e8f0; font-weight: bold; color: #0f172a; text-align: center; white-space: nowrap;">{b_a}</td>
+                        <td style="padding: 8px 4px; border: 1px solid #e2e8f0; background-color: #f8fafc; font-weight: bold;">배트맨 배당</td>
+                        <td style="padding: 8px 4px; border: 1px solid #e2e8f0; font-weight: bold; color: #0f172a;">{b_h}</td>
+                        <td style="padding: 8px 4px; border: 1px solid #e2e8f0; font-weight: bold; color: #0f172a;">{b_d}</td>
+                        <td style="padding: 8px 4px; border: 1px solid #e2e8f0; font-weight: bold; color: #0f172a;">{b_a}</td>
                     </tr>
                     <tr>
-                        <td align="center" style="padding: 8px 4px; border: 1px solid #e2e8f0; background-color: #f8fafc; font-weight: bold; text-align: center; white-space: nowrap;">{overseas_name}</td>
-                        <td align="center" style="padding: 8px 4px; border: 1px solid #e2e8f0; color: #334155; text-align: center; white-space: nowrap;">{o_h}</td>
-                        <td align="center" style="padding: 8px 4px; border: 1px solid #e2e8f0; color: #334155; text-align: center; white-space: nowrap;">{o_d}</td>
-                        <td align="center" style="padding: 8px 4px; border: 1px solid #e2e8f0; color: #334155; text-align: center; white-space: nowrap;">{o_a}</td>
+                        <td style="padding: 8px 4px; border: 1px solid #e2e8f0; background-color: #f8fafc; font-weight: bold;">{overseas_name}</td>
+                        <td style="padding: 8px 4px; border: 1px solid #e2e8f0; color: #334155;">{o_h}</td>
+                        <td style="padding: 8px 4px; border: 1px solid #e2e8f0; color: #334155;">{o_d}</td>
+                        <td style="padding: 8px 4px; border: 1px solid #e2e8f0; color: #334155;">{o_a}</td>
                     </tr>
                     <tr>
-                        <td align="center" style="padding: 8px 4px; border: 1px solid #e2e8f0; background-color: #f8fafc; font-weight: bold; text-align: center; white-space: nowrap;">적정 배당</td>
-                        <td align="center" style="padding: 8px 4px; border: 1px solid #e2e8f0; color: #475569; text-align: center; white-space: nowrap;">{fair_h}</td>
-                        <td align="center" style="padding: 8px 4px; border: 1px solid #e2e8f0; color: #475569; text-align: center; white-space: nowrap;">{fair_d}</td>
-                        <td align="center" style="padding: 8px 4px; border: 1px solid #e2e8f0; color: #475569; text-align: center; white-space: nowrap;">{fair_a}</td>
+                        <td style="padding: 8px 4px; border: 1px solid #e2e8f0; background-color: #f8fafc; font-weight: bold;">적정 배당</td>
+                        <td style="padding: 8px 4px; border: 1px solid #e2e8f0; color: #475569;">{fair_h}</td>
+                        <td style="padding: 8px 4px; border: 1px solid #e2e8f0; color: #475569;">{fair_d}</td>
+                        <td style="padding: 8px 4px; border: 1px solid #e2e8f0; color: #475569;">{fair_a}</td>
                     </tr>
                     <tr>
-                        <td align="center" style="padding: 8px 4px; border: 1px solid #e2e8f0; background-color: #f8fafc; font-weight: bold; text-align: center; white-space: nowrap;">배당 편차</td>
-                        <td align="center" style="padding: 8px 4px; border: 1px solid #e2e8f0; font-weight: bold; color: {'#dc2626' if diff_h < 0 else '#2563eb'}; text-align: center; white-space: nowrap;">{diff_h_str}</td>
-                        <td align="center" style="padding: 8px 4px; border: 1px solid #e2e8f0; font-weight: bold; color: {'#dc2626' if diff_d < 0 else '#2563eb'}; text-align: center; white-space: nowrap;">{diff_d_str}</td>
-                        <td align="center" style="padding: 8px 4px; border: 1px solid #e2e8f0; font-weight: bold; color: {'#dc2626' if diff_a < 0 else '#2563eb'}; text-align: center; white-space: nowrap;">{diff_a_str}</td>
+                        <td style="padding: 8px 4px; border: 1px solid #e2e8f0; background-color: #f8fafc; font-weight: bold;">배당 편차</td>
+                        <td style="padding: 8px 4px; border: 1px solid #e2e8f0; font-weight: bold; color: {'#dc2626' if diff_h < 0 else '#2563eb'};">{diff_h_str}</td>
+                        <td style="padding: 8px 4px; border: 1px solid #e2e8f0; font-weight: bold; color: {'#dc2626' if diff_d < 0 else '#2563eb'};">{diff_d_str}</td>
+                        <td style="padding: 8px 4px; border: 1px solid #e2e8f0; font-weight: bold; color: {'#dc2626' if diff_a < 0 else '#2563eb'};">{diff_a_str}</td>
                     </tr>
                 </table>
 
@@ -257,7 +246,7 @@ def generate_naver_odds_infographic(b_odds, overseas_name, o_odds, league_name="
     return html
 
 # =========================================================
-# 3번 탭 전용: 단일 팀 시즌 평균 리포트 (스마트 분할 테이블)
+# 3번 탭 전용: 단일 팀 시즌 평균 리포트
 # =========================================================
 def generate_naver_team_stats_infographic(team_name, season, league, match_count_info, df_summary, tac_df, df_goals):
     html = f"""
@@ -283,8 +272,8 @@ def generate_naver_team_stats_infographic(team_name, season, league, match_count
     if df_summary is not None and not df_summary.empty:
         table_html = df_summary.to_html(index=False, escape=False)
         table_html = table_html.replace('<table border="1" class="dataframe">', '<table border="1" cellpadding="0" cellspacing="0" style="width: 100%; border-collapse: collapse; font-size: 12px; text-align: center; border: 1px solid #cbd5e1; margin-bottom: 16px;">')
-        table_html = table_html.replace('<th>', '<th align="center" style="background-color: #f8fafc; color: #334155; padding: 7px 3px; border: 1px solid #cbd5e1; font-weight: bold; text-align: center !important; white-space: nowrap;">')
-        table_html = table_html.replace('<td>', '<td align="center" style="background-color: #ffffff; color: #1e293b; padding: 6px 3px; border: 1px solid #e2e8f0; text-align: center !important; white-space: nowrap;">')
+        table_html = table_html.replace('<th>', '<th align="center" style="background-color: #f8fafc; color: #334155; padding: 7px 3px; border: 1px solid #cbd5e1; font-weight: bold; text-align: center !important;">')
+        table_html = table_html.replace('<td>', '<td align="center" style="background-color: #ffffff; color: #1e293b; padding: 6px 3px; border: 1px solid #e2e8f0; text-align: center !important;">')
         html += table_html
 
     if tac_df is not None and not tac_df.empty:
@@ -292,19 +281,19 @@ def generate_naver_team_stats_infographic(team_name, season, league, match_count
                 <div style="font-size: 13px; font-weight: bold; color: #1e293b; margin-top: 10px; margin-bottom: 6px;">♟️ 팀 전술(포메이션) 사용 비율</div>
                 <table border="1" cellpadding="0" cellspacing="0" style="width: 100%; border-collapse: collapse; font-size: 12px; text-align: center; border: 1px solid #cbd5e1; margin-bottom: 16px;">
                     <tr style="background-color: #f8fafc;">
-                        <th align="center" style="padding: 7px 3px; border: 1px solid #cbd5e1; color: #334155; text-align: center; white-space: nowrap;">포메이션</th>
-                        <th align="center" style="padding: 7px 3px; border: 1px solid #cbd5e1; color: #334155; text-align: center; white-space: nowrap;">전체 사용(비율)</th>
-                        <th align="center" style="padding: 7px 3px; border: 1px solid #cbd5e1; color: #dc2626; text-align: center; white-space: nowrap;">홈 경기</th>
-                        <th align="center" style="padding: 7px 3px; border: 1px solid #cbd5e1; color: #2563eb; text-align: center; white-space: nowrap;">원정 경기</th>
+                        <th align="center" style="padding: 7px 3px; border: 1px solid #cbd5e1; color: #334155; text-align: center;">포메이션</th>
+                        <th align="center" style="padding: 7px 3px; border: 1px solid #cbd5e1; color: #334155; text-align: center;">전체 사용(비율)</th>
+                        <th align="center" style="padding: 7px 3px; border: 1px solid #cbd5e1; color: #dc2626; text-align: center;">홈 경기</th>
+                        <th align="center" style="padding: 7px 3px; border: 1px solid #cbd5e1; color: #2563eb; text-align: center;">원정 경기</th>
                     </tr>
         """
         for _, r in tac_df.iterrows():
             html += f"""
                     <tr>
-                        <td align="center" style="padding: 6px 3px; border: 1px solid #e2e8f0; font-weight: bold; text-align: center; white-space: nowrap;">{r.get('전술 (포메이션)', '-')}</td>
-                        <td align="center" style="padding: 6px 3px; border: 1px solid #e2e8f0; color: #0284c7; font-weight: bold; text-align: center; white-space: nowrap;">{r.get('전체 사용 횟수', '-')}</td>
-                        <td align="center" style="padding: 6px 3px; border: 1px solid #e2e8f0; text-align: center; white-space: nowrap;">{r.get('홈경기 사용', '-')}</td>
-                        <td align="center" style="padding: 6px 3px; border: 1px solid #e2e8f0; text-align: center; white-space: nowrap;">{r.get('원정경기 사용', '-')}</td>
+                        <td align="center" style="padding: 6px 3px; border: 1px solid #e2e8f0; font-weight: bold; text-align: center;">{r.get('전술 (포메이션)', '-')}</td>
+                        <td align="center" style="padding: 6px 3px; border: 1px solid #e2e8f0; color: #0284c7; font-weight: bold; text-align: center;">{r.get('전체 사용 횟수', '-')}</td>
+                        <td align="center" style="padding: 6px 3px; border: 1px solid #e2e8f0; text-align: center;">{r.get('홈경기 사용', '-')}</td>
+                        <td align="center" style="padding: 6px 3px; border: 1px solid #e2e8f0; text-align: center;">{r.get('원정경기 사용', '-')}</td>
                     </tr>
             """
         html += "</table>"
@@ -315,12 +304,12 @@ def generate_naver_team_stats_infographic(team_name, season, league, match_count
             sub2 = df_goals[["구분", "전반 평균", "후반 평균", "합계 평균"]].copy()
 
             t1_html = sub1.to_html(index=False, escape=False).replace('<table border="1" class="dataframe">', '<table border="1" cellpadding="0" cellspacing="0" style="width: 100%; border-collapse: collapse; font-size: 12px; text-align: center; border: 1px solid #cbd5e1; margin-bottom: 10px;">')
-            t1_html = t1_html.replace('<th>', '<th align="center" style="background-color: #f8fafc; color: #334155; padding: 7px 3px; border: 1px solid #cbd5e1; font-weight: bold; text-align: center !important; white-space: nowrap;">')
-            t1_html = t1_html.replace('<td>', '<td align="center" style="background-color: #ffffff; color: #1e293b; padding: 6px 3px; border: 1px solid #e2e8f0; text-align: center !important; white-space: nowrap;">')
+            t1_html = t1_html.replace('<th>', '<th align="center" style="background-color: #f8fafc; color: #334155; padding: 7px 3px; border: 1px solid #cbd5e1; font-weight: bold; text-align: center !important;">')
+            t1_html = t1_html.replace('<td>', '<td align="center" style="background-color: #ffffff; color: #1e293b; padding: 6px 3px; border: 1px solid #e2e8f0; text-align: center !important;">')
 
             t2_html = sub2.to_html(index=False, escape=False).replace('<table border="1" class="dataframe">', '<table border="1" cellpadding="0" cellspacing="0" style="width: 100%; border-collapse: collapse; font-size: 12px; text-align: center; border: 1px solid #cbd5e1; margin-bottom: 6px;">')
-            t2_html = t2_html.replace('<th>', '<th align="center" style="background-color: #f8fafc; color: #334155; padding: 7px 3px; border: 1px solid #cbd5e1; font-weight: bold; text-align: center !important; white-space: nowrap;">')
-            t2_html = t2_html.replace('<td>', '<td align="center" style="background-color: #ffffff; color: #1e293b; padding: 6px 3px; border: 1px solid #e2e8f0; text-align: center !important; white-space: nowrap;">')
+            t2_html = t2_html.replace('<th>', '<th align="center" style="background-color: #f8fafc; color: #334155; padding: 7px 3px; border: 1px solid #cbd5e1; font-weight: bold; text-align: center !important;">')
+            t2_html = t2_html.replace('<td>', '<td align="center" style="background-color: #ffffff; color: #1e293b; padding: 6px 3px; border: 1px solid #e2e8f0; text-align: center !important;">')
 
             html += f"""
                     <div style="font-size: 13px; font-weight: bold; color: #1e293b; margin-top: 10px; margin-bottom: 6px;">⚽ 전/후반 득점 총합 통계</div>
@@ -339,7 +328,7 @@ def generate_naver_team_stats_infographic(team_name, season, league, match_count
     return html
 
 # =========================================================
-# 4번 탭 전용: 맞대결 인포그래픽 도표 (1 Row 3 Cell 완전 정렬 ⭐)
+# 4번 탭 전용: 맞대결 인포그래픽 도표 (우세 지표 하이라이트 테이블 ⭐)
 # =========================================================
 def generate_naver_match_infographic(home_team, away_team, stats_data, goal_df=None, h2h_all_str="", h2h_exact_str=""):
     html = f"""
@@ -362,31 +351,39 @@ def generate_naver_match_infographic(home_team, away_team, stats_data, goal_df=N
                     </tr>
                 </table>
 
-                <div style="font-size: 13px; font-weight: bold; color: #1e293b; margin-bottom: 8px;">⚔️ 양 팀 맞대결 세부 지표 비교</div>
+                <div style="font-size: 13px; font-weight: bold; color: #1e293b; margin-bottom: 8px;">⚔️ 양 팀 맞대결 세부 지표 비교 (우세팀 하이라이트)</div>
                 
-                <!-- 지표 비교 테이블 (1행 3열 완전 묶음으로 세로 깨짐 방지) -->
-                <table border="0" cellpadding="0" cellspacing="0" style="width: 100%; margin-bottom: 14px;">
+                <!-- 견고한 3분할 테이블 (우세 수치 자동 강조) -->
+                <table border="1" cellpadding="0" cellspacing="0" style="width: 100%; border-collapse: collapse; font-size: 13px; text-align: center; border: 1px solid #cbd5e1; margin-bottom: 14px;">
+                    <tr style="background-color: #f8fafc;">
+                        <th style="padding: 8px; border: 1px solid #cbd5e1; color: #dc2626; width: 35%;">🔴 {home_team}</th>
+                        <th style="padding: 8px; border: 1px solid #cbd5e1; color: #475569; width: 30%;">비교 항목</th>
+                        <th style="padding: 8px; border: 1px solid #cbd5e1; color: #2563eb; width: 35%;">🔵 {away_team}</th>
+                    </tr>
     """
     for label, (val_h, val_a) in stats_data.items():
-        tot = val_h + val_a
-        pct_h = round((val_h / tot) * 100, 1) if tot > 0 else 50.0
-        pct_a = 100.0 - pct_h
+        # 우세 판별
+        if val_h > val_a:
+            h_style = "background-color: #fee2e2; font-weight: bold; color: #dc2626;"
+            a_style = "color: #64748b;"
+            h_disp = f"🔥 {val_h}"
+            a_disp = f"{val_a}"
+        elif val_a > val_h:
+            h_style = "color: #64748b;"
+            a_style = "background-color: #dbeafe; font-weight: bold; color: #2563eb;"
+            h_disp = f"{val_h}"
+            a_disp = f"🔥 {val_a}"
+        else:
+            h_style = "color: #334155;"
+            a_style = "color: #334155;"
+            h_disp = f"{val_h}"
+            a_disp = f"{val_a}"
 
         html += f"""
                     <tr>
-                        <td align="left" style="width: 25%; color: #dc2626; font-size: 13px; font-weight: bold; padding: 4px 0; text-align: left; white-space: nowrap;">{val_h}</td>
-                        <td align="center" style="width: 50%; color: #475569; font-size: 12px; font-weight: bold; padding: 4px 0; text-align: center; white-space: nowrap;">{label}</td>
-                        <td align="right" style="width: 25%; color: #2563eb; font-size: 13px; font-weight: bold; padding: 4px 0; text-align: right; white-space: nowrap;">{val_a}</td>
-                    </tr>
-                    <tr>
-                        <td colspan="3" style="padding-bottom: 10px;">
-                            <table border="0" cellpadding="0" cellspacing="0" style="width: 100%; height: 8px; border-collapse: collapse;">
-                                <tr>
-                                    <td style="width: {pct_h}%; background-color: #ef4444; height: 8px; padding: 0;"></td>
-                                    <td style="width: {pct_a}%; background-color: #3b82f6; height: 8px; padding: 0;"></td>
-                                </tr>
-                            </table>
-                        </td>
+                        <td style="padding: 7px; border: 1px solid #e2e8f0; {h_style}">{h_disp}</td>
+                        <td style="padding: 7px; border: 1px solid #e2e8f0; background-color: #f8fafc; font-weight: bold; color: #334155;">{label}</td>
+                        <td style="padding: 7px; border: 1px solid #e2e8f0; {a_style}">{a_disp}</td>
                     </tr>
         """
     html += "</table>"
@@ -400,12 +397,12 @@ def generate_naver_match_infographic(home_team, away_team, stats_data, goal_df=N
             sub2 = goal_df[sub2_cols].copy()
 
             t1_html = sub1.to_html(index=False, escape=False).replace('<table border="1" class="dataframe">', '<table border="1" cellpadding="0" cellspacing="0" style="width: 100%; border-collapse: collapse; font-size: 12px; text-align: center; border: 1px solid #cbd5e1; margin-bottom: 10px;">')
-            t1_html = t1_html.replace('<th>', '<th align="center" style="background-color: #f8fafc; color: #334155; padding: 7px 3px; border: 1px solid #cbd5e1; font-weight: bold; text-align: center !important; white-space: nowrap;">')
-            t1_html = t1_html.replace('<td>', '<td align="center" style="background-color: #ffffff; color: #1e293b; padding: 6px 3px; border: 1px solid #e2e8f0; text-align: center !important; white-space: nowrap;">')
+            t1_html = t1_html.replace('<th>', '<th align="center" style="background-color: #f8fafc; color: #334155; padding: 7px 3px; border: 1px solid #cbd5e1; font-weight: bold; text-align: center !important;">')
+            t1_html = t1_html.replace('<td>', '<td align="center" style="background-color: #ffffff; color: #1e293b; padding: 6px 3px; border: 1px solid #e2e8f0; text-align: center !important;">')
 
             t2_html = sub2.to_html(index=False, escape=False).replace('<table border="1" class="dataframe">', '<table border="1" cellpadding="0" cellspacing="0" style="width: 100%; border-collapse: collapse; font-size: 12px; text-align: center; border: 1px solid #cbd5e1; margin-bottom: 6px;">')
-            t2_html = t2_html.replace('<th>', '<th align="center" style="background-color: #f8fafc; color: #334155; padding: 7px 3px; border: 1px solid #cbd5e1; font-weight: bold; text-align: center !important; white-space: nowrap;">')
-            t2_html = t2_html.replace('<td>', '<td align="center" style="background-color: #ffffff; color: #1e293b; padding: 6px 3px; border: 1px solid #e2e8f0; text-align: center !important; white-space: nowrap;">')
+            t2_html = t2_html.replace('<th>', '<th align="center" style="background-color: #f8fafc; color: #334155; padding: 7px 3px; border: 1px solid #cbd5e1; font-weight: bold; text-align: center !important;">')
+            t2_html = t2_html.replace('<td>', '<td align="center" style="background-color: #ffffff; color: #1e293b; padding: 6px 3px; border: 1px solid #e2e8f0; text-align: center !important;">')
 
             html += f"""
                     <div style="font-size: 13px; font-weight: bold; color: #0f172a; margin-top: 14px; margin-bottom: 6px;">⚽ 맞대결 득점 총합 및 후반 집중도</div>
@@ -449,10 +446,10 @@ def generate_naver_injury_infographic(team_name, league_title, confirmed_list, d
                 <div style="font-size: 13px; font-weight: bold; color: #dc2626; margin-bottom: 6px;">🔴 결장 확정 명단</div>
                 <table border="1" cellpadding="0" cellspacing="0" style="width: 100%; border-collapse: collapse; font-size: 12px; text-align: center; border: 1px solid #cbd5e1; margin-bottom: 16px;">
                     <tr style="background-color: #fee2e2;">
-                        <th align="center" style="padding: 7px 3px; border: 1px solid #cbd5e1; color: #991b1b; text-align: center; white-space: nowrap;">선수명</th>
-                        <th align="center" style="padding: 7px 3px; border: 1px solid #cbd5e1; color: #991b1b; text-align: center; white-space: nowrap;">포지션/역할</th>
-                        <th align="center" style="padding: 7px 3px; border: 1px solid #cbd5e1; color: #991b1b; text-align: center; white-space: nowrap;">시즌 기록</th>
-                        <th align="center" style="padding: 7px 3px; border: 1px solid #cbd5e1; color: #991b1b; text-align: center; white-space: nowrap;">사유/비고</th>
+                        <th align="center" style="padding: 7px 3px; border: 1px solid #cbd5e1; color: #991b1b; text-align: center;">선수명</th>
+                        <th align="center" style="padding: 7px 3px; border: 1px solid #cbd5e1; color: #991b1b; text-align: center;">포지션/역할</th>
+                        <th align="center" style="padding: 7px 3px; border: 1px solid #cbd5e1; color: #991b1b; text-align: center;">시즌 기록</th>
+                        <th align="center" style="padding: 7px 3px; border: 1px solid #cbd5e1; color: #991b1b; text-align: center;">사유/비고</th>
                     </tr>
         """
         for p in confirmed_list:
@@ -473,10 +470,10 @@ def generate_naver_injury_infographic(team_name, league_title, confirmed_list, d
 
             html += f"""
                     <tr>
-                        <td align="center" style="padding: 6px 3px; border: 1px solid #e2e8f0; text-align: center; white-space: nowrap;">{name_str}</td>
-                        <td align="center" style="padding: 6px 3px; border: 1px solid #e2e8f0; text-align: center; white-space: nowrap;">`{pos}`<br>{role_badge}</td>
-                        <td align="center" style="padding: 6px 3px; border: 1px solid #e2e8f0; text-align: center; white-space: nowrap;">{start}선발 {sub}교체<br><b>{goals}골 {assists}도움</b></td>
-                        <td align="center" style="padding: 6px 3px; border: 1px solid #e2e8f0; color: #dc2626; text-align: center; white-space: nowrap;"><b>{reason}</b>{note_str}</td>
+                        <td align="center" style="padding: 6px 3px; border: 1px solid #e2e8f0; text-align: center;">{name_str}</td>
+                        <td align="center" style="padding: 6px 3px; border: 1px solid #e2e8f0; text-align: center;">`{pos}`<br>{role_badge}</td>
+                        <td align="center" style="padding: 6px 3px; border: 1px solid #e2e8f0; text-align: center;">{start}선발 {sub}교체<br><b>{goals}골 {assists}도움</b></td>
+                        <td align="center" style="padding: 6px 3px; border: 1px solid #e2e8f0; color: #dc2626; text-align: center;"><b>{reason}</b>{note_str}</td>
                     </tr>
             """
         html += "</table>"
@@ -486,10 +483,10 @@ def generate_naver_injury_infographic(team_name, league_title, confirmed_list, d
                 <div style="font-size: 13px; font-weight: bold; color: #d97706; margin-bottom: 6px;">🟡 결장 의심 명단 (GTD)</div>
                 <table border="1" cellpadding="0" cellspacing="0" style="width: 100%; border-collapse: collapse; font-size: 12px; text-align: center; border: 1px solid #cbd5e1; margin-bottom: 10px;">
                     <tr style="background-color: #fef3c7;">
-                        <th align="center" style="padding: 7px 3px; border: 1px solid #cbd5e1; color: #92400e; text-align: center; white-space: nowrap;">선수명</th>
-                        <th align="center" style="padding: 7px 3px; border: 1px solid #cbd5e1; color: #92400e; text-align: center; white-space: nowrap;">포지션/역할</th>
-                        <th align="center" style="padding: 7px 3px; border: 1px solid #cbd5e1; color: #92400e; text-align: center; white-space: nowrap;">시즌 기록</th>
-                        <th align="center" style="padding: 7px 3px; border: 1px solid #cbd5e1; color: #92400e; text-align: center; white-space: nowrap;">사유/비고</th>
+                        <th align="center" style="padding: 7px 3px; border: 1px solid #cbd5e1; color: #92400e; text-align: center;">선수명</th>
+                        <th align="center" style="padding: 7px 3px; border: 1px solid #cbd5e1; color: #92400e; text-align: center;">포지션/역할</th>
+                        <th align="center" style="padding: 7px 3px; border: 1px solid #cbd5e1; color: #92400e; text-align: center;">시즌 기록</th>
+                        <th align="center" style="padding: 7px 3px; border: 1px solid #cbd5e1; color: #92400e; text-align: center;">사유/비고</th>
                     </tr>
         """
         for p in doubt_list:
@@ -510,10 +507,10 @@ def generate_naver_injury_infographic(team_name, league_title, confirmed_list, d
 
             html += f"""
                     <tr>
-                        <td align="center" style="padding: 6px 3px; border: 1px solid #e2e8f0; text-align: center; white-space: nowrap;">{name_str}</td>
-                        <td align="center" style="padding: 6px 3px; border: 1px solid #e2e8f0; text-align: center; white-space: nowrap;">`{pos}`<br>{role_badge}</td>
-                        <td align="center" style="padding: 6px 3px; border: 1px solid #e2e8f0; text-align: center; white-space: nowrap;">{start}선발 {sub}교체<br><b>{goals}골 {assists}도움</b></td>
-                        <td align="center" style="padding: 6px 3px; border: 1px solid #e2e8f0; color: #d97706; text-align: center; white-space: nowrap;"><b>{reason}</b>{note_str}</td>
+                        <td align="center" style="padding: 6px 3px; border: 1px solid #e2e8f0; text-align: center;">{name_str}</td>
+                        <td align="center" style="padding: 6px 3px; border: 1px solid #e2e8f0; text-align: center;">`{pos}`<br>{role_badge}</td>
+                        <td align="center" style="padding: 6px 3px; border: 1px solid #e2e8f0; text-align: center;">{start}선발 {sub}교체<br><b>{goals}골 {assists}도움</b></td>
+                        <td align="center" style="padding: 6px 3px; border: 1px solid #e2e8f0; color: #d97706; text-align: center;"><b>{reason}</b>{note_str}</td>
                     </tr>
             """
         html += "</table>"
@@ -1334,7 +1331,7 @@ with tab_team_stats:
         st.info("💡 10번 '경기내용' 탭에 아직 데이터가 없습니다.")
 
 # =========================================================
-# TAB 4: 홈 vs 원정 맞대결(H2H) 종합 분석 (1 Row 3 Cell 완전 정렬 ⭐)
+# TAB 4: 홈 vs 원정 맞대결(H2H) 종합 분석 (우세 하이라이트 테이블 ⭐)
 # =========================================================
 with tab_h2h:
     st.subheader("⚔️ 홈팀 vs 원정팀 역대 맞대결(H2H) 종합 분석 및 세부 지표")
@@ -1509,9 +1506,9 @@ with tab_h2h:
             df_h2h_goals = pd.DataFrame(h2h_goal_table)
             st.dataframe(df_h2h_goals, use_container_width=True, hide_index=True)
 
-            # 4번 탭 네이버 블로그/카페용 프리미엄 맞대결 카드 (1 Row 3 Cell 묶음 & 복사 버튼 ⭐)
+            # 4번 탭 네이버 블로그/카페용 프리미엄 맞대결 카드 (우세 지표 하이라이트 테이블)
             with st.expander("📊 / 📋 네이버 블로그/카페용 맞대결 인포그래픽 도표 복사 (추천 ⭐)", expanded=True):
-                st.markdown("##### 🌟 [네이버 블로그/카페 전용] 맞대결 시각화 게이지 도표")
+                st.markdown("##### 🌟 [네이버 블로그/카페 전용] 맞대결 지표 비교 도표")
                 st.caption("초록색 버튼을 1번만 클릭하면 네이버 블로그 서식으로 복사됩니다. 블로그 글쓰기에서 Ctrl+V를 누르세요!")
 
                 gauge_stats = {
