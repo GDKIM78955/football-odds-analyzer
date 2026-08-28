@@ -989,27 +989,54 @@ with tab_input:
                     st.error(f"저장 중 오류 발생: {msg}")
 
 # =========================================================
-# TAB 2: 📡 라운드 경기 자동 스캐너 & 추천픽
+# TAB 2: 📡 라운드 경기 자동 스캐너 & 추천픽 (수정/덮어쓰기 완벽 탑재 ⭐)
 # =========================================================
 with tab_scanner:
     st.subheader("📡 라운드 경기 배당 자동 스캐너 & 추천픽 레이더")
     st.caption("이번 라운드 경기들을 웹 화면에서 1경기씩 등록하거나 구글 시트(`라운드스캔`)에서 불러와 4대 레이더 추천픽을 자동으로 선별합니다.")
 
-    with st.expander("✍️ [웹 화면에서 직접 1경기씩 등록 & 시트 자동저장]", expanded=False):
+    df_scan_raw = load_sheet_data(SCANNER_SHEET_NAME)
+
+    with st.expander("✍️ [웹 화면에서 경기 등록 & 배당 변동 시 자동 덮어쓰기/수정]", expanded=False):
+        
+        # 기존 등록된 경기가 있다면 배당 불러오기 기능 지원
+        preset_fill = {}
+        if not df_scan_raw.empty and "홈팀" in df_scan_raw.columns:
+            st.markdown("##### 🔍 [기존 등록 경기 배당 불러와서 수정하기]")
+            match_labels = ["➕ [새로운 경기 직접 입력]"] + [f"{r.get('홈팀', '')} vs {r.get('원정팀', '')} ({r.get('리그명', '')})" for _, r in df_scan_raw.iterrows()]
+            sel_load_match = st.selectbox("불러올 경기 선택 (선택 시 아래 입력창에 자동 채워짐)", match_labels, index=0, key="sel_scan_loader")
+            
+            if sel_load_match != "➕ [새로운 경기 직접 입력]":
+                m_idx = match_labels.index(sel_load_match) - 1
+                preset_fill = df_scan_raw.iloc[m_idx].to_dict()
+                st.caption("💡 기존 경기 데이터가 아래 입력창에 채워졌습니다. 바뀐 배당을 수정 후 아래 버튼을 누르면 덮어쓰기 저장됩니다.")
+
+        def_s = preset_fill.get("시즌", "25-26")
+        def_l = preset_fill.get("리그명", "PL")
+        def_d = preset_fill.get("경기날짜", "25.08.30")
+        def_h = preset_fill.get("홈팀", "")
+        def_a = preset_fill.get("원정팀", "")
+        
+        def safe_flt(val, default):
+            try:
+                return float(str(val).replace("%", "").strip())
+            except:
+                return default
+
         c_ds1, c_ds2, c_ds3 = st.columns(3)
-        ds_season = c_ds1.text_input("시즌", value="25-26", key="ds_season")
-        ds_league = c_ds2.text_input("리그명", value="PL", key="ds_league")
-        ds_date = c_ds3.text_input("경기 날짜", value="25.08.30", key="ds_date")
+        ds_season = c_ds1.text_input("시즌", value=def_s, key="ds_season")
+        ds_league = c_ds2.text_input("리그명", value=def_l, key="ds_league")
+        ds_date = c_ds3.text_input("경기 날짜", value=def_d, key="ds_date")
 
         c_dt1, c_dt2 = st.columns(2)
-        ds_home = c_dt1.text_input("홈팀명", placeholder="예: 아스날", key="ds_home")
-        ds_away = c_dt2.text_input("원정팀명", placeholder="예: 브라이튼", key="ds_away")
+        ds_home = c_dt1.text_input("홈팀명", value=def_h, placeholder="예: 아스날", key="ds_home")
+        ds_away = c_dt2.text_input("원정팀명", value=def_a, placeholder="예: 브라이튼", key="ds_away")
 
         st.markdown("**🏢 배트맨 최종 배당 (필수)**")
         c_db1, c_db2, c_db3 = st.columns(3)
-        ds_bh = c_db1.number_input("홈", value=1.50, step=0.01, min_value=0.0, key="ds_bh")
-        ds_bd = c_db2.number_input("무", value=3.80, step=0.01, min_value=0.0, key="ds_bd")
-        ds_ba = c_db3.number_input("원정", value=5.20, step=0.01, min_value=0.0, key="ds_ba")
+        ds_bh = c_db1.number_input("홈", value=safe_flt(preset_fill.get("배트맨_홈"), 1.50), step=0.01, min_value=0.0, key="ds_bh")
+        ds_bd = c_db2.number_input("무", value=safe_flt(preset_fill.get("배트맨_무"), 3.80), step=0.01, min_value=0.0, key="ds_bd")
+        ds_ba = c_db3.number_input("원정", value=safe_flt(preset_fill.get("배트맨_원"), 5.20), step=0.01, min_value=0.0, key="ds_ba")
 
         st.markdown("**🌐 주요 해외 북메이커 배당 (선택: 있는 것만 입력)**")
         ds_overseas_inputs = {}
@@ -1023,9 +1050,10 @@ with tab_scanner:
                         with st.container(border=True):
                             st.caption(f"**{obm.upper()}**")
                             dh, dd, da = st.columns(3)
-                            def_oh = 1.55 if obm == "bet365" else 0.0
-                            def_od = 4.00 if obm == "bet365" else 0.0
-                            def_oa = 5.50 if obm == "bet365" else 0.0
+                            
+                            def_oh = safe_flt(preset_fill.get(f"{obm}_홈"), (1.55 if obm == "bet365" else 0.0))
+                            def_od = safe_flt(preset_fill.get(f"{obm}_무"), (4.00 if obm == "bet365" else 0.0))
+                            def_oa = safe_flt(preset_fill.get(f"{obm}_원"), (5.50 if obm == "bet365" else 0.0))
                             
                             h_v = dh.number_input("홈", value=def_oh, step=0.01, min_value=0.0, key=f"ds_{obm}_h")
                             d_v = dd.number_input("무", value=def_od, step=0.01, min_value=0.0, key=f"ds_{obm}_d")
@@ -1034,7 +1062,7 @@ with tab_scanner:
 
         col_add_btn, col_del_btn = st.columns([2, 1])
         with col_add_btn:
-            if st.button("➕ [라운드스캔] 시트에 경기 등록 및 스캔 목록 추가", type="primary", use_container_width=True):
+            if st.button("💾 [라운드스캔] 신규 등록 또는 기존 배당 덮어쓰기(수정)", type="primary", use_container_width=True):
                 if ds_home.strip() and ds_away.strip():
                     client = get_gspread_client()
                     if client:
@@ -1050,10 +1078,32 @@ with tab_scanner:
                                 oh, od, oa = ds_overseas_inputs.get(obm, (0.0, 0.0, 0.0))
                                 new_scan_row.extend([oh, od, oa])
 
-                            ws_scan.append_row(new_scan_row, value_input_option="USER_ENTERED")
-                            time.sleep(0.3)
-                            st.cache_data.clear()
-                            st.success(f"🎉 [{ds_home} vs {ds_away}] 경기가 `라운드스캔` 시트에 저장되었습니다!")
+                            # 기존 시트 내 중복 경기 검색 (홈팀 + 원정팀 일치 여부)
+                            all_data = ws_scan.get_all_values()
+                            target_row_idx = None
+                            
+                            if len(all_data) > 1:
+                                for r_i, row in enumerate(all_data[1:], start=2):
+                                    if len(row) >= 5:
+                                        r_home = str(row[3]).strip()
+                                        r_away = str(row[4]).strip()
+                                        if r_home == ds_home.strip() and r_away == ds_away.strip():
+                                            target_row_idx = r_i
+                                            break
+                            
+                            if target_row_idx:
+                                # 기존 행 덮어쓰기 (수정)
+                                ws_scan.update(f"A{target_row_idx}:AF{target_row_idx}", [new_scan_row], value_input_option="USER_ENTERED")
+                                time.sleep(0.3)
+                                st.cache_data.clear()
+                                st.success(f"🔄 [{ds_home} vs {ds_away}] 기존 경기의 배당이 최신 데이터로 성공적으로 덮어쓰기(수정)되었습니다!")
+                            else:
+                                # 신규 행 추가
+                                ws_scan.append_row(new_scan_row, value_input_option="USER_ENTERED")
+                                time.sleep(0.3)
+                                st.cache_data.clear()
+                                st.success(f"🎉 [{ds_home} vs {ds_away}] 경기가 `라운드스캔` 시트에 신규 저장되었습니다!")
+                            
                             st.rerun()
                         except Exception as e:
                             st.error(f"저장 실패: {e}")
@@ -1081,11 +1131,10 @@ with tab_scanner:
 
     st.markdown("---")
 
-    df_scan_raw = load_sheet_data(SCANNER_SHEET_NAME)
     df_h2h_all_db = load_sheet_data(STATS_SHEET_NAME)
 
     if df_scan_raw.empty:
-        st.warning(f"⚠️ `{SCANNER_SHEET_NAME}` 시트에 스캔할 경기 데이터가 없습니다. 위의 [✍️ 웹 화면에서 직접 1경기씩 등록]을 눌러 경기를 등록해 주세요.")
+        st.warning(f"⚠️ `{SCANNER_SHEET_NAME}` 시트에 스캔할 경기 데이터가 없습니다. 위의 [✍️ 웹 화면에서 경기 등록 & 배당 변동 시 자동 덮어쓰기/수정]을 눌러 경기를 등록해 주세요.")
     else:
         st.info(f"📊 현재 `{SCANNER_SHEET_NAME}` 시트에서 **총 {len(df_scan_raw)}개 경기**가 감지되었습니다.")
         
@@ -1266,10 +1315,8 @@ with tab_scanner:
                     with c_head3:
                         st.markdown("<br>", unsafe_allow_html=True)
                         if st.button(f"👉 이 경기 즉시 분석/도표 생성", key=f"btn_scan_{i}", type="primary", use_container_width=True):
-                            # 세션 상태에 저장
                             st.session_state.selected_scan_match = item
                             
-                            # 3번 탭(배당 분석) 입력창 세션 키값 직접 강제 덮어쓰기
                             st.session_state.t2_target_league = item["league"]
                             st.session_state.t2_home_team = item["home"]
                             st.session_state.t2_away_team = item["away"]
@@ -1280,17 +1327,14 @@ with tab_scanner:
                                 st.session_state[f"t2_{bm}_d"] = float(d_val)
                                 st.session_state[f"t2_{bm}_a"] = float(a_val)
                             
-                            # 5번 탭(맞대결) 선택상자 세션 키값 직접 강제 덮어쓰기
                             st.session_state.sel_h2h_home = item["home"]
                             st.session_state.sel_h2h_away = item["away"]
-                            
-                            # 6번 탭(부상자) 선택상자 세션 키값 직접 강제 덮어쓰기
                             st.session_state.inj_filter_team = item["home"]
                             
                             st.rerun()
 
 # =========================================================
-# TAB 3: 📊 9개사 동일 배당 분석 (3번 탭)
+# TAB 3: 📊 9개사 동일 배당 분석
 # =========================================================
 with tab_analysis:
     st.subheader("🔬 3번 탭: 9대 북메이커 배당 입력 및 승률 분석")
@@ -1492,7 +1536,7 @@ with tab_analysis:
         st.info(f"💡 현재 선택된 조건에 일치(오차 범위 ±{tol})하는 과거 경기 데이터가 없습니다.")
 
 # =========================================================
-# TAB 4: 📈 단일 팀별 경기내용 평균계산기 (4번 탭)
+# TAB 4: 📈 단일 팀별 경기내용 평균계산기
 # =========================================================
 with tab_team_stats:
     st.subheader("📈 팀별 과거 세부 경기내용 평균계산기 (단일 팀 기준)")
@@ -1636,7 +1680,7 @@ with tab_team_stats:
         st.info("💡 10번 '경기내용' 탭에 아직 데이터가 없습니다.")
 
 # =========================================================
-# TAB 5: ⚔️ 홈 vs 원정 맞대결(H2H) 종합 분석 (5번 탭)
+# TAB 5: ⚔️ 홈 vs 원정 맞대결(H2H) 종합 분석
 # =========================================================
 with tab_h2h:
     st.subheader("⚔️ 홈팀 vs 원정팀 역대 맞대결(H2H) 종합 분석 및 세부 지표")
@@ -1849,7 +1893,7 @@ with tab_h2h:
         st.info("💡 10번 '경기내용' 탭에 데이터가 없습니다.")
 
 # =========================================================
-# TAB 6: 🚑 팀별 부상자/결장자 명단 (6번 탭)
+# TAB 6: 🚑 팀별 부상자/결장자 명단
 # =========================================================
 with tab_injuries:
     st.subheader("🚑 팀별 부상자/결장자 명단 및 카드 리포트 (11번 시트 연동)")
