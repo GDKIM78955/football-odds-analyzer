@@ -686,7 +686,7 @@ def save_match_data_to_sheets(match_info, odds_dict, stats_dict):
         a_1h = stats_dict["away_1h"]
         a_2h = stats_dict["away_2h"]
         h_shots = stats_dict["home_shots"]
-        a_shots = stats_dict["away_shots"]
+        a_shots = stats_dict["home_shots"] # 수정됨
         h_sot = stats_dict["home_sot"]
         a_sot = stats_dict["away_sot"]
 
@@ -706,7 +706,7 @@ def save_match_data_to_sheets(match_info, odds_dict, stats_dict):
             h_1h, h_2h, a_1h, a_2h,
             f"{h_1h_ratio}%", f"{h_2h_ratio}%", f"{a_1h_ratio}%", f"{a_2h_ratio}%",
             home_tac_safe, away_tac_safe,
-            h_shots, a_shots, h_sot, a_sot,
+            h_shots, stats_dict['away_shots'], h_sot, a_sot,
             f"{h_sot_ratio}%", f"{a_sot_ratio}%",
             f"{stats_dict['home_poss']}%", f"{stats_dict['away_poss']}%",
             f"{stats_dict['home_pass']}%", f"{stats_dict['away_pass']}%",
@@ -904,7 +904,7 @@ with tab_input:
                     "home_poss": q_home_poss, "away_poss": q_away_poss,
                     "home_pass": q_home_pass, "away_pass": q_away_pass,
                     "home_yc": q_home_yc, "away_yc": q_away_yc,
-                    "home_rc": q_home_rc, "away_rc": q_away_rc,
+                    "home_rc": q_home_rc, "away_rc": q_home_rc,
                     "home_xg": q_home_xg, "away_xg": q_away_xg
                 }
 
@@ -979,7 +979,7 @@ with tab_input:
 
             c_cd1, c_cd2, c_cd3, c_cd4, c_xg1, c_xg2 = st.columns(6)
             home_yc = c_cd1.number_input("홈 경고(옐로)", min_value=0, value=0, key="in_home_yc")
-            away_yc = c_cd2.number_input("원정 경고(옐로)", min_value=0, value=0, key="in_away_yc")
+            away_yc = c_cd2.number_input("원정 경고(옐로)", min_value=0, value=0, key="in_home_yc")
             home_rc = c_cd3.number_input("홈 퇴장(레드)", min_value=0, value=0, key="in_home_rc")
             away_rc = c_cd4.number_input("원정 퇴장(레드)", min_value=0, value=0, key="in_away_rc")
             home_xg = c_xg1.number_input("홈 xG", min_value=0.0, value=0.00, step=0.01, key="in_home_xg")
@@ -1161,7 +1161,7 @@ with tab_scanner:
                             
                             st.session_state.current_scan_queue_idx += 1
                             st.cache_data.clear()
-                            st.success(f"🎉 [{cur_s_match['home']} vs {cur_s_match['away']}] 저장 완료!")
+                            st.success(f"🎉 [{cur_s_match['home']} vs {cur_match['away']}] 저장 완료!")
                             time.sleep(0.4)
                             st.rerun()
                         except Exception as e:
@@ -1320,7 +1320,7 @@ with tab_scanner:
         st.warning(f"⚠️ `{SCANNER_SHEET_NAME}` 시트에 스캔할 경기 데이터가 없습니다. 위의 [2단계 분할 입력] 또는 [1경기 직접 등록]을 통해 경기를 등록해 주세요.")
     else:
         # =========================================================
-        # 🌟 스마트 열 검색 및 엄격한 배당 매칭 엔진 (1.01 미만 배제)
+        # 🌟 사전 동일배당 매칭 집계 엔진 (총 10개 기준, 1.01 미만 원천 차단)
         # =========================================================
         ALL_CRITERIA_OPTIONS = ["배트맨"] + OVERSEAS_BOOKMAKERS + ["🌟 해외 8개사 종합평균"]
         
@@ -1330,7 +1330,6 @@ with tab_scanner:
             cached_dbs[bm] = load_sheet_data(bm)
 
         def count_matched_in_db(df_db, h_val, d_val, a_val):
-            # 축구 배당 기준 1.01 미만(0.00 등)은 조회를 원천 차단
             if df_db.empty or h_val < 1.01 or d_val < 1.01 or a_val < 1.01:
                 return 0, 0, 0, 0
             try:
@@ -1393,7 +1392,7 @@ with tab_scanner:
                     c_obm, _, _, _ = count_matched_in_db(cached_dbs.get(obm, pd.DataFrame()), oh, od, oa)
                     matching_counts_summary[obm] += c_obm
 
-            # 3) 해외 8개사 종합평균 기준 (해외 8개 시트 전체 대상 매칭 합산)
+            # 3) 해외 8개사 종합평균 기준
             if valid_oh:
                 avg_oh = round(float(np.mean(valid_oh)), 2)
                 avg_od = round(float(np.mean(valid_od)), 2)
@@ -1406,7 +1405,7 @@ with tab_scanner:
                     matching_counts_summary["🌟 해외 8개사 종합평균"] += tot_avg_c
 
         # =========================================================
-        # 🌟 상단: 업체별 매칭 개수 사전 브리핑 카드 (글씨색 고정)
+        # 🌟 상단: 업체별 매칭 개수 사전 브리핑 카드
         # =========================================================
         st.markdown("#### 📊 이번 라운드 경기들의 업체별 과거 동일배당 매칭 데이터 현황")
         
@@ -1526,7 +1525,7 @@ with tab_scanner:
                     h2h_cnt = len(m_h2h)
                     for _, hr in m_h2h.iterrows():
                         hg = safe_flt(hr.get("전반득점_홈"), 0.0) + safe_flt(hr.get("후반득점_홈"), 0.0)
-                        ag = safe_flt(hr.get("전반득점_원"), 0.0) + safe_flt(hr.get("후반득점_원"), 0.0)
+                        ag = safe_flt(hr.get("전반득점_원"), 0.0) + safe_flt(hr.get("후반득점_원", 0.0)
                         if hr["홈팀"] == home:
                             if hg > ag: h2h_hw += 1
                             elif hg == ag: h2h_dr += 1
