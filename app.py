@@ -32,8 +32,6 @@ if "match_queue" not in st.session_state:
     st.session_state.match_queue = []
 if "current_queue_idx" not in st.session_state:
     st.session_state.current_queue_idx = 0
-
-# 스캐너에서 3/5번 탭으로 넘겨줄 세션 상태
 if "selected_scan_match" not in st.session_state:
     st.session_state.selected_scan_match = None
 
@@ -709,7 +707,7 @@ with st.sidebar:
         st.cache_data.clear()
         st.rerun()
 
-# 4. 6개 탭 구성 (1번 탭 원상 복귀 완료 ⭐)
+# 4. 6개 탭 구성
 tab_input, tab_scanner, tab_analysis, tab_team_stats, tab_h2h, tab_injuries = st.tabs([
     "📝 경기 데이터 입력 & 저장", 
     "📡 라운드 경기 자동 스캐너 & 추천픽",
@@ -720,7 +718,7 @@ tab_input, tab_scanner, tab_analysis, tab_team_stats, tab_h2h, tab_injuries = st
 ])
 
 # =========================================================
-# TAB 1: 📝 경기 데이터 입력 & 저장 (1번 탭 원상복귀 완료 ⭐)
+# TAB 1: 📝 경기 데이터 입력 & 저장
 # =========================================================
 with tab_input:
     input_mode = st.radio(
@@ -991,13 +989,12 @@ with tab_input:
                     st.error(f"저장 중 오류 발생: {msg}")
 
 # =========================================================
-# TAB 2: 📡 라운드 경기 자동 스캐너 & 레이더 (직접 추가 지원 ⭐)
+# TAB 2: 📡 라운드 경기 자동 스캐너 & 추천픽
 # =========================================================
 with tab_scanner:
     st.subheader("📡 라운드 경기 배당 자동 스캐너 & 추천픽 레이더")
     st.caption("이번 라운드 경기들을 웹 화면에서 1경기씩 등록하거나 구글 시트(`라운드스캔`)에서 불러와 4대 레이더 추천픽을 자동으로 선별합니다.")
 
-    # 1. 웹 화면에서 직접 1경기씩 등록하여 시트에 추가하는 영역
     with st.expander("✍️ [웹 화면에서 직접 1경기씩 등록 & 시트 자동저장]", expanded=False):
         c_ds1, c_ds2, c_ds3 = st.columns(3)
         ds_season = c_ds1.text_input("시즌", value="25-26", key="ds_season")
@@ -1045,7 +1042,6 @@ with tab_scanner:
                             spreadsheet = client.open_by_key(SPREADSHEET_ID)
                             ws_scan = spreadsheet.worksheet(SCANNER_SHEET_NAME)
                             
-                            # 32개 열 순서대로 리스트 생성
                             new_scan_row = [
                                 ds_season, ds_league, ds_date, ds_home.strip(), ds_away.strip(),
                                 ds_bh, ds_bd, ds_ba
@@ -1099,7 +1095,6 @@ with tab_scanner:
             except:
                 return 0.0
 
-        # 스캔 연산 함수
         def run_round_scan():
             scanned_list = []
             
@@ -1117,7 +1112,6 @@ with tab_scanner:
                 bd = to_float(r.get("배트맨_무", 0))
                 ba = to_float(r.get("배트맨_원", 0))
 
-                # 9개사 해외 배당 수집
                 all_bms_odds = {"배트맨": (bh, bd, ba)}
                 valid_oh, valid_od, valid_oa = [], [], []
                 
@@ -1135,7 +1129,6 @@ with tab_scanner:
                 avg_od = round(float(np.mean(valid_od)), 2) if valid_od else 0.0
                 avg_oa = round(float(np.mean(valid_oa)), 2) if valid_oa else 0.0
 
-                # 1. 배트맨 시트 기준 동일배당 승률 계산
                 df_bm_db = load_sheet_data("배트맨")
                 match_cnt, win_prob, draw_prob, lose_prob = 0, 0.0, 0.0, 0.0
                 
@@ -1169,7 +1162,6 @@ with tab_scanner:
                     except Exception:
                         pass
 
-                # 2. 상대전적 계산 (10번 경기내용 탭)
                 h2h_cnt, h2h_hw, h2h_dr, h2h_aw = 0, 0, 0, 0
                 if not df_h2h_all_db.empty and "홈팀" in df_h2h_all_db.columns:
                     cond_h2h = ((df_h2h_all_db["홈팀"] == home) & (df_h2h_all_db["원정팀"] == away)) | \
@@ -1188,32 +1180,17 @@ with tab_scanner:
                             elif ag == hg: h2h_dr += 1
                             else: h2h_aw += 1
 
-                # 3. 레이더 조건 판별
                 diff_h = round(bh - avg_oh, 2) if (bh > 0 and avg_oh > 0) else 0.0
-                
                 tags = []
-                primary_score = 0
 
-                # (1) 고승률 압도형
                 if match_cnt >= 2 and (win_prob >= 70.0 or lose_prob >= 70.0):
-                    top_p = max(win_prob, lose_prob)
                     tags.append("🔥 고승률 압도")
-                    primary_score += top_p
-
-                # (2) 역배/무승부 폭탄형
                 if bh < ba and (draw_prob + lose_prob) >= 55.0 and match_cnt >= 2:
                     tags.append("⚡ 역배 폭탄 주의")
-                    primary_score += (draw_prob + lose_prob)
-
-                # (3) 배당 메리트 가치형
                 if diff_h >= 0.05:
                     tags.append("💰 배당 메리트")
-                    primary_score += (diff_h * 100)
-
-                # (4) 천적 극상성형
                 if h2h_cnt >= 2 and (h2h_hw == h2h_cnt or h2h_aw == h2h_cnt):
                     tags.append("⚔️ 천적 극상성")
-                    primary_score += (h2h_cnt * 20)
 
                 if not tags:
                     tags.append("일반 분석")
@@ -1228,8 +1205,7 @@ with tab_scanner:
                     "win_prob": win_prob, "draw_prob": draw_prob, "lose_prob": lose_prob,
                     "h2h_cnt": h2h_cnt, "h2h_record": f"{h2h_cnt}전 {h2h_hw}승 {h2h_dr}무 {h2h_aw}패",
                     "diff_h": diff_h,
-                    "tags": tags,
-                    "primary_score": primary_score
+                    "tags": tags
                 })
 
             return scanned_list
@@ -1290,32 +1266,43 @@ with tab_scanner:
                     with c_head3:
                         st.markdown("<br>", unsafe_allow_html=True)
                         if st.button(f"👉 이 경기 즉시 분석/도표 생성", key=f"btn_scan_{i}", type="primary", use_container_width=True):
+                            # 세션 상태에 저장
                             st.session_state.selected_scan_match = item
-                            st.success(f"🎉 [{item['home']} vs {item['away']}] 경기 데이터가 3번/5번 탭으로 전송되었습니다! 상단의 [📊 9개사 동일 배당 분석] 또는 [⚔️ 맞대결 종합분석] 탭을 확인하세요.")
+                            
+                            # 3번 탭(배당 분석) 입력창 세션 키값 직접 강제 덮어쓰기
+                            st.session_state.t2_target_league = item["league"]
+                            st.session_state.t2_home_team = item["home"]
+                            st.session_state.t2_away_team = item["away"]
+                            
+                            for bm in BOOKMAKERS:
+                                h_val, d_val, a_val = item["all_odds"].get(bm, (0.0, 0.0, 0.0))
+                                st.session_state[f"t2_{bm}_h"] = float(h_val)
+                                st.session_state[f"t2_{bm}_d"] = float(d_val)
+                                st.session_state[f"t2_{bm}_a"] = float(a_val)
+                            
+                            # 5번 탭(맞대결) 선택상자 세션 키값 직접 강제 덮어쓰기
+                            st.session_state.sel_h2h_home = item["home"]
+                            st.session_state.sel_h2h_away = item["away"]
+                            
+                            # 6번 탭(부상자) 선택상자 세션 키값 직접 강제 덮어쓰기
+                            st.session_state.inj_filter_team = item["home"]
+                            
+                            st.rerun()
 
 # =========================================================
-# TAB 3: 📊 9개사 동일 배당 분석
+# TAB 3: 📊 9개사 동일 배당 분석 (3번 탭)
 # =========================================================
 with tab_analysis:
     st.subheader("🔬 3번 탭: 9대 북메이커 배당 입력 및 승률 분석")
 
-    auto_home = "리버풀"
-    auto_away = "본머스"
-    auto_league = "PL"
-    auto_odds = {}
-
     if st.session_state.selected_scan_match:
         sm = st.session_state.selected_scan_match
-        auto_home = sm["home"]
-        auto_away = sm["away"]
-        auto_league = sm["league"]
-        auto_odds = sm["all_odds"]
-        st.success(f"🎯 [스캐너 연동 완료] 현재 **[{auto_home} vs {auto_away}]** 경기의 데이터가 자동으로 채워졌습니다.")
+        st.success(f"🎯 [스캐너 연동 완료] 현재 **[{sm['home']} vs {sm['away']}]** 경기의 배당 데이터가 자동 적용되어 있습니다.")
 
     c_an_l1, c_an_l2, c_an_l3 = st.columns([1, 1, 1])
-    target_league = c_an_l1.text_input("🔍 리그명", value=auto_league, key="t2_target_league")
-    t2_home_team = c_an_l2.text_input("🏠 홈팀명 (블로그 도표용)", value=auto_home, key="t2_home_team")
-    t2_away_team = c_an_l3.text_input("🚗 원정팀명 (블로그 도표용)", value=auto_away, key="t2_away_team")
+    target_league = c_an_l1.text_input("🔍 리그명", value="PL", key="t2_target_league")
+    t2_home_team = c_an_l2.text_input("🏠 홈팀명 (블로그 도표용)", value="리버풀", key="t2_home_team")
+    t2_away_team = c_an_l3.text_input("🚗 원정팀명 (블로그 도표용)", value="본머스", key="t2_away_team")
 
     st.markdown("##### 🏢 분석할 9대 북메이커 배당 입력")
     odds_inputs_t2 = {}
@@ -1330,15 +1317,13 @@ with tab_analysis:
                         st.markdown(f"**[{idx+1}] {bm.upper()}**")
                         oh, od, oa = st.columns(3)
                         
-                        preset_h, preset_d, preset_a = auto_odds.get(bm, (0.0, 0.0, 0.0))
-                        if preset_h == 0.0 and not auto_odds:
-                            preset_h = 1.22 if bm == "배트맨" else (1.31 if bm == "bwin" else 0.0)
-                            preset_d = 5.10 if bm == "배트맨" else (5.75 if bm == "bwin" else 0.0)
-                            preset_a = 7.50 if bm == "배트맨" else (8.00 if bm == "bwin" else 0.0)
+                        def_h = 1.22 if bm == "배트맨" else (1.31 if bm == "bwin" else 0.0)
+                        def_d = 5.10 if bm == "배트맨" else (5.75 if bm == "bwin" else 0.0)
+                        def_a = 7.50 if bm == "배트맨" else (8.00 if bm == "bwin" else 0.0)
                         
-                        h_val = oh.number_input("홈", value=float(preset_h), step=0.01, min_value=0.0, key=f"t2_{bm}_h")
-                        d_val = od.number_input("무", value=float(preset_d), step=0.01, min_value=0.0, key=f"t2_{bm}_d")
-                        a_val = oa.number_input("원정", value=float(preset_a), step=0.01, min_value=0.0, key=f"t2_{bm}_a")
+                        h_val = oh.number_input("홈", value=float(def_h), step=0.01, min_value=0.0, key=f"t2_{bm}_h")
+                        d_val = od.number_input("무", value=float(def_d), step=0.01, min_value=0.0, key=f"t2_{bm}_d")
+                        a_val = oa.number_input("원정", value=float(def_a), step=0.01, min_value=0.0, key=f"t2_{bm}_a")
                         odds_inputs_t2[bm] = (h_val, d_val, a_val)
 
     st.markdown("---")
@@ -1507,7 +1492,7 @@ with tab_analysis:
         st.info(f"💡 현재 선택된 조건에 일치(오차 범위 ±{tol})하는 과거 경기 데이터가 없습니다.")
 
 # =========================================================
-# TAB 4: 📈 단일 팀별 경기내용 평균계산기
+# TAB 4: 📈 단일 팀별 경기내용 평균계산기 (4번 탭)
 # =========================================================
 with tab_team_stats:
     st.subheader("📈 팀별 과거 세부 경기내용 평균계산기 (단일 팀 기준)")
@@ -1651,7 +1636,7 @@ with tab_team_stats:
         st.info("💡 10번 '경기내용' 탭에 아직 데이터가 없습니다.")
 
 # =========================================================
-# TAB 5: ⚔️ 홈 vs 원정 맞대결(H2H) 종합 분석
+# TAB 5: ⚔️ 홈 vs 원정 맞대결(H2H) 종합 분석 (5번 탭)
 # =========================================================
 with tab_h2h:
     st.subheader("⚔️ 홈팀 vs 원정팀 역대 맞대결(H2H) 종합 분석 및 세부 지표")
@@ -1864,7 +1849,7 @@ with tab_h2h:
         st.info("💡 10번 '경기내용' 탭에 데이터가 없습니다.")
 
 # =========================================================
-# TAB 6: 🚑 팀별 부상자/결장자 명단
+# TAB 6: 🚑 팀별 부상자/결장자 명단 (6번 탭)
 # =========================================================
 with tab_injuries:
     st.subheader("🚑 팀별 부상자/결장자 명단 및 카드 리포트 (11번 시트 연동)")
