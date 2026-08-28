@@ -904,7 +904,7 @@ with tab_input:
                     "home_poss": q_home_poss, "away_poss": q_away_poss,
                     "home_pass": q_home_pass, "away_pass": q_away_pass,
                     "home_yc": q_home_yc, "away_yc": q_away_yc,
-                    "home_rc": q_home_rc, "away_rc": q_home_rc,
+                    "home_rc": q_home_rc, "away_rc": q_away_rc,
                     "home_xg": q_home_xg, "away_xg": q_away_xg
                 }
 
@@ -1107,7 +1107,7 @@ with tab_scanner:
                 if next_s_match:
                     st.caption(f"⏭️ **다음 대기 경기:** [{next_s_match['home']} vs {next_s_match['away']}] ({next_s_match['league']})")
                 else:
-                    st.caption("🏁 이번 경기가 대기열의 마지막 경기입니다.")
+                    st.caption("🏁 이번 경기가 스캔 대기열의 마지막 경기입니다.")
 
                 st.markdown("##### 🌐 주요 해외 북메이커 배당 입력 (있는 것만 입력)")
                 sq_overseas_inputs = {}
@@ -1320,13 +1320,51 @@ with tab_scanner:
         st.warning(f"⚠️ `{SCANNER_SHEET_NAME}` 시트에 스캔할 경기 데이터가 없습니다. 위의 [2단계 분할 입력] 또는 [1경기 직접 등록]을 통해 경기를 등록해 주세요.")
     else:
         # =========================================================
-        # 🌟 사전 동일배당 매칭 집계 엔진 (매칭된 상세 내역 추적 기능 포함)
+        # 🌟 사전 동일배당 매칭 집계 엔진 (함수 위치 정렬 완료)
         # =========================================================
         ALL_CRITERIA_OPTIONS = ["배트맨"] + OVERSEAS_BOOKMAKERS + ["🌟 해외 8개사 종합평균"]
         
         cached_dbs = {}
         for bm in BOOKMAKERS:
             cached_dbs[bm] = load_sheet_data(bm)
+
+        def count_matched_in_db(df_db, h_val, d_val, a_val):
+            if df_db.empty or h_val < 1.01 or d_val < 1.01 or a_val < 1.01:
+                return 0, 0, 0, 0
+            try:
+                cols = list(df_db.columns)
+                h_col = next((c for c in cols if any(k in c for k in ["해당_홈", "배당_홈", "홈배당", "홈_승", "H_ODDS"])), None)
+                d_col = next((c for c in cols if any(k in c for k in ["해당_무", "배당_무", "무배당", "무승부", "D_ODDS"])), None)
+                a_col = next((c for c in cols if any(k in c for k in ["해당_원", "배당_원", "원정배당", "원정_승", "A_ODDS"])), None)
+                res_col = next((c for c in cols if any(k in c for k in ["경기결과", "결과", "Result"])), None)
+
+                if not h_col and len(cols) > 14:
+                    h_col, d_col, a_col = cols[12], cols[13], cols[14]
+                if not res_col:
+                    res_col = cols[32] if len(cols) > 32 else cols[-1]
+
+                if not h_col or not d_col or not a_col:
+                    return 0, 0, 0, 0
+
+                df_w = df_db.copy()
+                df_w["H_num"] = pd.to_numeric(df_w[h_col], errors="coerce").fillna(0.0)
+                df_w["D_num"] = pd.to_numeric(df_w[d_col], errors="coerce").fillna(0.0)
+                df_w["A_num"] = pd.to_numeric(df_w[a_col], errors="coerce").fillna(0.0)
+
+                cond = (
+                    (df_w["H_num"] >= 1.01) & (df_w["D_num"] >= 1.01) & (df_w["A_num"] >= 1.01) &
+                    (df_w["H_num"] >= h_val - tol) & (df_w["H_num"] <= h_val + tol) &
+                    (df_w["D_num"] >= d_val - tol) & (df_w["D_num"] <= d_val + tol) &
+                    (df_w["A_num"] >= a_val - tol) & (df_w["A_num"] <= a_val + tol)
+                )
+                matched = df_w[cond]
+                cnt = len(matched)
+                if cnt > 0 and res_col in matched.columns:
+                    vc = matched[res_col].value_counts()
+                    return cnt, vc.get("홈승", 0), vc.get("무승부", 0), vc.get("원정승", 0)
+            except Exception:
+                pass
+            return 0, 0, 0, 0
 
         def get_matched_details_in_db(df_db, h_val, d_val, a_val):
             if df_db.empty or h_val < 1.01 or d_val < 1.01 or a_val < 1.01:
@@ -1457,7 +1495,6 @@ with tab_scanner:
         badge_html = "<div style='display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px;'>" + "".join(badges) + "</div>"
         st.markdown(badge_html, unsafe_allow_html=True)
 
-        # 🌟 [신규 추가] 어떤 경기가 매칭되었는지 직접 눈으로 확인하는 상세 내역 검증기
         with st.expander("🔍 [업체별 동일배당 매칭 상세 내역 검증기] (어떤 과거 경기가 카운팅되었는지 확인하기)", expanded=False):
             sel_inspect_bm = st.selectbox("상세 내역을 조회할 업체 선택", ALL_CRITERIA_OPTIONS, key="sel_inspect_bm_box")
             bm_records = detailed_match_records.get(sel_inspect_bm, [])
@@ -1468,7 +1505,6 @@ with tab_scanner:
             else:
                 st.info(f"💡 **[{sel_inspect_bm}]** 시트에 이번 라운드 경기들과 일치하는 과거 동일배당 매칭 내역이 없습니다. (0건)")
 
-        # 🌟 기준 북메이커 선택 셀렉트박스
         c_crit1, c_crit2 = st.columns([2, 3])
         with c_crit1:
             selected_radar_criteria = st.selectbox(
@@ -1480,9 +1516,6 @@ with tab_scanner:
         with c_crit2:
             st.caption(f"💡 현재 **[{selected_radar_criteria}]** 배당 및 과거 시트 데이터를 기준으로 고승률픽/폭탄주의픽을 자동 계산합니다.")
 
-        # =========================================================
-        # 스캔 분석 엔진 실행 (선택된 기준 기반)
-        # =========================================================
         def run_round_scan(criteria_name):
             scanned_list = []
             
@@ -1552,7 +1585,6 @@ with tab_scanner:
                             draw_prob = round((tot_dr / match_cnt) * 100, 1)
                             lose_prob = round((tot_aw / match_cnt) * 100, 1)
 
-                # 상대전적 (10번 시트)
                 h2h_cnt, h2h_hw, h2h_dr, h2h_aw = 0, 0, 0, 0
                 if not df_h2h_all_db.empty and "홈팀" in df_h2h_all_db.columns:
                     cond_h2h = ((df_h2h_all_db["홈팀"] == home) & (df_h2h_all_db["원정팀"] == away)) | \
@@ -1604,9 +1636,6 @@ with tab_scanner:
 
         scanned_results = run_round_scan(selected_radar_criteria)
 
-        # =========================================================
-        # 4대 추천 레이더 TOP 5 필터 버튼 영역
-        # =========================================================
         col_f1, col_f2, col_f3, col_f4, col_f5 = st.columns(5)
         f_all = col_f1.button("🌐 전체 경기 보기", use_container_width=True)
         f_high = col_f2.button(f"🔥 [고승률 주력픽 TOP 5]", use_container_width=True)
