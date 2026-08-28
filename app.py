@@ -829,7 +829,11 @@ with tab_input:
                     st.session_state.current_queue_idx = 0
                     st.rerun()
             else:
-                cur_match = st.session_state.match_queue[cur_idx]
+                cur_match = st.session_state.match_queue[cur_idx] if cur_idx < queue_len else None
+                if not cur_match:
+                    st.session_state.current_queue_idx = 0
+                    st.rerun()
+                
                 next_match = st.session_state.match_queue[cur_idx + 1] if cur_idx + 1 < queue_len else None
 
                 st.markdown(f"""
@@ -904,7 +908,7 @@ with tab_input:
                     "home_poss": q_home_poss, "away_poss": q_away_poss,
                     "home_pass": q_home_pass, "away_pass": q_away_pass,
                     "home_yc": q_home_yc, "away_yc": q_away_yc,
-                    "home_rc": q_home_rc, "away_rc": q_away_rc,
+                    "home_rc": q_home_rc, "away_rc": q_home_rc,
                     "home_xg": q_home_xg, "away_xg": q_away_xg
                 }
 
@@ -1093,7 +1097,11 @@ with tab_scanner:
                     st.session_state.current_scan_queue_idx = 0
                     st.rerun()
             else:
-                cur_s_match = st.session_state.scan_queue[s_cur_idx]
+                cur_s_match = st.session_state.scan_queue[s_cur_idx] if s_cur_idx < s_q_len else None
+                if not cur_s_match:
+                    st.session_state.current_scan_queue_idx = 0
+                    st.rerun()
+
                 next_s_match = st.session_state.scan_queue[s_cur_idx + 1] if s_cur_idx + 1 < s_q_len else None
 
                 st.markdown(f"""
@@ -1161,7 +1169,7 @@ with tab_scanner:
                             
                             st.session_state.current_scan_queue_idx += 1
                             st.cache_data.clear()
-                            st.success(f"🎉 [{cur_s_match['home']} vs {cur_match['away']}] 저장 완료!")
+                            st.success(f"🎉 [{cur_s_match['home']} vs {cur_s_match['away']}] 저장 완료!")
                             time.sleep(0.4)
                             st.rerun()
                         except Exception as e:
@@ -1320,7 +1328,7 @@ with tab_scanner:
         st.warning(f"⚠️ `{SCANNER_SHEET_NAME}` 시트에 스캔할 경기 데이터가 없습니다. 위의 [2단계 분할 입력] 또는 [1경기 직접 등록]을 통해 경기를 등록해 주세요.")
     else:
         # =========================================================
-        # 🌟 사전 동일배당 매칭 집계 엔진 (함수 위치 정렬 완료)
+        # 🌟 사전 동일배당 매칭 집계 엔진 (함수 정렬 완료)
         # =========================================================
         ALL_CRITERIA_OPTIONS = ["배트맨"] + OVERSEAS_BOOKMAKERS + ["🌟 해외 8개사 종합평균"]
         
@@ -1415,7 +1423,6 @@ with tab_scanner:
             except Exception:
                 return []
 
-        # 전체 등록 경기에 대한 북메이커별 총 매칭 건수 및 상세 내역 수집
         matching_counts_summary = {crit: 0 for crit in ALL_CRITERIA_OPTIONS}
         detailed_match_records = {crit: [] for crit in ALL_CRITERIA_OPTIONS}
         
@@ -1425,7 +1432,6 @@ with tab_scanner:
             r_lg = str(r.get("리그명", "")).strip()
             match_name_str = f"[{r_lg}] {r_home} vs {r_away}"
 
-            # 1) 배트맨
             bh = safe_flt(r.get("배트맨_홈"), 0.0)
             bd = safe_flt(r.get("배트맨_무"), 0.0)
             ba = safe_flt(r.get("배트맨_원"), 0.0)
@@ -1437,7 +1443,6 @@ with tab_scanner:
                         d["대상경기"] = match_name_str
                         detailed_match_records["배트맨"].append(d)
 
-            # 2) 해외 8개사 개별
             valid_oh, valid_od, valid_oa = [], [], []
             for obm in OVERSEAS_BOOKMAKERS:
                 oh = safe_flt(r.get(f"{obm}_홈"), 0.0)
@@ -1454,7 +1459,6 @@ with tab_scanner:
                             d["대상경기"] = match_name_str
                             detailed_match_records[obm].append(d)
 
-            # 3) 해외 8개사 종합평균 기준
             if valid_oh:
                 avg_oh = round(float(np.mean(valid_oh)), 2)
                 avg_od = round(float(np.mean(valid_od)), 2)
@@ -1468,9 +1472,6 @@ with tab_scanner:
                                 d["대상경기"] = match_name_str
                                 detailed_match_records["🌟 해외 8개사 종합평균"].append(d)
 
-        # =========================================================
-        # 🌟 상단: 업체별 매칭 개수 사전 브리핑 카드
-        # =========================================================
         st.markdown("#### 📊 이번 라운드 경기들의 업체별 과거 동일배당 매칭 데이터 현황")
         
         badges = []
