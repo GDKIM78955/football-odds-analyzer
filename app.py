@@ -989,7 +989,7 @@ with tab_input:
                     st.error(f"저장 중 오류 발생: {msg}")
 
 # =========================================================
-# TAB 2: 📡 라운드 경기 자동 스캐너 & 추천픽 (수정/덮어쓰기 완벽 탑재 ⭐)
+# TAB 2: 📡 라운드 경기 자동 스캐너 & 추천픽 (완벽 동기화 탑재 ⭐)
 # =========================================================
 with tab_scanner:
     st.subheader("📡 라운드 경기 배당 자동 스캐너 & 추천픽 레이더")
@@ -997,46 +997,74 @@ with tab_scanner:
 
     df_scan_raw = load_sheet_data(SCANNER_SHEET_NAME)
 
+    def safe_flt(val, default):
+        try:
+            return float(str(val).replace("%", "").strip())
+        except:
+            return default
+
+    # 경기 선택 시 아래 입력창 위젯 키들을 강제 동기화하는 콜백 함수
+    def on_scan_match_change():
+        sel = st.session_state.sel_scan_loader
+        if sel == "➕ [새로운 경기 직접 입력]":
+            st.session_state.ds_season = "25-26"
+            st.session_state.ds_league = "PL"
+            st.session_state.ds_date = "25.08.30"
+            st.session_state.ds_home = ""
+            st.session_state.ds_away = ""
+            st.session_state.ds_bh = 1.50
+            st.session_state.ds_bd = 3.80
+            st.session_state.ds_ba = 5.20
+            for obm in OVERSEAS_BOOKMAKERS:
+                st.session_state[f"ds_{obm}_h"] = 1.55 if obm == "bet365" else 0.0
+                st.session_state[f"ds_{obm}_d"] = 4.00 if obm == "bet365" else 0.0
+                st.session_state[f"ds_{obm}_a"] = 5.50 if obm == "bet365" else 0.0
+        else:
+            if not df_scan_raw.empty:
+                for _, r in df_scan_raw.iterrows():
+                    lbl = f"{r.get('홈팀', '')} vs {r.get('원정팀', '')} ({r.get('리그명', '')})"
+                    if lbl == sel:
+                        st.session_state.ds_season = str(r.get("시즌", "25-26"))
+                        st.session_state.ds_league = str(r.get("리그명", "PL"))
+                        st.session_state.ds_date = str(r.get("경기날짜", "25.08.30"))
+                        st.session_state.ds_home = str(r.get("홈팀", ""))
+                        st.session_state.ds_away = str(r.get("원정팀", ""))
+                        st.session_state.ds_bh = safe_flt(r.get("배트맨_홈"), 1.50)
+                        st.session_state.ds_bd = safe_flt(r.get("배트맨_무"), 3.80)
+                        st.session_state.ds_ba = safe_flt(r.get("배트맨_원"), 5.20)
+                        for obm in OVERSEAS_BOOKMAKERS:
+                            st.session_state[f"ds_{obm}_h"] = safe_flt(r.get(f"{obm}_홈"), 0.0)
+                            st.session_state[f"ds_{obm}_d"] = safe_flt(r.get(f"{obm}_무"), 0.0)
+                            st.session_state[f"ds_{obm}_a"] = safe_flt(r.get(f"{obm}_원"), 0.0)
+                        break
+
     with st.expander("✍️ [웹 화면에서 경기 등록 & 배당 변동 시 자동 덮어쓰기/수정]", expanded=False):
         
-        # 기존 등록된 경기가 있다면 배당 불러오기 기능 지원
-        preset_fill = {}
         if not df_scan_raw.empty and "홈팀" in df_scan_raw.columns:
             st.markdown("##### 🔍 [기존 등록 경기 배당 불러와서 수정하기]")
             match_labels = ["➕ [새로운 경기 직접 입력]"] + [f"{r.get('홈팀', '')} vs {r.get('원정팀', '')} ({r.get('리그명', '')})" for _, r in df_scan_raw.iterrows()]
-            sel_load_match = st.selectbox("불러올 경기 선택 (선택 시 아래 입력창에 자동 채워짐)", match_labels, index=0, key="sel_scan_loader")
-            
-            if sel_load_match != "➕ [새로운 경기 직접 입력]":
-                m_idx = match_labels.index(sel_load_match) - 1
-                preset_fill = df_scan_raw.iloc[m_idx].to_dict()
-                st.caption("💡 기존 경기 데이터가 아래 입력창에 채워졌습니다. 바뀐 배당을 수정 후 아래 버튼을 누르면 덮어쓰기 저장됩니다.")
-
-        def_s = preset_fill.get("시즌", "25-26")
-        def_l = preset_fill.get("리그명", "PL")
-        def_d = preset_fill.get("경기날짜", "25.08.30")
-        def_h = preset_fill.get("홈팀", "")
-        def_a = preset_fill.get("원정팀", "")
-        
-        def safe_flt(val, default):
-            try:
-                return float(str(val).replace("%", "").strip())
-            except:
-                return default
+            st.selectbox(
+                "불러올 경기 선택 (선택 시 아래 입력창에 즉시 자동 반영)", 
+                match_labels, 
+                index=0, 
+                key="sel_scan_loader",
+                on_change=on_scan_match_change
+            )
 
         c_ds1, c_ds2, c_ds3 = st.columns(3)
-        ds_season = c_ds1.text_input("시즌", value=def_s, key="ds_season")
-        ds_league = c_ds2.text_input("리그명", value=def_l, key="ds_league")
-        ds_date = c_ds3.text_input("경기 날짜", value=def_d, key="ds_date")
+        ds_season = c_ds1.text_input("시즌", value="25-26", key="ds_season")
+        ds_league = c_ds2.text_input("리그명", value="PL", key="ds_league")
+        ds_date = c_ds3.text_input("경기 날짜", value="25.08.30", key="ds_date")
 
         c_dt1, c_dt2 = st.columns(2)
-        ds_home = c_dt1.text_input("홈팀명", value=def_h, placeholder="예: 아스날", key="ds_home")
-        ds_away = c_dt2.text_input("원정팀명", value=def_a, placeholder="예: 브라이튼", key="ds_away")
+        ds_home = c_dt1.text_input("홈팀명", value="", placeholder="예: 아스날", key="ds_home")
+        ds_away = c_dt2.text_input("원정팀명", value="", placeholder="예: 브라이튼", key="ds_away")
 
         st.markdown("**🏢 배트맨 최종 배당 (필수)**")
         c_db1, c_db2, c_db3 = st.columns(3)
-        ds_bh = c_db1.number_input("홈", value=safe_flt(preset_fill.get("배트맨_홈"), 1.50), step=0.01, min_value=0.0, key="ds_bh")
-        ds_bd = c_db2.number_input("무", value=safe_flt(preset_fill.get("배트맨_무"), 3.80), step=0.01, min_value=0.0, key="ds_bd")
-        ds_ba = c_db3.number_input("원정", value=safe_flt(preset_fill.get("배트맨_원"), 5.20), step=0.01, min_value=0.0, key="ds_ba")
+        ds_bh = c_db1.number_input("홈", value=1.50, step=0.01, min_value=0.0, key="ds_bh")
+        ds_bd = c_db2.number_input("무", value=3.80, step=0.01, min_value=0.0, key="ds_bd")
+        ds_ba = c_db3.number_input("원정", value=5.20, step=0.01, min_value=0.0, key="ds_ba")
 
         st.markdown("**🌐 주요 해외 북메이커 배당 (선택: 있는 것만 입력)**")
         ds_overseas_inputs = {}
@@ -1051,9 +1079,9 @@ with tab_scanner:
                             st.caption(f"**{obm.upper()}**")
                             dh, dd, da = st.columns(3)
                             
-                            def_oh = safe_flt(preset_fill.get(f"{obm}_홈"), (1.55 if obm == "bet365" else 0.0))
-                            def_od = safe_flt(preset_fill.get(f"{obm}_무"), (4.00 if obm == "bet365" else 0.0))
-                            def_oa = safe_flt(preset_fill.get(f"{obm}_원"), (5.50 if obm == "bet365" else 0.0))
+                            def_oh = 1.55 if obm == "bet365" else 0.0
+                            def_od = 4.00 if obm == "bet365" else 0.0
+                            def_oa = 5.50 if obm == "bet365" else 0.0
                             
                             h_v = dh.number_input("홈", value=def_oh, step=0.01, min_value=0.0, key=f"ds_{obm}_h")
                             d_v = dd.number_input("무", value=def_od, step=0.01, min_value=0.0, key=f"ds_{obm}_d")
@@ -1078,7 +1106,6 @@ with tab_scanner:
                                 oh, od, oa = ds_overseas_inputs.get(obm, (0.0, 0.0, 0.0))
                                 new_scan_row.extend([oh, od, oa])
 
-                            # 기존 시트 내 중복 경기 검색 (홈팀 + 원정팀 일치 여부)
                             all_data = ws_scan.get_all_values()
                             target_row_idx = None
                             
@@ -1092,13 +1119,11 @@ with tab_scanner:
                                             break
                             
                             if target_row_idx:
-                                # 기존 행 덮어쓰기 (수정)
                                 ws_scan.update(f"A{target_row_idx}:AF{target_row_idx}", [new_scan_row], value_input_option="USER_ENTERED")
                                 time.sleep(0.3)
                                 st.cache_data.clear()
                                 st.success(f"🔄 [{ds_home} vs {ds_away}] 기존 경기의 배당이 최신 데이터로 성공적으로 덮어쓰기(수정)되었습니다!")
                             else:
-                                # 신규 행 추가
                                 ws_scan.append_row(new_scan_row, value_input_option="USER_ENTERED")
                                 time.sleep(0.3)
                                 st.cache_data.clear()
@@ -1137,12 +1162,6 @@ with tab_scanner:
         st.warning(f"⚠️ `{SCANNER_SHEET_NAME}` 시트에 스캔할 경기 데이터가 없습니다. 위의 [✍️ 웹 화면에서 경기 등록 & 배당 변동 시 자동 덮어쓰기/수정]을 눌러 경기를 등록해 주세요.")
     else:
         st.info(f"📊 현재 `{SCANNER_SHEET_NAME}` 시트에서 **총 {len(df_scan_raw)}개 경기**가 감지되었습니다.")
-        
-        def to_float(val):
-            try:
-                return float(str(val).replace("%", "").strip())
-            except:
-                return 0.0
 
         def run_round_scan():
             scanned_list = []
@@ -1157,17 +1176,17 @@ with tab_scanner:
                 if not home or not away:
                     continue
 
-                bh = to_float(r.get("배트맨_홈", 0))
-                bd = to_float(r.get("배트맨_무", 0))
-                ba = to_float(r.get("배트맨_원", 0))
+                bh = safe_flt(r.get("배트맨_홈"), 0.0)
+                bd = safe_flt(r.get("배트맨_무"), 0.0)
+                ba = safe_flt(r.get("배트맨_원"), 0.0)
 
                 all_bms_odds = {"배트맨": (bh, bd, ba)}
                 valid_oh, valid_od, valid_oa = [], [], []
                 
                 for obm in OVERSEAS_BOOKMAKERS:
-                    oh = to_float(r.get(f"{obm}_홈", 0))
-                    od = to_float(r.get(f"{obm}_무", 0))
-                    oa = to_float(r.get(f"{obm}_원", 0))
+                    oh = safe_flt(r.get(f"{obm}_홈"), 0.0)
+                    od = safe_flt(r.get(f"{obm}_무"), 0.0)
+                    oa = safe_flt(r.get(f"{obm}_원"), 0.0)
                     all_bms_odds[obm] = (oh, od, oa)
                     if oh > 0 and od > 0 and oa > 0:
                         valid_oh.append(oh)
@@ -1218,8 +1237,8 @@ with tab_scanner:
                     m_h2h = df_h2h_all_db[cond_h2h]
                     h2h_cnt = len(m_h2h)
                     for _, hr in m_h2h.iterrows():
-                        hg = to_float(hr.get("전반득점_홈", 0)) + to_float(hr.get("후반득점_홈", 0))
-                        ag = to_float(hr.get("전반득점_원", 0)) + to_float(hr.get("후반득점_원", 0))
+                        hg = safe_flt(hr.get("전반득점_홈"), 0.0) + safe_flt(hr.get("후반득점_홈"), 0.0)
+                        ag = safe_flt(hr.get("전반득점_원"), 0.0) + safe_flt(hr.get("후반득점_원"), 0.0)
                         if hr["홈팀"] == home:
                             if hg > ag: h2h_hw += 1
                             elif hg == ag: h2h_dr += 1
@@ -1846,7 +1865,7 @@ with tab_h2h:
 
             ratio_h_2h = f"{round((sum_h_2h / tot_h_score) * 100, 1)}%" if tot_h_score > 0 else "0.0%"
             ratio_a_2h = f"{round((sum_a_2h / tot_a_score) * 100, 1)}%" if tot_a_score > 0 else "0.0%"
-            tot_all_2h, tot_all_score = sum_h_2h + sum_a_2h, tot_h_score + tot_a_score
+            tot_all_2h, tot_all_score = sum_h_2h + sum_a_2h, tot_h_score + tot_all_score
             ratio_all_2h = f"{round((tot_all_2h / tot_all_score) * 100, 1)}%" if tot_all_score > 0 else "0.0%"
 
             h2h_goal_table = {
