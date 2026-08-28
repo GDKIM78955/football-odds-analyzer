@@ -568,25 +568,24 @@ def get_gspread_client():
     except Exception:
         return None
 
-@st.cache_data(ttl=60, show_spinner=False)
+@st.cache_data(ttl=30, show_spinner=False)
 def load_sheet_data(sheet_name):
     client = get_gspread_client()
     if not client:
         return pd.DataFrame()
-    for attempt in range(3):
+    for attempt in range(4):
         try:
             spreadsheet = client.open_by_key(SPREADSHEET_ID)
             ws = spreadsheet.worksheet(sheet_name)
             data = ws.get_all_values()
             if len(data) > 1:
                 df = pd.DataFrame(data[1:], columns=data[0])
+                df = df.dropna(how='all')
                 return df
             return pd.DataFrame()
         except Exception as e:
-            if "429" in str(e) or "Quota exceeded" in str(e):
-                time.sleep(1.5 * (attempt + 1))
-                continue
-            return pd.DataFrame()
+            time.sleep(1.0 * (attempt + 1))
+            continue
     return pd.DataFrame()
 
 # 구글 시트 일괄 저장 처리 함수
@@ -1320,9 +1319,114 @@ with tab_scanner:
     if df_scan_raw.empty:
         st.warning(f"⚠️ `{SCANNER_SHEET_NAME}` 시트에 스캔할 경기 데이터가 없습니다. 위의 [2단계 분할 입력] 또는 [1경기 직접 등록]을 통해 경기를 등록해 주세요.")
     else:
-        st.info(f"📊 현재 `{SCANNER_SHEET_NAME}` 시트에서 **총 {len(df_scan_raw)}개 경기**가 감지되었습니다.")
+        # =========================================================
+        # 🌟 사전 동일배당 매칭 집계 엔진 (총 10개 기준)
+        # =========================================================
+        ALL_CRITERIA_OPTIONS = ["배트맨"] + OVERSEAS_BOOKMAKERS + ["🌟 해외 8개사 종합평균"]
+        
+        # 9개 업체 DB 캐싱
+        cached_dbs = {}
+        for bm in BOOKMAKERS:
+            cached_dbs[bm] = load_sheet_data(bm)
 
-        def run_round_scan():
+        def count_matched_in_db(df_db, h_val, d_val, a_val):
+            if df_db.empty or h_val <= 0 or d_val <= 0 or a_val <= 0:
+                return 0, 0, 0, 0
+            try:
+                h_col = "해당_홈" if "해당_홈" in df_db.columns else df_db.columns[12]
+                d_col = "해당_무" if "해당_무" in df_db.columns else df_db.columns[13]
+                a_col = "해당_원" if "해당_원" in df_db.columns else df_db.columns[14]
+                res_col = "경기결과" if "경기결과" in df_db.columns else df_db.columns[32]
+
+                df_w = df_db.copy()
+                df_w["H_num"] = pd.to_numeric(df_w[h_col], errors="coerce")
+                df_w["D_num"] = pd.to_numeric(df_w[d_col], errors="coerce")
+                df_w["A_num"] = pd.to_numeric(df_w[a_col], errors="coerce")
+
+                cond = (
+                    (df_w["H_num"] >= h_val - tol) & (df_w["H_num"] <= h_val + tol) &
+                    (df_w["D_num"] >= d_val - tol) & (df_w["D_num"] <= d_val + tol) &
+                    (df_w["A_num"] >= a_val - tol) & (df_w["A_num"] <= a_val + tol)
+                )
+                matched = df_w[cond]
+                cnt = len(matched)
+                if cnt > 0:
+                    vc = matched[res_col].value_counts()
+                    return cnt, vc.get("홈승", 0), vc.get("무승부", 0), vc.get("원정승", 0)
+            except Exception:
+                pass
+            return 0, 0, 0, 0
+
+        # 전체 등록 경기에 대한 북메이커별 총 매칭 건수 계산
+        matching_counts_summary = {crit: 0 for crit in ALL_CRITERIA_OPTIONS}
+        
+        for _, r in df_scan_raw.iterrows():
+            # 1) 배트맨
+            bh = safe_flt(r.get("배트맨_홈"), 0.0)
+            bd = safe_flt(r.get("배트맨_무"), 0.0)
+            ba = safe_flt(r.get("배트맨_원"), 0.0)
+            c_bm, _, _, _ = count_matched_in_db(cached_dbs.get("배트맨", pd.DataFrame()), bh, bd, ba)
+            matching_counts_summary["배트맨"] += c_bm
+
+            # 2) 해외 8개사 개별
+            valid_oh, valid_od, valid_oa = [], [], []
+            for obm in OVERSEAS_BOOKMAKERS:
+                oh = safe_flt(r.get(f"{obm}_홈"), 0.0)
+                od = safe_flt(r.get(f"{obm}_무"), 0.0)
+                oa = safe_flt(r.get(f"{obm}_원"), 0.0)
+                if oh > 0 and od > 0 and oa > 0:
+                    valid_oh.append(oh)
+                    valid_od.append(od)
+                    valid_oa.append(oa)
+                c_obm, _, _, _ = count_matched_in_db(cached_dbs.get(obm, pd.DataFrame()), oh, od, oa)
+                matching_counts_summary[obm] += c_obm
+
+            # 3) 해외 8개사 종합평균 기준 (해외 8개 시트 전체 대상 매칭 합산)
+            if valid_oh:
+                avg_oh = round(float(np.mean(valid_oh)), 2)
+                avg_od = round(float(np.mean(valid_od)), 2)
+                avg_oa = round(float(np.mean(valid_oa)), 2)
+                tot_avg_c = 0
+                for obm in OVERSEAS_BOOKMAKERS:
+                    c_a, _, _, _ = count_matched_in_db(cached_dbs.get(obm, pd.DataFrame()), avg_oh, avg_od, avg_oa)
+                    tot_avg_c += c_a
+                matching_counts_summary["🌟 해외 8개사 종합평균"] += tot_avg_c
+
+        # =========================================================
+        # 🌟 상단: 업체별 매칭 개수 사전 브리핑 카드
+        # =========================================================
+        st.markdown("#### 📊 이번 라운드 경기들의 업체별 과거 동일배당 매칭 데이터 현황")
+        
+        badge_html = "<div style='display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 15px;'>"
+        for crit in ALL_CRITERIA_OPTIONS:
+            cnt_val = matching_counts_summary[crit]
+            color_bg = "#eff6ff" if cnt_val > 0 else "#f8fafc"
+            color_border = "#3b82f6" if cnt_val > 0 else "#e2e8f0"
+            color_text = "#1d4ed8" if cnt_val > 0 else "#94a3b8"
+            badge_html += f"""
+            <div style='background-color: {color_bg}; border: 1px solid {color_border}; border-radius: 6px; padding: 6px 12px; font-size: 13px;'>
+                <b>{crit}</b>: <span style='color: {color_text}; font-weight: bold;'>{cnt_val}건</span>
+            </div>
+            """
+        badge_html += "</div>"
+        st.markdown(badge_html, unsafe_allow_html=True)
+
+        # 🌟 기준 북메이커 선택 셀렉트박스
+        c_crit1, c_crit2 = st.columns([2, 3])
+        with c_crit1:
+            selected_radar_criteria = st.selectbox(
+                "🎯 1, 2번 레이더 기준 북메이커(배당) 선택",
+                ALL_CRITERIA_OPTIONS,
+                index=0,
+                key="sel_radar_criteria"
+            )
+        with c_crit2:
+            st.caption(f"💡 현재 **[{selected_radar_criteria}]** 배당 및 과거 시트 데이터를 기준으로 고승률픽/폭탄주의픽을 자동 계산합니다.")
+
+        # =========================================================
+        # 스캔 분석 엔진 실행 (선택된 기준 기반)
+        # =========================================================
+        def run_round_scan(criteria_name):
             scanned_list = []
             
             for idx, r in df_scan_raw.iterrows():
@@ -1356,39 +1460,40 @@ with tab_scanner:
                 avg_od = round(float(np.mean(valid_od)), 2) if valid_od else 0.0
                 avg_oa = round(float(np.mean(valid_oa)), 2) if valid_oa else 0.0
 
-                df_bm_db = load_sheet_data("배트맨")
+                # 선택된 기준에 따른 배당 및 매칭 확률 계산
                 match_cnt, win_prob, draw_prob, lose_prob = 0, 0.0, 0.0, 0.0
-                
-                if not df_bm_db.empty and bh > 0:
-                    try:
-                        h_col = "해당_홈" if "해당_홈" in df_bm_db.columns else df_bm_db.columns[12]
-                        d_col = "해당_무" if "해당_무" in df_bm_db.columns else df_bm_db.columns[13]
-                        a_col = "해당_원" if "해당_원" in df_bm_db.columns else df_bm_db.columns[14]
-                        res_col = "경기결과" if "경기결과" in df_bm_db.columns else df_bm_db.columns[32]
+                crit_h, crit_d, crit_a = 0.0, 0.0, 0.0
 
-                        df_w = df_bm_db.copy()
-                        df_w["H_num"] = pd.to_numeric(df_w[h_col], errors="coerce")
-                        df_w["D_num"] = pd.to_numeric(df_w[d_col], errors="coerce")
-                        df_w["A_num"] = pd.to_numeric(df_w[a_col], errors="coerce")
+                if criteria_name == "배트맨":
+                    crit_h, crit_d, crit_a = bh, bd, ba
+                    match_cnt, hw, dr, aw = count_matched_in_db(cached_dbs.get("배트맨", pd.DataFrame()), bh, bd, ba)
+                    if match_cnt > 0:
+                        win_prob = round((hw / match_cnt) * 100, 1)
+                        draw_prob = round((dr / match_cnt) * 100, 1)
+                        lose_prob = round((aw / match_cnt) * 100, 1)
+                elif criteria_name in OVERSEAS_BOOKMAKERS:
+                    crit_h, crit_d, crit_a = all_bms_odds.get(criteria_name, (0.0, 0.0, 0.0))
+                    match_cnt, hw, dr, aw = count_matched_in_db(cached_dbs.get(criteria_name, pd.DataFrame()), crit_h, crit_d, crit_a)
+                    if match_cnt > 0:
+                        win_prob = round((hw / match_cnt) * 100, 1)
+                        draw_prob = round((dr / match_cnt) * 100, 1)
+                        lose_prob = round((aw / match_cnt) * 100, 1)
+                elif criteria_name == "🌟 해외 8개사 종합평균":
+                    crit_h, crit_d, crit_a = avg_oh, avg_od, avg_oa
+                    tot_m, tot_hw, tot_dr, tot_aw = 0, 0, 0, 0
+                    for obm in OVERSEAS_BOOKMAKERS:
+                        c_m, c_hw, c_dr, c_aw = count_matched_in_db(cached_dbs.get(obm, pd.DataFrame()), avg_oh, avg_od, avg_oa)
+                        tot_m += c_m
+                        tot_hw += c_hw
+                        tot_dr += c_dr
+                        tot_aw += c_aw
+                    match_cnt = tot_m
+                    if match_cnt > 0:
+                        win_prob = round((tot_hw / match_cnt) * 100, 1)
+                        draw_prob = round((tot_dr / match_cnt) * 100, 1)
+                        lose_prob = round((tot_aw / match_cnt) * 100, 1)
 
-                        cond = (
-                            (df_w["H_num"] >= bh - tol) & (df_w["H_num"] <= bh + tol) &
-                            (df_w["D_num"] >= bd - tol) & (df_w["D_num"] <= bd + tol) &
-                            (df_w["A_num"] >= ba - tol) & (df_w["A_num"] <= ba + tol)
-                        )
-                        matched = df_w[cond]
-                        match_cnt = len(matched)
-                        if match_cnt > 0:
-                            vc = matched[res_col].value_counts()
-                            hw = vc.get("홈승", 0)
-                            dr = vc.get("무승부", 0)
-                            aw = vc.get("원정승", 0)
-                            win_prob = round((hw / match_cnt) * 100, 1)
-                            draw_prob = round((dr / match_cnt) * 100, 1)
-                            lose_prob = round((aw / match_cnt) * 100, 1)
-                    except Exception:
-                        pass
-
+                # 상대전적 (10번 시트)
                 h2h_cnt, h2h_hw, h2h_dr, h2h_aw = 0, 0, 0, 0
                 if not df_h2h_all_db.empty and "홈팀" in df_h2h_all_db.columns:
                     cond_h2h = ((df_h2h_all_db["홈팀"] == home) & (df_h2h_all_db["원정팀"] == away)) | \
@@ -1410,10 +1515,11 @@ with tab_scanner:
                 diff_h = round(bh - avg_oh, 2) if (bh > 0 and avg_oh > 0) else 0.0
                 tags = []
 
+                # 레이더 판별
                 if match_cnt >= 2 and (win_prob >= 70.0 or lose_prob >= 70.0):
-                    tags.append("🔥 고승률 압도")
-                if bh < ba and (draw_prob + lose_prob) >= 55.0 and match_cnt >= 2:
-                    tags.append("⚡ 역배 폭탄 주의")
+                    tags.append(f"🔥 고승률({selected_radar_criteria})")
+                if crit_h > 0 and crit_a > 0 and crit_h < crit_a and (draw_prob + lose_prob) >= 55.0 and match_cnt >= 2:
+                    tags.append(f"⚡ 역배폭탄({selected_radar_criteria})")
                 if diff_h >= 0.05:
                     tags.append("💰 배당 메리트")
                 if h2h_cnt >= 2 and (h2h_hw == h2h_cnt or h2h_aw == h2h_cnt):
@@ -1426,6 +1532,7 @@ with tab_scanner:
                     "season": season, "league": league, "date": m_date,
                     "home": home, "away": away,
                     "batman_odds": (bh, bd, ba),
+                    "crit_odds": (crit_h, crit_d, crit_a),
                     "overseas_avg": (avg_oh, avg_od, avg_oa),
                     "all_odds": all_bms_odds,
                     "match_cnt": match_cnt,
@@ -1437,15 +1544,15 @@ with tab_scanner:
 
             return scanned_list
 
-        scanned_results = run_round_scan()
+        scanned_results = run_round_scan(selected_radar_criteria)
 
         # =========================================================
         # 4대 추천 레이더 TOP 5 필터 버튼 영역
         # =========================================================
         col_f1, col_f2, col_f3, col_f4, col_f5 = st.columns(5)
         f_all = col_f1.button("🌐 전체 경기 보기", use_container_width=True)
-        f_high = col_f2.button("🔥 [고승률 주력픽 TOP 5]", use_container_width=True)
-        f_upset = col_f3.button("⚡ [역배/무 폭탄주의 TOP 5]", use_container_width=True)
+        f_high = col_f2.button(f"🔥 [고승률 주력픽 TOP 5]", use_container_width=True)
+        f_upset = col_f3.button(f"⚡ [역배/무 폭탄주의 TOP 5]", use_container_width=True)
         f_value = col_f4.button("💰 [배당 메리트 TOP 5]", use_container_width=True)
         f_h2h = col_f5.button("⚔️ [천적 극상성 TOP 5]", use_container_width=True)
 
@@ -1454,14 +1561,14 @@ with tab_scanner:
         is_top5_view = False
 
         if f_high:
-            display_list = [m for m in scanned_results if "🔥 고승률 압도" in m["tags"]]
+            display_list = [m for m in scanned_results if any("🔥 고승률" in t for t in m["tags"])]
             display_list = sorted(display_list, key=lambda x: max(x["win_prob"], x["lose_prob"]), reverse=True)[:5]
-            filter_title = "🔥 [고승률 / 확실한 주력픽 TOP 5] 추천 경기"
+            filter_title = f"🔥 [{selected_radar_criteria} 기준 고승률 / 주력픽 TOP 5] 추천 경기"
             is_top5_view = True
         elif f_upset:
-            display_list = [m for m in scanned_results if "⚡ 역배 폭탄 주의" in m["tags"]]
+            display_list = [m for m in scanned_results if any("⚡ 역배폭탄" in t for t in m["tags"])]
             display_list = sorted(display_list, key=lambda x: (x["draw_prob"] + x["lose_prob"]), reverse=True)[:5]
-            filter_title = "⚡ [역배 / 무승부 폭탄 주의픽 TOP 5] 추천 경기"
+            filter_title = f"⚡ [{selected_radar_criteria} 기준 역배 / 무승부 폭탄 주의픽 TOP 5] 추천 경기"
             is_top5_view = True
         elif f_value:
             display_list = [m for m in scanned_results if "💰 배당 메리트" in m["tags"]]
@@ -1480,7 +1587,7 @@ with tab_scanner:
         if is_top5_view:
             st.subheader(f"{filter_title} (총 {len(display_list)}경기)")
             if not display_list:
-                st.info("💡 선택하신 조건에 일치하는 추천 경기가 없습니다.")
+                st.info(f"💡 선택하신 조건({selected_radar_criteria})에 일치하는 추천 경기가 없습니다. (과거 매칭 2건 이상 및 승률/역배 기준 미충족)")
             else:
                 for i, item in enumerate(display_list):
                     with st.container(border=True):
@@ -1494,10 +1601,12 @@ with tab_scanner:
                         with c_head2:
                             bh, bd, ba = item["batman_odds"]
                             oh, od, oa = item["overseas_avg"]
+                            ch, cd, ca = item["crit_odds"]
                             diff_str = f"+{item['diff_h']}" if item['diff_h'] > 0 else f"{item['diff_h']}"
                             
                             st.markdown(f"**🏢 배트맨 배당:** `{bh}` / `{bd}` / `{ba}` &nbsp;|&nbsp; **해외 평균:** `{oh}` / `{od}` / `{oa}` (편차: `{diff_str}`)")
-                            st.markdown(f"📊 **동일배당 승률 (과거 {item['match_cnt']}건):** 홈승 **{item['win_prob']}%** / 무승부 **{item['draw_prob']}%** / 원정 **{item['lose_prob']}%**")
+                            st.markdown(f"🎯 **[{selected_radar_criteria} 동일배당 ({ch}/{cd}/{ca}) 승률 (과거 {item['match_cnt']}건)]**")
+                            st.markdown(f"👉 홈승 **{item['win_prob']}%** / 무승부 **{item['draw_prob']}%** / 원정 **{item['lose_prob']}%**")
                             st.caption(f"⚔️ **상대전적:** {item['h2h_record']}")
 
                         with c_head3:
@@ -1598,13 +1707,15 @@ with tab_scanner:
                 with st.container():
                     bh, bd, ba = target_item["batman_odds"]
                     oh, od, oa = target_item["overseas_avg"]
+                    ch, cd, ca = target_item["crit_odds"]
                     st.markdown(f"""
                     <div style="background-color: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 14px; margin-top: 10px; margin-bottom: 12px;">
                         <h4 style="margin: 0; color: #0f172a;">📌 [{target_item['league']}] {target_item['home']} (홈) vs {target_item['away']} (원정)</h4>
                         <p style="margin: 6px 0 0 0; color: #475569; font-size: 13px;">
                             배트맨 배당: <b style="color: #dc2626;">승 {bh}</b> | <b style="color: #059669;">무 {bd}</b> | <b style="color: #2563eb;">패 {ba}</b> &nbsp;|&nbsp; 
-                            해외 평균: <b>{oh} / {od} / {oa}</b> &nbsp;|&nbsp; 
-                            동일배당 승률 (과거 {target_item['match_cnt']}건): <b>홈 {target_item['win_prob']}% / 무 {target_item['draw_prob']}% / 원 {target_item['lose_prob']}%</b>
+                            해외 평균: <b>{oh} / {od} / {oa}</b><br>
+                            🎯 <b>{selected_radar_criteria} 동일배당 ({ch}/{cd}/{ca}) 승률 (과거 {target_item['match_cnt']}건):</b> 
+                            홈 <b>{target_item['win_prob']}%</b> / 무 <b>{target_item['draw_prob']}%</b> / 원 <b>{target_item['lose_prob']}%</b>
                         </p>
                     </div>
                     """, unsafe_allow_html=True)
