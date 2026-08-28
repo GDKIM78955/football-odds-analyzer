@@ -551,7 +551,7 @@ def generate_naver_injury_infographic(team_name, league_title, confirmed_list, d
     return html
 
 # =========================================================
-# 2. 구글 시트 연동 클라이언트
+# 2. 구글 시트 연동 클라이언트 (캐싱 최적화 적용)
 # =========================================================
 @st.cache_resource(show_spinner=False)
 def get_gspread_client():
@@ -568,7 +568,8 @@ def get_gspread_client():
     except Exception:
         return None
 
-@st.cache_data(ttl=30, show_spinner=False)
+# 🌟 API 부하 및 속도 개선을 위한 캐시 시간 연장 (ttl=600초 = 10분간 메모리 유지)
+@st.cache_data(ttl=600, show_spinner=False)
 def load_sheet_data(sheet_name):
     client = get_gspread_client()
     if not client:
@@ -730,8 +731,9 @@ with st.sidebar:
     st.header("⚙️ 시스템 설정")
     st.caption(f"연동 시트 ID: `{SPREADSHEET_ID}`")
     tol = st.number_input("배당 오차 허용치 (±)", value=0.03, step=0.01)
-    if st.button("🔄 전체 시트 데이터 새로고침"):
+    if st.button("🔄 전체 시트 데이터 새로고침 (캐시 초기화)"):
         st.cache_data.clear()
+        st.success("캐시가 초기화되었습니다!")
         st.rerun()
 
 # 4. 6개 탭 구성
@@ -1169,7 +1171,7 @@ with tab_scanner:
                             
                             st.session_state.current_scan_queue_idx += 1
                             st.cache_data.clear()
-                            st.success(f"🎉 [{cur_s_match['home']} vs {cur_s_match['away']}] 저장 완료!")
+                            st.success(f"🎉 [{cur_s_match['home']} vs {cur_match['away']}] 저장 완료!")
                             time.sleep(0.4)
                             st.rerun()
                         except Exception as e:
@@ -1328,7 +1330,7 @@ with tab_scanner:
         st.warning(f"⚠️ `{SCANNER_SHEET_NAME}` 시트에 스캔할 경기 데이터가 없습니다. 위의 [2단계 분할 입력] 또는 [1경기 직접 등록]을 통해 경기를 등록해 주세요.")
     else:
         # =========================================================
-        # 🌟 사전 동일배당 매칭 집계 엔진 (함수 정렬 완료)
+        # 🌟 사전 동일배당 매칭 집계 엔진 (최적화 적용)
         # =========================================================
         ALL_CRITERIA_OPTIONS = ["배트맨"] + OVERSEAS_BOOKMAKERS + ["🌟 해외 8개사 종합평균"]
         
