@@ -899,7 +899,7 @@ with tab_input:
                 q_stats_dict = {
                     "home_1h": q_home_1h, "home_2h": q_home_2h, "away_1h": q_away_1h, "away_2h": q_away_2h,
                     "home_tac": q_home_tac, "away_tac": q_away_tac,
-                    "home_shots": home_shots := q_home_shots, "away_shots": q_away_shots,
+                    "home_shots": q_home_shots, "away_shots": q_away_shots,
                     "home_sot": q_home_sot, "away_sot": q_away_sot,
                     "home_poss": q_home_poss, "away_poss": q_away_poss,
                     "home_pass": q_home_pass, "away_pass": q_away_pass,
@@ -993,7 +993,7 @@ with tab_input:
                 "home_tac": home_tac, "away_tac": away_tac,
                 "home_shots": home_shots, "away_shots": away_shots,
                 "home_sot": home_sot, "away_sot": away_sot,
-                "home_poss": home_poss, "away_poss": home_poss,
+                "home_poss": home_poss, "away_poss": away_poss,
                 "home_pass": home_pass, "away_pass": away_pass,
                 "home_yc": home_yc, "away_yc": away_yc,
                 "home_rc": home_rc, "away_rc": away_rc,
@@ -1068,7 +1068,7 @@ with tab_scanner:
                 sq_preview = []
                 for i, m in enumerate(st.session_state.scan_queue):
                     status = "👉 [작성 차례]" if i == st.session_state.current_scan_queue_idx else ("⏳ [대기 중]" if i > st.session_state.current_scan_queue_idx else "✅ [완료]")
-                    q_preview.append({
+                    sq_preview.append({
                         "순번": i + 1, "상태": status,
                         "매치업": f"{m['home']} vs {m['away']}", "리그/날짜": f"{m['league']} ({m['date']})",
                         "배트맨 배당": f"{m['batman_odds'][0]} / {m['batman_odds'][1]} / {m['batman_odds'][2]}"
@@ -1335,7 +1335,6 @@ with tab_scanner:
                 return 0, 0, 0, 0
             try:
                 cols = list(df_db.columns)
-                # 스마트 열 탐색: 해당_홈 / 배당_홈 / 홈 등 명시적 검색, 없으면 배당 위치(인덱스 12, 13, 14) 매핑
                 h_col = next((c for c in cols if any(k in c for k in ["해당_홈", "배당_홈", "홈배당", "홈_승", "H_ODDS"])), None)
                 d_col = next((c for c in cols if any(k in c for k in ["해당_무", "배당_무", "무배당", "무승부", "D_ODDS"])), None)
                 a_col = next((c for c in cols if any(k in c for k in ["해당_원", "배당_원", "원정배당", "원정_승", "A_ODDS"])), None)
@@ -1354,7 +1353,6 @@ with tab_scanner:
                 df_w["D_num"] = pd.to_numeric(df_w[d_col], errors="coerce").fillna(0.0)
                 df_w["A_num"] = pd.to_numeric(df_w[a_col], errors="coerce").fillna(0.0)
 
-                # DB 내에서도 배당이 1.01 이상인 실제 경기 행만 엄격 필터링
                 cond = (
                     (df_w["H_num"] >= 1.01) & (df_w["D_num"] >= 1.01) & (df_w["A_num"] >= 1.01) &
                     (df_w["H_num"] >= h_val - tol) & (df_w["H_num"] <= h_val + tol) &
