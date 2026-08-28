@@ -4,6 +4,7 @@ import numpy as np
 import gspread
 import time
 import json
+import re
 import streamlit.components.v1 as components
 from oauth2client.service_account import ServiceAccountCredentials
 from datetime import datetime
@@ -67,6 +68,25 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.markdown("<h2 style='text-align: center; margin-bottom: 25px;'>⚽ 축구 9대 배당 업체 & 경기 세부 스탯 통합 분석 허브</h2>", unsafe_allow_html=True)
+
+# =========================================================
+# 🌟 날짜 파싱 유틸리티 함수 (어떤 형식의 날짜든 완벽 비교)
+# =========================================================
+def parse_korean_date(date_str):
+    if not date_str or not str(date_str).strip():
+        return None
+    s = str(date_str).strip()
+    s = re.sub(r"[^\d]", ".", s)
+    parts = [p for p in s.split(".") if p]
+    if len(parts) >= 3:
+        y, m, d = parts[0], parts[1], parts[2]
+        if len(y) == 2:
+            y = "20" + y
+        try:
+            return datetime(int(y), int(m), int(d))
+        except:
+            return None
+    return None
 
 # =========================================================
 # 🌟 네이버 블로그 원클릭 복사 렌더러 컴포넌트
@@ -998,7 +1018,7 @@ with tab_input:
                     st.error(f"저장 중 오류 발생: {msg}")
 
 # =========================================================
-# TAB 2: 📡 라운드 경기 자동 스캐너 & 추천픽 (2단계 분할 입력 지원 ⭐)
+# TAB 2: 📡 라운드 경기 자동 스캐너 & 추천픽
 # =========================================================
 with tab_scanner:
     st.subheader("📡 라운드 경기 배당 자동 스캐너 & 추천픽 레이더")
@@ -2076,7 +2096,7 @@ with tab_injuries:
     df_injuries = load_sheet_data(INJURY_SHEET_NAME)
     df_stats_red = load_sheet_data(STATS_SHEET_NAME)
 
-    # 1. 🚨 리그/기간별 퇴장 발생 경기 자동 추적기
+    # 1. 🚨 리그/기간별 퇴장 발생 경기 자동 추적기 (스마트 날짜 파서 탑재 ⭐)
     with st.expander("🚨 [기간 및 리그별 퇴장 발생 경기 자동 추적 레이더] (놓친 징계 선수 찾기)", expanded=True):
         st.caption("10번 '경기내용' 시트에 기록된 경기 중 퇴장(레드카드)이 발생한 매치업을 기간 및 리그별로 자동 추출합니다.")
         
@@ -2085,8 +2105,11 @@ with tab_injuries:
         all_stat_leagues = ["전체 리그"] + sorted([str(x) for x in df_stats_red["리그명"].dropna().unique().tolist() if str(x).strip()]) if not df_stats_red.empty and "리그명" in df_stats_red.columns else ["전체 리그", "PL"]
         sel_rc_league = c_rc1.selectbox("조회할 리그", all_stat_leagues, key="rc_filter_league")
         
-        rc_date_from = c_rc2.text_input("시작 날짜 필터 (포함)", placeholder="예: 25.08.01 (비워두면 전체)", key="rc_date_from")
-        rc_date_to = c_rc3.text_input("종료 날짜 필터 (포함)", placeholder="예: 25.08.31 (비워두면 전체)", key="rc_date_to")
+        rc_date_from = c_rc2.text_input("시작 날짜 필터 (포함)", placeholder="예: 26.08.21 (비워두면 전체)", key="rc_date_from")
+        rc_date_to = c_rc3.text_input("종료 날짜 필터 (포함)", placeholder="예: 26.08.29 (비워두면 전체)", key="rc_date_to")
+
+        dt_from = parse_korean_date(rc_date_from)
+        dt_to = parse_korean_date(rc_date_to)
 
         if not df_stats_red.empty and "퇴장_홈" in df_stats_red.columns and "퇴장_원" in df_stats_red.columns:
             def to_num_rc(val):
@@ -2098,28 +2121,41 @@ with tab_injuries:
             red_card_records = []
             for _, r in df_stats_red.iterrows():
                 r_league = str(r.get("리그명", "")).strip()
-                r_date = str(r.get("경기날짜", "")).strip()
+                r_date_str = str(r.get("경기날짜", "")).strip()
+                r_date_obj = parse_korean_date(r_date_str)
                 r_home = str(r.get("홈팀", "")).strip()
                 r_away = str(r.get("원정팀", "")).strip()
                 
                 rc_h = to_num_rc(r.get("퇴장_홈", 0))
                 rc_a = to_num_rc(r.get("퇴장_원", 0))
 
+                # 1) 리그 필터링
                 if sel_rc_league != "전체 리그" and r_league.upper() != sel_rc_league.upper():
                     continue
 
-                if rc_date_from.strip() and r_date < rc_date_from.strip():
-                    continue
-                if rc_date_to.strip() and r_date > rc_date_to.strip():
-                    continue
+                # 2) 날짜 필터링 (스마트 날짜 객체 비교)
+                if dt_from and r_date_obj:
+                    if r_date_obj < dt_from:
+                        continue
+                elif rc_date_from.strip():
+                    if r_date_str < rc_date_from.strip():
+                        continue
 
+                if dt_to and r_date_obj:
+                    if r_date_obj > dt_to:
+                        continue
+                elif rc_date_to.strip():
+                    if r_date_str > rc_date_to.strip():
+                        continue
+
+                # 3) 퇴장이 1회 이상 발생한 경우
                 if rc_h > 0 or rc_a > 0:
                     red_teams = []
                     if rc_h > 0: red_teams.append(f"🔴 홈팀 [{r_home}] ({int(rc_h)}명 퇴장)")
                     if rc_a > 0: red_teams.append(f"🔴 원정팀 [{r_away}] ({int(rc_a)}명 퇴장)")
 
                     red_card_records.append({
-                        "경기날짜": r_date,
+                        "경기날짜": r_date_str,
                         "리그": r_league,
                         "매치업": f"{r_home} vs {r_away}",
                         "🚨 퇴장 발생 팀": " / ".join(red_teams),
