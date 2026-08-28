@@ -45,7 +45,7 @@ if "current_scan_queue_idx" not in st.session_state:
 if "selected_scan_match" not in st.session_state:
     st.session_state.selected_scan_match = None
 
-# 상단 탭 중앙 정렬 & 인쇄 스타일
+# 상단 탭 중앙 정렬 & 테이블 칸 너비 최적화 스타일
 st.markdown("""
 <style>
 .stTabs [data-baseweb="tab-list"] {
@@ -256,7 +256,6 @@ def generate_naver_odds_infographic(b_odds, overseas_name, o_odds, league_name="
         </table>
         """
     else:
-        # 언오버 통계 인포그래픽 도표
         over_pct, under_pct, total_matches, over_count, under_count = b_odds
         match_title_ou = f"<div style='font-size: 18px; font-weight: bold; color: #0f172a; margin-top: 4px;'>{home_team} vs {away_team}</div>" if (home_team or away_team) else ""
         
@@ -1572,10 +1571,10 @@ with tab_scanner:
                         st.rerun()
 
 # =========================================================
-# TAB 3: 📊 9개사 동일 배당 분석 + ⚽ 언오버 자동 통계 및 도표 추가
+# TAB 3: 📊 9개사 동일 배당 분석 (확장형: 슬림한 승무패 칸 + 언오버 연동)
 # =========================================================
 with tab_analysis:
-    st.subheader("🔬 3번 탭: 배트맨 및 승무패·언오버 정밀 분석 허브")
+    st.subheader("🔬 3번 탭: 9대 북메이커 배당 입력 및 승무패·언오버 통합 분석")
 
     if st.session_state.selected_scan_match:
         sm = st.session_state.selected_scan_match
@@ -1586,7 +1585,7 @@ with tab_analysis:
     t2_home_team = c_an_l2.text_input("🏠 홈팀명 (블로그 도표용)", value="", placeholder="예: 리버풀", key="t2_home_team")
     t2_away_team = c_an_l3.text_input("🚗 원정팀명 (블로그 도표용)", value="", placeholder="예: 본머스", key="t2_away_team")
 
-    st.markdown("##### 🏢 분석할 9대 북메이커 배당 입력")
+    st.markdown("##### 🏢 분석할 9대 북메이커 배당 입력 (승무패 컴팩트 슬림형)")
     odds_inputs_t2 = {}
     for i in range(0, len(BOOKMAKERS), 3):
         cols = st.columns(3)
@@ -1597,7 +1596,8 @@ with tab_analysis:
                 with cols[j]:
                     with st.container(border=True):
                         st.markdown(f"**[{idx+1}] {bm.upper()}**")
-                        oh, od, oa = st.columns(3)
+                        # 🌟 승무패 입력 칸을 컴팩트하게 슬림한 컬럼 비율로 조정
+                        oh, od, oa = st.columns([1, 1, 1])
                         h_val = oh.number_input("홈", value=0.0, step=0.01, min_value=0.0, key=f"t2_{bm}_h")
                         d_val = od.number_input("무", value=0.0, step=0.01, min_value=0.0, key=f"t2_{bm}_d")
                         a_val = oa.number_input("원정", value=0.0, step=0.01, min_value=0.0, key=f"t2_{bm}_a")
@@ -1620,7 +1620,7 @@ with tab_analysis:
             if h <= 0 or d <= 0 or a <= 0:
                 rows.append({
                     "순번": str(idx), "북메이커": bm.upper(), "입력 배당": "미입력", "환급률": "-",
-                    "매칭 경기": "0건", "홈승 확률": "-", "무승부 확률": "-", "원정승 확률": "-"
+                    "매칭 건수": "0건", "홈승 확률": "-", "무승부": "-", "원정승 확률": "-"
                 })
                 continue
 
@@ -1687,8 +1687,8 @@ with tab_analysis:
                 "순번": str(idx), "북메이커": bm.upper(),
                 "입력 배당": f"{h} / {d} / {a}",
                 "환급률": f"{round(payout, 2)}%",
-                "매칭 경기": f"{m_count}건",
-                "홈승 확률": h_str, "무승부 확률": d_str, "원정승 확률": a_str
+                "매칭 건수": f"{m_count}건",
+                "홈승 확률": h_str, "무승부": d_str, "원정승 확률": a_str
             })
 
         avg_p_str = f"{round(tot_payout / tot_bm, 2)}%" if tot_bm > 0 else "-"
@@ -1704,9 +1704,9 @@ with tab_analysis:
             "북메이커": "종합 가중평균 (누적)",
             "입력 배당": f"유효 {tot_bm}개사",
             "환급률": avg_p_str,
-            "매칭 경기": f"총 {tot_m}건",
+            "매칭 건수": f"총 {tot_m}건",
             "홈승 확률": tot_h_str,
-            "무승부 확률": tot_d_str,
+            "무승부": tot_d_str,
             "원정승 확률": tot_a_str
         })
 
@@ -1715,17 +1715,17 @@ with tab_analysis:
     df_all_league, matched_all = compute_odds_analysis(is_league_filter=False)
     df_target_league, matched_target = compute_odds_analysis(is_league_filter=True, league_name=target_league)
 
-    st.subheader("1️⃣ [전체 리그 기준] 동일 배당 승률 분석표")
+    st.subheader("1️⃣ [전체 리그 기준] 동일 배당 승률 분석표 (컴팩트 슬림형)")
     st.dataframe(df_all_league, use_container_width=True, hide_index=True)
 
     st.markdown("---")
     st.subheader(f"2️⃣ [{target_league} 동일 리그 전용] 동일 배당 승률 분석표")
     st.dataframe(df_target_league, use_container_width=True, hide_index=True)
 
-    # 🌟 언오버 자동 통계 계산기 영역 추가
+    # 🌟 언오버 자동 통계 분석기 영역 추가
     st.markdown("---")
     st.subheader("⚽ [신규 추가] 과거 스코어 기반 언오버(Over/Under) 자동 통계 분석기")
-    st.caption("위의 9개사 동일 배당 분석표에서 매칭된 과거 경기들의 실제 스코어를 바탕으로 다득점/저득점 확률을 즉시 계산합니다.")
+    st.caption("위의 승무패 동일 배당 분석표에서 매칭된 과거 경기들의 실제 스코어를 바탕으로 다득점/저득점 확률을 즉시 계산합니다.")
 
     c_ou1, c_ou2 = st.columns([1, 2])
     with c_ou1:
@@ -1733,7 +1733,6 @@ with tab_analysis:
     with c_ou2:
         ou_target_choice = st.selectbox("분석 대상 북메이커 선택", ["전체 매칭 통합"] + BOOKMAKERS, key="analysis_ou_target")
 
-    # 매칭된 데이터에서 스코어 추출하여 언오버 계산
     target_df_pool = pd.DataFrame()
     if ou_target_choice == "전체 매칭 통합":
         all_frames = []
@@ -1785,7 +1784,7 @@ with tab_analysis:
 
     st.markdown("---")
     
-    # 🌟 네이버 블로그용 인포그래픽 도표 복사 영역 (승무패 + 언오버 탭 분리)
+    # 🌟 네이버 블로그용 인포그래픽 도표 복사 영역
     st.subheader("📊 네이버 블로그/카페용 인포그래픽 도표 원클릭 복사")
     tab_inf_1, tab_inf_2 = st.tabs(["🔴 승무패 (1X2) 도표", "⚽ 언오버 (Over/Under) 도표"])
 
@@ -1815,7 +1814,7 @@ with tab_analysis:
         render_clipboard_component(naver_odds_html, "t2_clip_1x2", height=490)
 
     with tab_inf_2:
-        st.caption("위의 언오버 자동 통계 결과(또는 직접 설정한 수치)를 바탕으로 블로그용 도표를 생성합니다.")
+        st.caption("위의 언오버 자동 통계 결과를 바탕으로 블로그용 도표를 생성합니다.")
         blog_ou_line = st.number_input("블로그 도표 기준점", value=ou_user_line, step=0.5, key="blog_ou_line_input")
         blog_over_pct = pct_over if ou_total_cnt > 0 else 50.0
         blog_under_pct = pct_under if ou_total_cnt > 0 else 50.0
