@@ -1068,7 +1068,7 @@ with tab_scanner:
                 sq_preview = []
                 for i, m in enumerate(st.session_state.scan_queue):
                     status = "👉 [작성 차례]" if i == st.session_state.current_scan_queue_idx else ("⏳ [대기 중]" if i > st.session_state.current_scan_queue_idx else "✅ [완료]")
-                    q_preview.append({
+                    sq_preview.append({
                         "순번": i + 1, "상태": status,
                         "매치업": f"{m['home']} vs {m['away']}", "리그/날짜": f"{m['league']} ({m['date']})",
                         "배트맨 배당": f"{m['batman_odds'][0]} / {m['batman_odds'][1]} / {m['batman_odds'][2]}"
@@ -1320,7 +1320,7 @@ with tab_scanner:
         st.warning(f"⚠️ `{SCANNER_SHEET_NAME}` 시트에 스캔할 경기 데이터가 없습니다. 위의 [2단계 분할 입력] 또는 [1경기 직접 등록]을 통해 경기를 등록해 주세요.")
     else:
         # =========================================================
-        # 🌟 사전 동일배당 매칭 집계 엔진 (총 10개 기준)
+        # 🌟 사전 동일배당 매칭 집계 엔진 (총 10개 기준, 0.00 배당 완전 제외)
         # =========================================================
         ALL_CRITERIA_OPTIONS = ["배트맨"] + OVERSEAS_BOOKMAKERS + ["🌟 해외 8개사 종합평균"]
         
@@ -1330,6 +1330,7 @@ with tab_scanner:
             cached_dbs[bm] = load_sheet_data(bm)
 
         def count_matched_in_db(df_db, h_val, d_val, a_val):
+            # 0.00 배당이거나 0 미만인 비유효 데이터는 매칭 계산 자체를 원천 차단
             if df_db.empty or h_val <= 0 or d_val <= 0 or a_val <= 0:
                 return 0, 0, 0, 0
             try:
@@ -1343,7 +1344,9 @@ with tab_scanner:
                 df_w["D_num"] = pd.to_numeric(df_w[d_col], errors="coerce")
                 df_w["A_num"] = pd.to_numeric(df_w[a_col], errors="coerce")
 
+                # DB 내에서도 배당이 0보다 큰 유효 데이터 행만 매칭
                 cond = (
+                    (df_w["H_num"] > 0) & (df_w["D_num"] > 0) & (df_w["A_num"] > 0) &
                     (df_w["H_num"] >= h_val - tol) & (df_w["H_num"] <= h_val + tol) &
                     (df_w["D_num"] >= d_val - tol) & (df_w["D_num"] <= d_val + tol) &
                     (df_w["A_num"] >= a_val - tol) & (df_w["A_num"] <= a_val + tol)
@@ -1365,8 +1368,9 @@ with tab_scanner:
             bh = safe_flt(r.get("배트맨_홈"), 0.0)
             bd = safe_flt(r.get("배트맨_무"), 0.0)
             ba = safe_flt(r.get("배트맨_원"), 0.0)
-            c_bm, _, _, _ = count_matched_in_db(cached_dbs.get("배트맨", pd.DataFrame()), bh, bd, ba)
-            matching_counts_summary["배트맨"] += c_bm
+            if bh > 0 and bd > 0 and ba > 0:
+                c_bm, _, _, _ = count_matched_in_db(cached_dbs.get("배트맨", pd.DataFrame()), bh, bd, ba)
+                matching_counts_summary["배트맨"] += c_bm
 
             # 2) 해외 8개사 개별
             valid_oh, valid_od, valid_oa = [], [], []
@@ -1378,8 +1382,8 @@ with tab_scanner:
                     valid_oh.append(oh)
                     valid_od.append(od)
                     valid_oa.append(oa)
-                c_obm, _, _, _ = count_matched_in_db(cached_dbs.get(obm, pd.DataFrame()), oh, od, oa)
-                matching_counts_summary[obm] += c_obm
+                    c_obm, _, _, _ = count_matched_in_db(cached_dbs.get(obm, pd.DataFrame()), oh, od, oa)
+                    matching_counts_summary[obm] += c_obm
 
             # 3) 해외 8개사 종합평균 기준 (해외 8개 시트 전체 대상 매칭 합산)
             if valid_oh:
@@ -1393,19 +1397,27 @@ with tab_scanner:
                 matching_counts_summary["🌟 해외 8개사 종합평균"] += tot_avg_c
 
         # =========================================================
-        # 🌟 상단: 업체별 매칭 개수 사전 브리핑 카드 (HTML 렌더링 완벽 처리)
+        # 🌟 상단: 업체별 매칭 개수 사전 브리핑 카드 (글씨색/배경색 고정)
         # =========================================================
         st.markdown("#### 📊 이번 라운드 경기들의 업체별 과거 동일배당 매칭 데이터 현황")
         
         badges = []
         for crit in ALL_CRITERIA_OPTIONS:
             cnt_val = matching_counts_summary[crit]
-            color_bg = "#eff6ff" if cnt_val > 0 else "#f8fafc"
-            color_border = "#3b82f6" if cnt_val > 0 else "#e2e8f0"
-            color_text = "#1d4ed8" if cnt_val > 0 else "#94a3b8"
+            if cnt_val > 0:
+                color_bg = "#eff6ff"
+                color_border = "#3b82f6"
+                label_color = "#1e3a8a"
+                cnt_color = "#2563eb"
+            else:
+                color_bg = "#f1f5f9"
+                color_border = "#cbd5e1"
+                label_color = "#334155"
+                cnt_color = "#64748b"
+                
             badges.append(
-                f"<div style='background-color: {color_bg}; border: 1px solid {color_border}; border-radius: 6px; padding: 6px 12px; font-size: 13px; white-space: nowrap;'>"
-                f"<b>{crit}</b>: <span style='color: {color_text}; font-weight: bold;'>{cnt_val}건</span></div>"
+                f"<div style='background-color: {color_bg}; border: 1px solid {color_border}; border-radius: 6px; padding: 6px 12px; font-size: 13px; color: {label_color}; white-space: nowrap; display: inline-block;'>"
+                f"<b style='color: {label_color};'>{crit}</b>: <span style='color: {cnt_color}; font-weight: bold;'>{cnt_val}건</span></div>"
             )
         
         badge_html = "<div style='display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 15px;'>" + "".join(badges) + "</div>"
@@ -1480,18 +1492,19 @@ with tab_scanner:
                         lose_prob = round((aw / match_cnt) * 100, 1)
                 elif criteria_name == "🌟 해외 8개사 종합평균":
                     crit_h, crit_d, crit_a = avg_oh, avg_od, avg_oa
-                    tot_m, tot_hw, tot_dr, tot_aw = 0, 0, 0, 0
-                    for obm in OVERSEAS_BOOKMAKERS:
-                        c_m, c_hw, c_dr, c_aw = count_matched_in_db(cached_dbs.get(obm, pd.DataFrame()), avg_oh, avg_od, avg_oa)
-                        tot_m += c_m
-                        tot_hw += c_hw
-                        tot_dr += c_dr
-                        tot_aw += c_aw
-                    match_cnt = tot_m
-                    if match_cnt > 0:
-                        win_prob = round((tot_hw / match_cnt) * 100, 1)
-                        draw_prob = round((tot_dr / match_cnt) * 100, 1)
-                        lose_prob = round((tot_aw / match_cnt) * 100, 1)
+                    if avg_oh > 0 and avg_od > 0 and avg_oa > 0:
+                        tot_m, tot_hw, tot_dr, tot_aw = 0, 0, 0, 0
+                        for obm in OVERSEAS_BOOKMAKERS:
+                            c_m, c_hw, c_dr, c_aw = count_matched_in_db(cached_dbs.get(obm, pd.DataFrame()), avg_oh, avg_od, avg_oa)
+                            tot_m += c_m
+                            tot_hw += c_hw
+                            tot_dr += c_dr
+                            tot_aw += c_aw
+                        match_cnt = tot_m
+                        if match_cnt > 0:
+                            win_prob = round((tot_hw / match_cnt) * 100, 1)
+                            draw_prob = round((tot_dr / match_cnt) * 100, 1)
+                            lose_prob = round((tot_aw / match_cnt) * 100, 1)
 
                 # 상대전적 (10번 시트)
                 h2h_cnt, h2h_hw, h2h_dr, h2h_aw = 0, 0, 0, 0
@@ -1709,9 +1722,9 @@ with tab_scanner:
                     oh, od, oa = target_item["overseas_avg"]
                     ch, cd, ca = target_item["crit_odds"]
                     st.markdown(f"""
-                    <div style="background-color: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 14px; margin-top: 10px; margin-bottom: 12px;">
+                    <div style="background-color: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 14px; margin-top: 10px; margin-bottom: 12px; color: #0f172a;">
                         <h4 style="margin: 0; color: #0f172a;">📌 [{target_item['league']}] {target_item['home']} (홈) vs {target_item['away']} (원정)</h4>
-                        <p style="margin: 6px 0 0 0; color: #475569; font-size: 13px;">
+                        <p style="margin: 6px 0 0 0; color: #334155; font-size: 13px;">
                             배트맨 배당: <b style="color: #dc2626;">승 {bh}</b> | <b style="color: #059669;">무 {bd}</b> | <b style="color: #2563eb;">패 {ba}</b> &nbsp;|&nbsp; 
                             해외 평균: <b>{oh} / {od} / {oa}</b><br>
                             🎯 <b>{selected_radar_criteria} 동일배당 ({ch}/{cd}/{ca}) 승률 (과거 {target_item['match_cnt']}건):</b> 
@@ -1904,7 +1917,7 @@ with tab_analysis:
             
             if valid_h:
                 avg_oh = round(float(np.mean(valid_oh)), 2)
-                avg_od = round(float(np.mean(valid_od)), 2)
+                avg_od = round(float(np.mean(valid_d)), 2)
                 avg_oa = round(float(np.mean(valid_a)), 2)
                 o_odds_val = (avg_oh, avg_od, avg_oa)
             else:
