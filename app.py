@@ -41,7 +41,7 @@ if "scan_queue" not in st.session_state:
 if "current_scan_queue_idx" not in st.session_state:
     st.session_state.current_scan_queue_idx = 0
 
-# 스캐너에서 3/5번 탭으로 넘겨줄 세션 상태
+# 스캐너에서 3/5/6번 탭으로 넘겨줄 세션 상태
 if "selected_scan_match" not in st.session_state:
     st.session_state.selected_scan_match = None
 
@@ -1439,6 +1439,9 @@ with tab_scanner:
 
         scanned_results = run_round_scan()
 
+        # =========================================================
+        # 4대 추천 레이더 TOP 5 필터 버튼 영역
+        # =========================================================
         col_f1, col_f2, col_f3, col_f4, col_f5 = st.columns(5)
         f_all = col_f1.button("🌐 전체 경기 보기", use_container_width=True)
         f_high = col_f2.button("🔥 [고승률 주력픽 TOP 5]", use_container_width=True)
@@ -1448,68 +1451,183 @@ with tab_scanner:
 
         display_list = scanned_results
         filter_title = "📋 이번 라운드 전체 스캔 리스트"
+        is_top5_view = False
 
         if f_high:
             display_list = [m for m in scanned_results if "🔥 고승률 압도" in m["tags"]]
             display_list = sorted(display_list, key=lambda x: max(x["win_prob"], x["lose_prob"]), reverse=True)[:5]
             filter_title = "🔥 [고승률 / 확실한 주력픽 TOP 5] 추천 경기"
+            is_top5_view = True
         elif f_upset:
             display_list = [m for m in scanned_results if "⚡ 역배 폭탄 주의" in m["tags"]]
             display_list = sorted(display_list, key=lambda x: (x["draw_prob"] + x["lose_prob"]), reverse=True)[:5]
             filter_title = "⚡ [역배 / 무승부 폭탄 주의픽 TOP 5] 추천 경기"
+            is_top5_view = True
         elif f_value:
             display_list = [m for m in scanned_results if "💰 배당 메리트" in m["tags"]]
             display_list = sorted(display_list, key=lambda x: x["diff_h"], reverse=True)[:5]
             filter_title = "💰 [해외 대비 가치배당 / 메리트픽 TOP 5] 추천 경기"
+            is_top5_view = True
         elif f_h2h:
             display_list = [m for m in scanned_results if "⚔️ 천적 극상성" in m["tags"]]
             display_list = sorted(display_list, key=lambda x: x["h2h_cnt"], reverse=True)[:5]
             filter_title = "⚔️ [상대전적 극상성 / 천적픽 TOP 5] 추천 경기"
+            is_top5_view = True
 
         st.markdown("---")
-        st.subheader(f"{filter_title} (총 {len(display_list)}경기)")
 
-        if not display_list:
-            st.info("💡 선택하신 조건에 일치하는 추천 경기가 없습니다.")
-        else:
-            for i, item in enumerate(display_list):
-                with st.container(border=True):
-                    c_head1, c_head2, c_head3 = st.columns([2, 3, 2])
-                    
-                    with c_head1:
-                        tag_badges = " ".join([f"`{t}`" for t in item["tags"]])
-                        st.markdown(f"### #{i+1} {item['home']} vs {item['away']}")
-                        st.caption(f"🏆 {item['league']} | 📅 {item['date']} | {tag_badges}")
-
-                    with c_head2:
-                        bh, bd, ba = item["batman_odds"]
-                        oh, od, oa = item["overseas_avg"]
-                        diff_str = f"+{item['diff_h']}" if item['diff_h'] > 0 else f"{item['diff_h']}"
+        # 1) TOP 5 레이더 선택 시: 상위 5경기 카드 렌더링
+        if is_top5_view:
+            st.subheader(f"{filter_title} (총 {len(display_list)}경기)")
+            if not display_list:
+                st.info("💡 선택하신 조건에 일치하는 추천 경기가 없습니다.")
+            else:
+                for i, item in enumerate(display_list):
+                    with st.container(border=True):
+                        c_head1, c_head2, c_head3 = st.columns([2, 3, 2])
                         
-                        st.markdown(f"**🏢 배트맨 배당:** `{bh}` / `{bd}` / `{ba}` &nbsp;|&nbsp; **해외 평균:** `{oh}` / `{od}` / `{oa}` (편차: `{diff_str}`)")
-                        st.markdown(f"📊 **동일배당 승률 (과거 {item['match_cnt']}건):** 홈승 **{item['win_prob']}%** / 무승부 **{item['draw_prob']}%** / 원정 **{item['lose_prob']}%**")
-                        st.caption(f"⚔️ **상대전적:** {item['h2h_record']}")
+                        with c_head1:
+                            tag_badges = " ".join([f"`{t}`" for t in item["tags"]])
+                            st.markdown(f"### #{i+1} {item['home']} vs {item['away']}")
+                            st.caption(f"🏆 {item['league']} | 📅 {item['date']} | {tag_badges}")
 
-                    with c_head3:
-                        st.markdown("<br>", unsafe_allow_html=True)
-                        if st.button(f"👉 이 경기 즉시 분석/도표 생성", key=f"btn_scan_{i}", type="primary", use_container_width=True):
-                            st.session_state.selected_scan_match = item
+                        with c_head2:
+                            bh, bd, ba = item["batman_odds"]
+                            oh, od, oa = item["overseas_avg"]
+                            diff_str = f"+{item['diff_h']}" if item['diff_h'] > 0 else f"{item['diff_h']}"
                             
-                            st.session_state.t2_target_league = item["league"]
-                            st.session_state.t2_home_team = item["home"]
-                            st.session_state.t2_away_team = item["away"]
-                            
-                            for bm in BOOKMAKERS:
-                                h_val, d_val, a_val = item["all_odds"].get(bm, (0.0, 0.0, 0.0))
-                                st.session_state[f"t2_{bm}_h"] = float(h_val)
-                                st.session_state[f"t2_{bm}_d"] = float(d_val)
-                                st.session_state[f"t2_{bm}_a"] = float(a_val)
-                            
-                            st.session_state.sel_h2h_home = item["home"]
-                            st.session_state.sel_h2h_away = item["away"]
-                            st.session_state.inj_filter_team = item["home"]
-                            
-                            st.rerun()
+                            st.markdown(f"**🏢 배트맨 배당:** `{bh}` / `{bd}` / `{ba}` &nbsp;|&nbsp; **해외 평균:** `{oh}` / `{od}` / `{oa}` (편차: `{diff_str}`)")
+                            st.markdown(f"📊 **동일배당 승률 (과거 {item['match_cnt']}건):** 홈승 **{item['win_prob']}%** / 무승부 **{item['draw_prob']}%** / 원정 **{item['lose_prob']}%**")
+                            st.caption(f"⚔️ **상대전적:** {item['h2h_record']}")
+
+                        with c_head3:
+                            st.markdown("<br>", unsafe_allow_html=True)
+                            if st.button(f"👉 이 경기 즉시 분석/도표 생성", key=f"btn_scan_top5_{i}", type="primary", use_container_width=True):
+                                st.session_state.selected_scan_match = item
+                                
+                                st.session_state.t2_target_league = item["league"]
+                                st.session_state.t2_home_team = item["home"]
+                                st.session_state.t2_away_team = item["away"]
+                                
+                                for bm in BOOKMAKERS:
+                                    h_val, d_val, a_val = item["all_odds"].get(bm, (0.0, 0.0, 0.0))
+                                    st.session_state[f"t2_{bm}_h"] = float(h_val)
+                                    st.session_state[f"t2_{bm}_d"] = float(d_val)
+                                    st.session_state[f"t2_{bm}_a"] = float(a_val)
+                                
+                                st.session_state.sel_h2h_home = item["home"]
+                                st.session_state.sel_h2h_away = item["away"]
+                                st.session_state.inj_filter_team = item["home"]
+                                
+                                st.rerun()
+
+        # 2) 전체 경기 보기 모드: 50~100경기 대응 스마트 필터 & 컴팩트 분석기
+        else:
+            st.subheader(f"📋 이번 라운드 전체 등록 경기 빠른 검색 & 원클릭 상세 분석 (총 {len(scanned_results)}경기)")
+
+            # [상단 필터 바: 3열]
+            f_col1, f_col2, f_col3 = st.columns([1.5, 1.5, 1])
+            
+            all_leagues = ["전체"] + sorted(list(set([m["league"] for m in scanned_results if m.get("league")])))
+            with f_col1:
+                selected_league = st.selectbox("🏆 리그 필터", all_leagues, key="filter_scan_league")
+            with f_col2:
+                search_team = st.text_input("🔍 팀명 검색 (홈/원정)", "", placeholder="예: 아스널, 맨시티", key="filter_scan_team")
+            with f_col3:
+                sort_option = st.selectbox("🔢 정렬 기준", ["등록순 (기본)", "배트맨 홈배당 낮은순", "배트맨 홈배당 높은순"], key="filter_scan_sort")
+
+            # 필터링 로직
+            filtered_matches = scanned_results.copy()
+            if selected_league != "전체":
+                filtered_matches = [m for m in filtered_matches if m["league"] == selected_league]
+            if search_team.strip():
+                t_term = search_team.strip().lower()
+                filtered_matches = [m for m in filtered_matches if (t_term in m["home"].lower() or t_term in m["away"].lower())]
+            
+            if sort_option == "배트맨 홈배당 낮은순":
+                filtered_matches = sorted(filtered_matches, key=lambda x: x["batman_odds"][0])
+            elif sort_option == "배트맨 홈배당 높은순":
+                filtered_matches = sorted(filtered_matches, key=lambda x: x["batman_odds"][0], reverse=True)
+
+            st.caption(f"💡 검색 결과: 총 **{len(filtered_matches)}**경기 (전체 {len(scanned_results)}경기 중)")
+
+            if not filtered_matches:
+                st.info("검색 조건에 일치하는 경기가 없습니다.")
+            else:
+                # 1단계: 컴팩트 요약 테이블 렌더링
+                summary_rows = []
+                for m in filtered_matches:
+                    bh, bd, ba = m["batman_odds"]
+                    summary_rows.append({
+                        "날짜": m["date"],
+                        "리그": m["league"],
+                        "홈팀": m["home"],
+                        "원정팀": m["away"],
+                        "배트맨(홈)": bh,
+                        "배트맨(무)": bd,
+                        "배트맨(원)": ba,
+                        "주요 레이더": ", ".join(m["tags"])
+                    })
+                
+                st.dataframe(
+                    pd.DataFrame(summary_rows),
+                    use_container_width=True,
+                    height=min(240, 36 * (len(summary_rows) + 1)),
+                    hide_index=True
+                )
+
+                st.markdown("#### 👉 상세 분석할 경기 선택")
+
+                # 2단계: 드롭다운으로 경기 1개 선택
+                match_options = []
+                for idx, m in enumerate(filtered_matches):
+                    bh, bd, ba = m["batman_odds"]
+                    label = f"[{m['league']}] {m['date']} {m['home']} vs {m['away']} (배트맨 {bh} / {bd} / {ba})"
+                    match_options.append((label, idx))
+
+                selected_label = st.selectbox(
+                    "분석할 경기를 목록에서 선택하세요",
+                    options=[opt[0] for opt in match_options],
+                    key="scanner_match_selector"
+                )
+
+                selected_match_idx = next(opt[1] for opt in match_options if opt[0] == selected_label)
+                target_item = filtered_matches[selected_match_idx]
+
+                # 3단계: 선택된 경기 카드 & 3/5/6번 탭 즉시 전송 버튼
+                with st.container():
+                    bh, bd, ba = target_item["batman_odds"]
+                    oh, od, oa = target_item["overseas_avg"]
+                    st.markdown(f"""
+                    <div style="background-color: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 14px; margin-top: 10px; margin-bottom: 12px;">
+                        <h4 style="margin: 0; color: #0f172a;">📌 [{target_item['league']}] {target_item['home']} (홈) vs {target_item['away']} (원정)</h4>
+                        <p style="margin: 6px 0 0 0; color: #475569; font-size: 13px;">
+                            배트맨 배당: <b style="color: #dc2626;">승 {bh}</b> | <b style="color: #059669;">무 {bd}</b> | <b style="color: #2563eb;">패 {ba}</b> &nbsp;|&nbsp; 
+                            해외 평균: <b>{oh} / {od} / {oa}</b> &nbsp;|&nbsp; 
+                            동일배당 승률 (과거 {target_item['match_cnt']}건): <b>홈 {target_item['win_prob']}% / 무 {target_item['draw_prob']}% / 원 {target_item['lose_prob']}%</b>
+                        </p>
+                    </div>
+                    """, unsafe_allow_html=True)
+
+                    if st.button("👉 이 경기 즉시 분석/도표 생성 (탭 3, 5, 6 전송)", key=f"btn_send_fast_{selected_match_idx}", type="primary", use_container_width=True):
+                        st.session_state.selected_scan_match = target_item
+                        
+                        st.session_state.t2_target_league = target_item["league"]
+                        st.session_state.t2_home_team = target_item["home"]
+                        st.session_state.t2_away_team = target_item["away"]
+                        
+                        for bm in BOOKMAKERS:
+                            h_val, d_val, a_val = target_item["all_odds"].get(bm, (0.0, 0.0, 0.0))
+                            st.session_state[f"t2_{bm}_h"] = float(h_val)
+                            st.session_state[f"t2_{bm}_d"] = float(d_val)
+                            st.session_state[f"t2_{bm}_a"] = float(a_val)
+                        
+                        st.session_state.sel_h2h_home = target_item["home"]
+                        st.session_state.sel_h2h_away = target_item["away"]
+                        st.session_state.inj_filter_team = target_item["home"]
+
+                        st.success(f"🎯 [{target_item['home']} vs {target_item['away']}] 경기가 분석 탭으로 전송되었습니다! (상단 탭 3, 5, 6 확인)")
+                        st.rerun()
 
 # =========================================================
 # TAB 3: 📊 9개사 동일 배당 분석
@@ -1910,23 +2028,23 @@ with tab_h2h:
             h_wins, draws, a_wins = 0, 0, 0
             for _, r in df_h2h_all.iterrows():
                 h_g = to_num(pd.Series([r.get("전반득점_홈", 0)])).iloc[0] + to_num(pd.Series([r.get("후반득점_홈", 0)])).iloc[0]
-                a_g = to_num(pd.Series([r.get("전반득점_원", 0)])).iloc[0] + to_num(pd.Series([r.get("후반득점_원", 0)])).iloc[0]
+                ag = to_num(pd.Series([r.get("전반득점_원", 0)])).iloc[0] + to_num(pd.Series([r.get("후반득점_원", 0)])).iloc[0]
                 
                 if r["홈팀"] == sel_home_h2h:
-                    if h_g > a_g: h_wins += 1
-                    elif h_g == a_g: draws += 1
+                    if h_g > ag: h_wins += 1
+                    elif h_g == ag: draws += 1
                     else: a_wins += 1
                 else:
-                    if a_g > h_g: h_wins += 1
-                    elif a_g == h_g: draws += 1
+                    if ag > h_g: h_wins += 1
+                    elif ag == h_g: draws += 1
                     else: a_wins += 1
 
             ex_h_wins, ex_draws, ex_a_wins = 0, 0, 0
             for _, r in df_h2h_exact.iterrows():
                 h_g = to_num(pd.Series([r.get("전반득점_홈", 0)])).iloc[0] + to_num(pd.Series([r.get("후반득점_홈", 0)])).iloc[0]
-                a_g = to_num(pd.Series([r.get("전반득점_원", 0)])).iloc[0] + to_num(pd.Series([r.get("후반득점_원", 0)])).iloc[0]
-                if h_g > a_g: ex_h_wins += 1
-                elif h_g == a_g: ex_draws += 1
+                ag = to_num(pd.Series([r.get("전반득점_원", 0)])).iloc[0] + to_num(pd.Series([r.get("후반득점_원", 0)])).iloc[0]
+                if h_g > ag: ex_h_wins += 1
+                elif h_g == ag: ex_draws += 1
                 else: ex_a_wins += 1
 
             h2h_all_text = f"{sel_home_h2h} 기준 {total_h2h_count}전 {h_wins}승 {draws}무 {a_wins}패 (승률: {round((h_wins/total_h2h_count)*100, 1)}%)"
@@ -2019,7 +2137,7 @@ with tab_h2h:
 
             ratio_h_2h = f"{round((sum_h_2h / tot_h_score) * 100, 1)}%" if tot_h_score > 0 else "0.0%"
             ratio_a_2h = f"{round((sum_a_2h / tot_a_score) * 100, 1)}%" if tot_a_score > 0 else "0.0%"
-            tot_all_2h, tot_all_score = sum_h_2h + sum_a_2h, tot_h_score + tot_all_score
+            tot_all_2h, tot_all_score = sum_h_2h + sum_a_2h, tot_h_score + tot_a_score
             ratio_all_2h = f"{round((tot_all_2h / tot_all_score) * 100, 1)}%" if tot_all_score > 0 else "0.0%"
 
             h2h_goal_table = {
