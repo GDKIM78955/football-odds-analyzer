@@ -1107,7 +1107,7 @@ with tab_scanner:
                 if next_s_match:
                     st.caption(f"⏭️ **다음 대기 경기:** [{next_s_match['home']} vs {next_s_match['away']}] ({next_s_match['league']})")
                 else:
-                    st.caption("🏁 이번 경기가 스캔 대기열의 마지막 경기입니다.")
+                    st.caption("🏁 이번 경기가 대기열의 마지막 경기입니다.")
 
                 st.markdown("##### 🌐 주요 해외 북메이커 배당 입력 (있는 것만 입력)")
                 sq_overseas_inputs = {}
@@ -1320,24 +1320,26 @@ with tab_scanner:
         st.warning(f"⚠️ `{SCANNER_SHEET_NAME}` 시트에 스캔할 경기 데이터가 없습니다. 위의 [2단계 분할 입력] 또는 [1경기 직접 등록]을 통해 경기를 등록해 주세요.")
     else:
         # =========================================================
-        # 🌟 사전 동일배당 매칭 집계 엔진 (총 10개 기준, 1.01 미만 원천 차단)
+        # 🌟 사전 동일배당 매칭 집계 엔진 (매칭된 상세 내역 추적 기능 포함)
         # =========================================================
         ALL_CRITERIA_OPTIONS = ["배트맨"] + OVERSEAS_BOOKMAKERS + ["🌟 해외 8개사 종합평균"]
         
-        # 9개 업체 DB 캐싱
         cached_dbs = {}
         for bm in BOOKMAKERS:
             cached_dbs[bm] = load_sheet_data(bm)
 
-        def count_matched_in_db(df_db, h_val, d_val, a_val):
+        def get_matched_details_in_db(df_db, h_val, d_val, a_val):
             if df_db.empty or h_val < 1.01 or d_val < 1.01 or a_val < 1.01:
-                return 0, 0, 0, 0
+                return []
             try:
                 cols = list(df_db.columns)
                 h_col = next((c for c in cols if any(k in c for k in ["해당_홈", "배당_홈", "홈배당", "홈_승", "H_ODDS"])), None)
                 d_col = next((c for c in cols if any(k in c for k in ["해당_무", "배당_무", "무배당", "무승부", "D_ODDS"])), None)
                 a_col = next((c for c in cols if any(k in c for k in ["해당_원", "배당_원", "원정배당", "원정_승", "A_ODDS"])), None)
                 res_col = next((c for c in cols if any(k in c for k in ["경기결과", "결과", "Result"])), None)
+                date_col = next((c for c in cols if any(k in c for k in ["날짜", "경기날짜", "Date"])), None)
+                home_col = next((c for c in cols if any(k in c for k in ["홈팀", "Home"])), None)
+                away_col = next((c for c in cols if any(k in c for k in ["원정팀", "Away"])), None)
 
                 if not h_col and len(cols) > 14:
                     h_col, d_col, a_col = cols[12], cols[13], cols[14]
@@ -1345,7 +1347,7 @@ with tab_scanner:
                     res_col = cols[32] if len(cols) > 32 else cols[-1]
 
                 if not h_col or not d_col or not a_col:
-                    return 0, 0, 0, 0
+                    return []
 
                 df_w = df_db.copy()
                 df_w["H_num"] = pd.to_numeric(df_w[h_col], errors="coerce").fillna(0.0)
@@ -1359,25 +1361,43 @@ with tab_scanner:
                     (df_w["A_num"] >= a_val - tol) & (df_w["A_num"] <= a_val + tol)
                 )
                 matched = df_w[cond]
-                cnt = len(matched)
-                if cnt > 0 and res_col in matched.columns:
-                    vc = matched[res_col].value_counts()
-                    return cnt, vc.get("홈승", 0), vc.get("무승부", 0), vc.get("원정승", 0)
+                
+                details = []
+                for _, mr in matched.iterrows():
+                    m_date = str(mr[date_col]) if date_col and date_col in mr else "-"
+                    m_home = str(mr[home_col]) if home_col and home_col in mr else "-"
+                    m_away = str(mr[away_col]) if away_col and away_col in mr else "-"
+                    m_res = str(mr[res_col]) if res_col and res_col in mr else "-"
+                    m_odds = f"{mr['H_num']} / {mr['D_num']} / {mr['A_num']}"
+                    details.append({
+                        "날짜": m_date, "매치업": f"{m_home} vs {m_away}",
+                        "당시배당(홈/무/원)": m_odds, "경기결과": m_res
+                    })
+                return details
             except Exception:
-                pass
-            return 0, 0, 0, 0
+                return []
 
-        # 전체 등록 경기에 대한 북메이커별 총 매칭 건수 계산
+        # 전체 등록 경기에 대한 북메이커별 총 매칭 건수 및 상세 내역 수집
         matching_counts_summary = {crit: 0 for crit in ALL_CRITERIA_OPTIONS}
+        detailed_match_records = {crit: [] for crit in ALL_CRITERIA_OPTIONS}
         
         for _, r in df_scan_raw.iterrows():
+            r_home = str(r.get("홈팀", "")).strip()
+            r_away = str(r.get("원정팀", "")).strip()
+            r_lg = str(r.get("리그명", "")).strip()
+            match_name_str = f"[{r_lg}] {r_home} vs {r_away}"
+
             # 1) 배트맨
             bh = safe_flt(r.get("배트맨_홈"), 0.0)
             bd = safe_flt(r.get("배트맨_무"), 0.0)
             ba = safe_flt(r.get("배트맨_원"), 0.0)
             if bh >= 1.01 and bd >= 1.01 and ba >= 1.01:
-                c_bm, _, _, _ = count_matched_in_db(cached_dbs.get("배트맨", pd.DataFrame()), bh, bd, ba)
-                matching_counts_summary["배트맨"] += c_bm
+                dets = get_matched_details_in_db(cached_dbs.get("배트맨", pd.DataFrame()), bh, bd, ba)
+                if dets:
+                    matching_counts_summary["배트맨"] += len(dets)
+                    for d in dets:
+                        d["대상경기"] = match_name_str
+                        detailed_match_records["배트맨"].append(d)
 
             # 2) 해외 8개사 개별
             valid_oh, valid_od, valid_oa = [], [], []
@@ -1389,8 +1409,12 @@ with tab_scanner:
                     valid_oh.append(oh)
                     valid_od.append(od)
                     valid_oa.append(oa)
-                    c_obm, _, _, _ = count_matched_in_db(cached_dbs.get(obm, pd.DataFrame()), oh, od, oa)
-                    matching_counts_summary[obm] += c_obm
+                    dets = get_matched_details_in_db(cached_dbs.get(obm, pd.DataFrame()), oh, od, oa)
+                    if dets:
+                        matching_counts_summary[obm] += len(dets)
+                        for d in dets:
+                            d["대상경기"] = match_name_str
+                            detailed_match_records[obm].append(d)
 
             # 3) 해외 8개사 종합평균 기준
             if valid_oh:
@@ -1398,11 +1422,13 @@ with tab_scanner:
                 avg_od = round(float(np.mean(valid_od)), 2)
                 avg_oa = round(float(np.mean(valid_oa)), 2)
                 if avg_oh >= 1.01 and avg_od >= 1.01 and avg_oa >= 1.01:
-                    tot_avg_c = 0
                     for obm in OVERSEAS_BOOKMAKERS:
-                        c_a, _, _, _ = count_matched_in_db(cached_dbs.get(obm, pd.DataFrame()), avg_oh, avg_od, avg_oa)
-                        tot_avg_c += c_a
-                    matching_counts_summary["🌟 해외 8개사 종합평균"] += tot_avg_c
+                        dets = get_matched_details_in_db(cached_dbs.get(obm, pd.DataFrame()), avg_oh, avg_od, avg_oa)
+                        if dets:
+                            matching_counts_summary["🌟 해외 8개사 종합평균"] += len(dets)
+                            for d in dets:
+                                d["대상경기"] = match_name_str
+                                detailed_match_records["🌟 해외 8개사 종합평균"].append(d)
 
         # =========================================================
         # 🌟 상단: 업체별 매칭 개수 사전 브리핑 카드
@@ -1428,8 +1454,19 @@ with tab_scanner:
                 f"<b style='color: {label_color};'>{crit}</b>: <span style='color: {cnt_color}; font-weight: bold;'>{cnt_val}건</span></div>"
             )
         
-        badge_html = "<div style='display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 15px;'>" + "".join(badges) + "</div>"
+        badge_html = "<div style='display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px;'>" + "".join(badges) + "</div>"
         st.markdown(badge_html, unsafe_allow_html=True)
+
+        # 🌟 [신규 추가] 어떤 경기가 매칭되었는지 직접 눈으로 확인하는 상세 내역 검증기
+        with st.expander("🔍 [업체별 동일배당 매칭 상세 내역 검증기] (어떤 과거 경기가 카운팅되었는지 확인하기)", expanded=False):
+            sel_inspect_bm = st.selectbox("상세 내역을 조회할 업체 선택", ALL_CRITERIA_OPTIONS, key="sel_inspect_bm_box")
+            bm_records = detailed_match_records.get(sel_inspect_bm, [])
+            
+            if bm_records:
+                st.success(f"📌 **[{sel_inspect_bm}]** 기준 총 **{len(bm_records)}건**의 과거 매칭 경기 내역입니다.")
+                st.dataframe(pd.DataFrame(bm_records), use_container_width=True, hide_index=True)
+            else:
+                st.info(f"💡 **[{sel_inspect_bm}]** 시트에 이번 라운드 경기들과 일치하는 과거 동일배당 매칭 내역이 없습니다. (0건)")
 
         # 🌟 기준 북메이커 선택 셀렉트박스
         c_crit1, c_crit2 = st.columns([2, 3])
@@ -1480,7 +1517,6 @@ with tab_scanner:
                 avg_od = round(float(np.mean(valid_od)), 2) if valid_od else 0.0
                 avg_oa = round(float(np.mean(valid_oa)), 2) if valid_oa else 0.0
 
-                # 선택된 기준에 따른 배당 및 매칭 확률 계산
                 match_cnt, win_prob, draw_prob, lose_prob = 0, 0.0, 0.0, 0.0
                 crit_h, crit_d, crit_a = 0.0, 0.0, 0.0
 
@@ -1525,7 +1561,7 @@ with tab_scanner:
                     h2h_cnt = len(m_h2h)
                     for _, hr in m_h2h.iterrows():
                         hg = safe_flt(hr.get("전반득점_홈"), 0.0) + safe_flt(hr.get("후반득점_홈"), 0.0)
-                        ag = safe_flt(hr.get("전반득점_원"), 0.0) + safe_flt(hr.get("후반득점_원"), 0.0)
+                        ag = safe_flt(hr.get("전반득점_원"), 0.0) + safe_flt(hr.get("후반득점_원", 0.0), 0.0)
                         if hr["홈팀"] == home:
                             if hg > ag: h2h_hw += 1
                             elif hg == ag: h2h_dr += 1
@@ -1538,7 +1574,6 @@ with tab_scanner:
                 diff_h = round(bh - avg_oh, 2) if (bh > 0 and avg_oh > 0) else 0.0
                 tags = []
 
-                # 레이더 판별
                 if match_cnt >= 2 and (win_prob >= 70.0 or lose_prob >= 70.0):
                     tags.append(f"🔥 고승률({selected_radar_criteria})")
                 if crit_h > 0 and crit_a > 0 and crit_h < crit_a and (draw_prob + lose_prob) >= 55.0 and match_cnt >= 2:
@@ -1606,7 +1641,6 @@ with tab_scanner:
 
         st.markdown("---")
 
-        # 1) TOP 5 레이더 선택 시: 상위 5경기 카드 렌더링
         if is_top5_view:
             st.subheader(f"{filter_title} (총 {len(display_list)}경기)")
             if not display_list:
@@ -1636,30 +1670,23 @@ with tab_scanner:
                             st.markdown("<br>", unsafe_allow_html=True)
                             if st.button(f"👉 이 경기 즉시 분석/도표 생성", key=f"btn_scan_top5_{i}", type="primary", use_container_width=True):
                                 st.session_state.selected_scan_match = item
-                                
                                 st.session_state.t2_target_league = item["league"]
                                 st.session_state.t2_home_team = item["home"]
                                 st.session_state.t2_away_team = item["away"]
-                                
                                 for bm in BOOKMAKERS:
                                     h_val, d_val, a_val = item["all_odds"].get(bm, (0.0, 0.0, 0.0))
                                     st.session_state[f"t2_{bm}_h"] = float(h_val)
                                     st.session_state[f"t2_{bm}_d"] = float(d_val)
                                     st.session_state[f"t2_{bm}_a"] = float(a_val)
-                                
                                 st.session_state.sel_h2h_home = item["home"]
                                 st.session_state.sel_h2h_away = item["away"]
                                 st.session_state.inj_filter_team = item["home"]
-                                
                                 st.rerun()
 
-        # 2) 전체 경기 보기 모드: 50~100경기 대응 스마트 필터 & 컴팩트 분석기
         else:
             st.subheader(f"📋 이번 라운드 전체 등록 경기 빠른 검색 & 원클릭 상세 분석 (총 {len(scanned_results)}경기)")
 
-            # [상단 필터 바: 3열]
             f_col1, f_col2, f_col3 = st.columns([1.5, 1.5, 1])
-            
             all_leagues = ["전체"] + sorted(list(set([m["league"] for m in scanned_results if m.get("league")])))
             with f_col1:
                 selected_league = st.selectbox("🏆 리그 필터", all_leagues, key="filter_scan_league")
@@ -1668,7 +1695,6 @@ with tab_scanner:
             with f_col3:
                 sort_option = st.selectbox("🔢 정렬 기준", ["등록순 (기본)", "배트맨 홈배당 낮은순", "배트맨 홈배당 높은순"], key="filter_scan_sort")
 
-            # 필터링 로직
             filtered_matches = scanned_results.copy()
             if selected_league != "전체":
                 filtered_matches = [m for m in filtered_matches if m["league"] == selected_league]
@@ -1686,47 +1712,27 @@ with tab_scanner:
             if not filtered_matches:
                 st.info("검색 조건에 일치하는 경기가 없습니다.")
             else:
-                # 1단계: 컴팩트 요약 테이블 렌더링
                 summary_rows = []
                 for m in filtered_matches:
                     bh, bd, ba = m["batman_odds"]
                     summary_rows.append({
-                        "날짜": m["date"],
-                        "리그": m["league"],
-                        "홈팀": m["home"],
-                        "원정팀": m["away"],
-                        "배트맨(홈)": bh,
-                        "배트맨(무)": bd,
-                        "배트맨(원)": ba,
-                        "주요 레이더": ", ".join(m["tags"])
+                        "날짜": m["date"], "리그": m["league"], "홈팀": m["home"], "원정팀": m["away"],
+                        "배트맨(홈)": bh, "배트맨(무)": bd, "배트맨(원)": ba, "주요 레이더": ", ".join(m["tags"])
                     })
                 
-                st.dataframe(
-                    pd.DataFrame(summary_rows),
-                    use_container_width=True,
-                    height=min(240, 36 * (len(summary_rows) + 1)),
-                    hide_index=True
-                )
-
+                st.dataframe(pd.DataFrame(summary_rows), use_container_width=True, height=min(240, 36 * (len(summary_rows) + 1)), hide_index=True)
                 st.markdown("#### 👉 상세 분석할 경기 선택")
 
-                # 2단계: 드롭다운으로 경기 1개 선택
                 match_options = []
                 for idx, m in enumerate(filtered_matches):
                     bh, bd, ba = m["batman_odds"]
                     label = f"[{m['league']}] {m['date']} {m['home']} vs {m['away']} (배트맨 {bh} / {bd} / {ba})"
                     match_options.append((label, idx))
 
-                selected_label = st.selectbox(
-                    "분석할 경기를 목록에서 선택하세요",
-                    options=[opt[0] for opt in match_options],
-                    key="scanner_match_selector"
-                )
-
+                selected_label = st.selectbox("분석할 경기를 목록에서 선택하세요", options=[opt[0] for opt in match_options], key="scanner_match_selector")
                 selected_match_idx = next(opt[1] for opt in match_options if opt[0] == selected_label)
                 target_item = filtered_matches[selected_match_idx]
 
-                # 3단계: 선택된 경기 카드 & 3/5/6번 탭 즉시 전송 버튼
                 with st.container():
                     bh, bd, ba = target_item["batman_odds"]
                     oh, od, oa = target_item["overseas_avg"]
@@ -1745,21 +1751,17 @@ with tab_scanner:
 
                     if st.button("👉 이 경기 즉시 분석/도표 생성 (탭 3, 5, 6 전송)", key=f"btn_send_fast_{selected_match_idx}", type="primary", use_container_width=True):
                         st.session_state.selected_scan_match = target_item
-                        
                         st.session_state.t2_target_league = target_item["league"]
                         st.session_state.t2_home_team = target_item["home"]
                         st.session_state.t2_away_team = target_item["away"]
-                        
                         for bm in BOOKMAKERS:
                             h_val, d_val, a_val = target_item["all_odds"].get(bm, (0.0, 0.0, 0.0))
                             st.session_state[f"t2_{bm}_h"] = float(h_val)
                             st.session_state[f"t2_{bm}_d"] = float(d_val)
                             st.session_state[f"t2_{bm}_a"] = float(a_val)
-                        
                         st.session_state.sel_h2h_home = target_item["home"]
                         st.session_state.sel_h2h_away = target_item["away"]
                         st.session_state.inj_filter_team = target_item["home"]
-
                         st.success(f"🎯 [{target_item['home']} vs {target_item['away']}] 경기가 분석 탭으로 전송되었습니다! (상단 탭 3, 5, 6 확인)")
                         st.rerun()
 
@@ -2333,7 +2335,6 @@ with tab_injuries:
     df_injuries = load_sheet_data(INJURY_SHEET_NAME)
     df_stats_red = load_sheet_data(STATS_SHEET_NAME)
 
-    # 1. 🚨 리그/기간별 퇴장 발생 경기 자동 추적기
     with st.expander("🚨 [기간 및 리그별 퇴장 발생 경기 자동 추적 레이더] (놓친 징계 선수 찾기)", expanded=True):
         st.caption("10번 '경기내용' 시트에 기록된 경기 중 퇴장(레드카드)이 발생한 매치업을 기간 및 리그별로 자동 추출합니다.")
         
@@ -2380,11 +2381,9 @@ with tab_injuries:
                 rc_h = to_num_rc(r.get("퇴장_홈", 0))
                 rc_a = to_num_rc(r.get("퇴장_원", 0))
 
-                # 1) 리그 필터링
                 if sel_rc_league != "전체 리그" and r_league.upper() != sel_rc_league.upper():
                     continue
 
-                # 2) 스마트 날짜 필터링
                 if val_from is not None and r_date_val is not None:
                     if r_date_val < val_from:
                         continue
@@ -2399,7 +2398,6 @@ with tab_injuries:
                     if r_date_raw > rc_date_to.strip():
                         continue
 
-                # 3) 퇴장이 1회 이상 발생한 경우
                 if rc_h > 0 or rc_a > 0:
                     red_teams = []
                     if rc_h > 0: red_teams.append(f"🔴 홈팀 [{r_home}] ({int(rc_h)}명 퇴장)")
@@ -2407,11 +2405,9 @@ with tab_injuries:
 
                     red_card_records.append({
                         "경기날짜": r_date_raw if r_date_raw else "-",
-                        "리그": r_league,
-                        "매치업": f"{r_home} vs {r_away}",
+                        "리그": r_league, "매치업": f"{r_home} vs {r_away}",
                         "🚨 퇴장 발생 팀": " / ".join(red_teams),
-                        "홈 퇴장": int(rc_h),
-                        "원정 퇴장": int(rc_a)
+                        "홈 퇴장": int(rc_h), "원정 퇴장": int(rc_a)
                     })
 
             if red_card_records:
@@ -2498,12 +2494,7 @@ with tab_injuries:
                         name_display = f"{kr} ({en})" if kr and en else (kr or en)
                         player_options.append((idx, name_display))
                     
-                    sel_player_to_remove = st.selectbox(
-                        "복귀한 선수 선택", 
-                        player_options, 
-                        format_func=lambda x: x[1],
-                        key="sel_remove_player"
-                    )
+                    sel_player_to_remove = st.selectbox("복귀한 선수 선택", player_options, format_func=lambda x: x[1], key="sel_remove_player")
                     
                     if st.button("🚀 선택한 선수 복귀 완료 (시트에서 삭제)", type="secondary", use_container_width=True):
                         client = get_gspread_client()
