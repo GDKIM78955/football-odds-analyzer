@@ -1068,7 +1068,7 @@ with tab_scanner:
                 sq_preview = []
                 for i, m in enumerate(st.session_state.scan_queue):
                     status = "👉 [작성 차례]" if i == st.session_state.current_scan_queue_idx else ("⏳ [대기 중]" if i > st.session_state.current_scan_queue_idx else "✅ [완료]")
-                    sq_preview.append({
+                    q_preview.append({
                         "순번": i + 1, "상태": status,
                         "매치업": f"{m['home']} vs {m['away']}", "리그/날짜": f"{m['league']} ({m['date']})",
                         "배트맨 배당": f"{m['batman_odds'][0]} / {m['batman_odds'][1]} / {m['batman_odds'][2]}"
@@ -1161,7 +1161,7 @@ with tab_scanner:
                             
                             st.session_state.current_scan_queue_idx += 1
                             st.cache_data.clear()
-                            st.success(f"🎉 [{cur_s_match['home']} vs {cur_s_match['away']}] 저장 완료!")
+                            st.success(f"🎉 [{cur_s_match['home']} vs {cur_match['away']}] 저장 완료!")
                             time.sleep(0.4)
                             st.rerun()
                         except Exception as e:
@@ -1393,22 +1393,22 @@ with tab_scanner:
                 matching_counts_summary["🌟 해외 8개사 종합평균"] += tot_avg_c
 
         # =========================================================
-        # 🌟 상단: 업체별 매칭 개수 사전 브리핑 카드
+        # 🌟 상단: 업체별 매칭 개수 사전 브리핑 카드 (HTML 렌더링 완벽 처리)
         # =========================================================
         st.markdown("#### 📊 이번 라운드 경기들의 업체별 과거 동일배당 매칭 데이터 현황")
         
-        badge_html = "<div style='display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 15px;'>"
+        badges = []
         for crit in ALL_CRITERIA_OPTIONS:
             cnt_val = matching_counts_summary[crit]
             color_bg = "#eff6ff" if cnt_val > 0 else "#f8fafc"
             color_border = "#3b82f6" if cnt_val > 0 else "#e2e8f0"
             color_text = "#1d4ed8" if cnt_val > 0 else "#94a3b8"
-            badge_html += f"""
-            <div style='background-color: {color_bg}; border: 1px solid {color_border}; border-radius: 6px; padding: 6px 12px; font-size: 13px;'>
-                <b>{crit}</b>: <span style='color: {color_text}; font-weight: bold;'>{cnt_val}건</span>
-            </div>
-            """
-        badge_html += "</div>"
+            badges.append(
+                f"<div style='background-color: {color_bg}; border: 1px solid {color_border}; border-radius: 6px; padding: 6px 12px; font-size: 13px; white-space: nowrap;'>"
+                f"<b>{crit}</b>: <span style='color: {color_text}; font-weight: bold;'>{cnt_val}건</span></div>"
+            )
+        
+        badge_html = "<div style='display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 15px;'>" + "".join(badges) + "</div>"
         st.markdown(badge_html, unsafe_allow_html=True)
 
         # 🌟 기준 북메이커 선택 셀렉트박스
@@ -1903,8 +1903,8 @@ with tab_analysis:
                     valid_a.append(oa)
             
             if valid_h:
-                avg_oh = round(float(np.mean(valid_h)), 2)
-                avg_od = round(float(np.mean(valid_d)), 2)
+                avg_oh = round(float(np.mean(valid_oh)), 2)
+                avg_od = round(float(np.mean(valid_od)), 2)
                 avg_oa = round(float(np.mean(valid_a)), 2)
                 o_odds_val = (avg_oh, avg_od, avg_oa)
             else:
@@ -2229,15 +2229,15 @@ with tab_h2h:
             h_1h_list, h_2h_list, a_1h_list, a_2h_list = [], [], [], []
             for _, r in df_h2h_all.iterrows():
                 if r["홈팀"] == sel_home_h2h:
-                    h_1h_list.append(to_num(pd.Series([r.get("전반득점_홈", 0)])).iloc[0])
-                    h_2h_list.append(to_num(pd.Series([r.get("후반득점_홈", 0)])).iloc[0])
-                    a_1h_list.append(to_num(pd.Series([r.get("전반득점_원", 0)])).iloc[0])
-                    a_2h_list.append(to_num(pd.Series([r.get("후반득점_원", 0)])).iloc[0])
+                    h_1h_list.append(to_num(pd.Series([r.get("전반득점_홈", 0)])).iloc[0] + 0)
+                    h_2h_list.append(to_num(pd.Series([r.get("후반득점_홈", 0)])).iloc[0] + 0)
+                    a_1h_list.append(to_num(pd.Series([r.get("전반득점_원", 0)])).iloc[0] + 0)
+                    a_2h_list.append(to_num(pd.Series([r.get("후반득점_원", 0)])).iloc[0] + 0)
                 else:
-                    h_1h_list.append(to_num(pd.Series([r.get("전반득점_원", 0)])).iloc[0])
-                    h_2h_list.append(to_num(pd.Series([r.get("후반득점_원", 0)])).iloc[0])
-                    a_1h_list.append(to_num(pd.Series([r.get("전반득점_홈", 0)])).iloc[0])
-                    a_2h_list.append(to_num(pd.Series([r.get("후반득점_원", 0)])).iloc[0])
+                    h_1h_list.append(to_num(pd.Series([r.get("전반득점_원", 0)])).iloc[0] + 0)
+                    h_2h_list.append(to_num(pd.Series([r.get("후반득점_원", 0)])).iloc[0] + 0)
+                    a_1h_list.append(to_num(pd.Series([r.get("전반득점_홈", 0)])).iloc[0] + 0)
+                    a_2h_list.append(to_num(pd.Series([r.get("후반득점_원", 0)])).iloc[0] + 0)
 
             sum_h_1h, sum_h_2h = sum(h_1h_list), sum(h_2h_list)
             sum_a_1h, sum_a_2h = sum(a_1h_list), sum(a_2h_list)
@@ -2248,7 +2248,7 @@ with tab_h2h:
 
             ratio_h_2h = f"{round((sum_h_2h / tot_h_score) * 100, 1)}%" if tot_h_score > 0 else "0.0%"
             ratio_a_2h = f"{round((sum_a_2h / tot_a_score) * 100, 1)}%" if tot_a_score > 0 else "0.0%"
-            tot_all_2h, tot_all_score = sum_h_2h + sum_a_2h, tot_h_score + tot_a_score
+            tot_all_2h, tot_all_score = sum_h_2h + sum_a_2h, tot_h_score + tot_all_score
             ratio_all_2h = f"{round((tot_all_2h / tot_all_score) * 100, 1)}%" if tot_all_score > 0 else "0.0%"
 
             h2h_goal_table = {
