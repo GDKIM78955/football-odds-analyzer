@@ -686,7 +686,7 @@ def save_match_data_to_sheets(match_info, odds_dict, stats_dict):
         a_1h = stats_dict["away_1h"]
         a_2h = stats_dict["away_2h"]
         h_shots = stats_dict["home_shots"]
-        a_shots = stats_dict["home_shots"] # 수정됨
+        a_shots = stats_dict["away_shots"]
         h_sot = stats_dict["home_sot"]
         a_sot = stats_dict["away_sot"]
 
@@ -706,7 +706,7 @@ def save_match_data_to_sheets(match_info, odds_dict, stats_dict):
             h_1h, h_2h, a_1h, a_2h,
             f"{h_1h_ratio}%", f"{h_2h_ratio}%", f"{a_1h_ratio}%", f"{a_2h_ratio}%",
             home_tac_safe, away_tac_safe,
-            h_shots, stats_dict['away_shots'], h_sot, a_sot,
+            h_shots, a_shots, h_sot, a_sot,
             f"{h_sot_ratio}%", f"{a_sot_ratio}%",
             f"{stats_dict['home_poss']}%", f"{stats_dict['away_poss']}%",
             f"{stats_dict['home_pass']}%", f"{stats_dict['away_pass']}%",
@@ -981,9 +981,9 @@ with tab_input:
             home_yc = c_cd1.number_input("홈 경고(옐로)", min_value=0, value=0, key="in_home_yc")
             away_yc = c_cd2.number_input("원정 경고(옐로)", min_value=0, value=0, key="in_home_yc")
             home_rc = c_cd3.number_input("홈 퇴장(레드)", min_value=0, value=0, key="in_home_rc")
-            away_rc = c_cd4.number_input("원정 퇴장(레드)", min_value=0, value=0, key="in_away_rc")
+            away_rc = c_cd4.number_input("원정 퇴장(레드)", min_value=0, value=0, key="in_home_rc")
             home_xg = c_xg1.number_input("홈 xG", min_value=0.0, value=0.00, step=0.01, key="in_home_xg")
-            away_xg = c_xg2.number_input("원정 xG", min_value=0.0, value=0.00, step=0.01, key="in_away_xg")
+            away_xg = c_xg2.number_input("원정 xG", min_value=0.0, value=0.00, step=0.01, key="in_home_xg")
 
         st.markdown("---")
         if st.button("💾 구글 시트 1~9번 배당 탭 & 10번 경기내용 탭 일괄 저장 실행", type="primary", use_container_width=True):
@@ -1525,7 +1525,7 @@ with tab_scanner:
                     h2h_cnt = len(m_h2h)
                     for _, hr in m_h2h.iterrows():
                         hg = safe_flt(hr.get("전반득점_홈"), 0.0) + safe_flt(hr.get("후반득점_홈"), 0.0)
-                        ag = safe_flt(hr.get("전반득점_원"), 0.0) + safe_flt(hr.get("후반득점_원", 0.0)
+                        ag = safe_flt(hr.get("전반득점_원"), 0.0) + safe_flt(hr.get("후반득점_원"), 0.0)
                         if hr["홈팀"] == home:
                             if hg > ag: h2h_hw += 1
                             elif hg == ag: h2h_dr += 1
