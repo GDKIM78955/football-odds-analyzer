@@ -899,7 +899,7 @@ with tab_input:
                 q_stats_dict = {
                     "home_1h": q_home_1h, "home_2h": q_home_2h, "away_1h": q_away_1h, "away_2h": q_away_2h,
                     "home_tac": q_home_tac, "away_tac": q_away_tac,
-                    "home_shots": q_home_shots, "away_shots": q_away_shots,
+                    "home_shots": home_shots := q_home_shots, "away_shots": q_away_shots,
                     "home_sot": q_home_sot, "away_sot": q_away_sot,
                     "home_poss": q_home_poss, "away_poss": q_away_poss,
                     "home_pass": q_home_pass, "away_pass": q_away_pass,
@@ -1068,7 +1068,7 @@ with tab_scanner:
                 sq_preview = []
                 for i, m in enumerate(st.session_state.scan_queue):
                     status = "👉 [작성 차례]" if i == st.session_state.current_scan_queue_idx else ("⏳ [대기 중]" if i > st.session_state.current_scan_queue_idx else "✅ [완료]")
-                    sq_preview.append({
+                    q_preview.append({
                         "순번": i + 1, "상태": status,
                         "매치업": f"{m['home']} vs {m['away']}", "리그/날짜": f"{m['league']} ({m['date']})",
                         "배트맨 배당": f"{m['batman_odds'][0]} / {m['batman_odds'][1]} / {m['batman_odds'][2]}"
@@ -1161,7 +1161,7 @@ with tab_scanner:
                             
                             st.session_state.current_scan_queue_idx += 1
                             st.cache_data.clear()
-                            st.success(f"🎉 [{cur_s_match['home']} vs {cur_match['away']}] 저장 완료!")
+                            st.success(f"🎉 [{cur_s_match['home']} vs {cur_s_match['away']}] 저장 완료!")
                             time.sleep(0.4)
                             st.rerun()
                         except Exception as e:
@@ -1320,7 +1320,7 @@ with tab_scanner:
         st.warning(f"⚠️ `{SCANNER_SHEET_NAME}` 시트에 스캔할 경기 데이터가 없습니다. 위의 [2단계 분할 입력] 또는 [1경기 직접 등록]을 통해 경기를 등록해 주세요.")
     else:
         # =========================================================
-        # 🌟 사전 동일배당 매칭 집계 엔진 (총 10개 기준, 0.00 배당 완전 제외)
+        # 🌟 스마트 열 검색 및 엄격한 배당 매칭 엔진 (1.01 미만 배제)
         # =========================================================
         ALL_CRITERIA_OPTIONS = ["배트맨"] + OVERSEAS_BOOKMAKERS + ["🌟 해외 8개사 종합평균"]
         
@@ -1330,30 +1330,40 @@ with tab_scanner:
             cached_dbs[bm] = load_sheet_data(bm)
 
         def count_matched_in_db(df_db, h_val, d_val, a_val):
-            # 0.00 배당이거나 0 미만인 비유효 데이터는 매칭 계산 자체를 원천 차단
-            if df_db.empty or h_val <= 0 or d_val <= 0 or a_val <= 0:
+            # 축구 배당 기준 1.01 미만(0.00 등)은 조회를 원천 차단
+            if df_db.empty or h_val < 1.01 or d_val < 1.01 or a_val < 1.01:
                 return 0, 0, 0, 0
             try:
-                h_col = "해당_홈" if "해당_홈" in df_db.columns else df_db.columns[12]
-                d_col = "해당_무" if "해당_무" in df_db.columns else df_db.columns[13]
-                a_col = "해당_원" if "해당_원" in df_db.columns else df_db.columns[14]
-                res_col = "경기결과" if "경기결과" in df_db.columns else df_db.columns[32]
+                cols = list(df_db.columns)
+                # 스마트 열 탐색: 해당_홈 / 배당_홈 / 홈 등 명시적 검색, 없으면 배당 위치(인덱스 12, 13, 14) 매핑
+                h_col = next((c for c in cols if any(k in c for k in ["해당_홈", "배당_홈", "홈배당", "홈_승", "H_ODDS"])), None)
+                d_col = next((c for c in cols if any(k in c for k in ["해당_무", "배당_무", "무배당", "무승부", "D_ODDS"])), None)
+                a_col = next((c for c in cols if any(k in c for k in ["해당_원", "배당_원", "원정배당", "원정_승", "A_ODDS"])), None)
+                res_col = next((c for c in cols if any(k in c for k in ["경기결과", "결과", "Result"])), None)
+
+                if not h_col and len(cols) > 14:
+                    h_col, d_col, a_col = cols[12], cols[13], cols[14]
+                if not res_col:
+                    res_col = cols[32] if len(cols) > 32 else cols[-1]
+
+                if not h_col or not d_col or not a_col:
+                    return 0, 0, 0, 0
 
                 df_w = df_db.copy()
-                df_w["H_num"] = pd.to_numeric(df_w[h_col], errors="coerce")
-                df_w["D_num"] = pd.to_numeric(df_w[d_col], errors="coerce")
-                df_w["A_num"] = pd.to_numeric(df_w[a_col], errors="coerce")
+                df_w["H_num"] = pd.to_numeric(df_w[h_col], errors="coerce").fillna(0.0)
+                df_w["D_num"] = pd.to_numeric(df_w[d_col], errors="coerce").fillna(0.0)
+                df_w["A_num"] = pd.to_numeric(df_w[a_col], errors="coerce").fillna(0.0)
 
-                # DB 내에서도 배당이 0보다 큰 유효 데이터 행만 매칭
+                # DB 내에서도 배당이 1.01 이상인 실제 경기 행만 엄격 필터링
                 cond = (
-                    (df_w["H_num"] > 0) & (df_w["D_num"] > 0) & (df_w["A_num"] > 0) &
+                    (df_w["H_num"] >= 1.01) & (df_w["D_num"] >= 1.01) & (df_w["A_num"] >= 1.01) &
                     (df_w["H_num"] >= h_val - tol) & (df_w["H_num"] <= h_val + tol) &
                     (df_w["D_num"] >= d_val - tol) & (df_w["D_num"] <= d_val + tol) &
                     (df_w["A_num"] >= a_val - tol) & (df_w["A_num"] <= a_val + tol)
                 )
                 matched = df_w[cond]
                 cnt = len(matched)
-                if cnt > 0:
+                if cnt > 0 and res_col in matched.columns:
                     vc = matched[res_col].value_counts()
                     return cnt, vc.get("홈승", 0), vc.get("무승부", 0), vc.get("원정승", 0)
             except Exception:
@@ -1368,7 +1378,7 @@ with tab_scanner:
             bh = safe_flt(r.get("배트맨_홈"), 0.0)
             bd = safe_flt(r.get("배트맨_무"), 0.0)
             ba = safe_flt(r.get("배트맨_원"), 0.0)
-            if bh > 0 and bd > 0 and ba > 0:
+            if bh >= 1.01 and bd >= 1.01 and ba >= 1.01:
                 c_bm, _, _, _ = count_matched_in_db(cached_dbs.get("배트맨", pd.DataFrame()), bh, bd, ba)
                 matching_counts_summary["배트맨"] += c_bm
 
@@ -1378,7 +1388,7 @@ with tab_scanner:
                 oh = safe_flt(r.get(f"{obm}_홈"), 0.0)
                 od = safe_flt(r.get(f"{obm}_무"), 0.0)
                 oa = safe_flt(r.get(f"{obm}_원"), 0.0)
-                if oh > 0 and od > 0 and oa > 0:
+                if oh >= 1.01 and od >= 1.01 and oa >= 1.01:
                     valid_oh.append(oh)
                     valid_od.append(od)
                     valid_oa.append(oa)
@@ -1390,14 +1400,15 @@ with tab_scanner:
                 avg_oh = round(float(np.mean(valid_oh)), 2)
                 avg_od = round(float(np.mean(valid_od)), 2)
                 avg_oa = round(float(np.mean(valid_oa)), 2)
-                tot_avg_c = 0
-                for obm in OVERSEAS_BOOKMAKERS:
-                    c_a, _, _, _ = count_matched_in_db(cached_dbs.get(obm, pd.DataFrame()), avg_oh, avg_od, avg_oa)
-                    tot_avg_c += c_a
-                matching_counts_summary["🌟 해외 8개사 종합평균"] += tot_avg_c
+                if avg_oh >= 1.01 and avg_od >= 1.01 and avg_oa >= 1.01:
+                    tot_avg_c = 0
+                    for obm in OVERSEAS_BOOKMAKERS:
+                        c_a, _, _, _ = count_matched_in_db(cached_dbs.get(obm, pd.DataFrame()), avg_oh, avg_od, avg_oa)
+                        tot_avg_c += c_a
+                    matching_counts_summary["🌟 해외 8개사 종합평균"] += tot_avg_c
 
         # =========================================================
-        # 🌟 상단: 업체별 매칭 개수 사전 브리핑 카드 (글씨색/배경색 고정)
+        # 🌟 상단: 업체별 매칭 개수 사전 브리핑 카드 (글씨색 고정)
         # =========================================================
         st.markdown("#### 📊 이번 라운드 경기들의 업체별 과거 동일배당 매칭 데이터 현황")
         
@@ -1463,7 +1474,7 @@ with tab_scanner:
                     od = safe_flt(r.get(f"{obm}_무"), 0.0)
                     oa = safe_flt(r.get(f"{obm}_원"), 0.0)
                     all_bms_odds[obm] = (oh, od, oa)
-                    if oh > 0 and od > 0 and oa > 0:
+                    if oh >= 1.01 and od >= 1.01 and oa >= 1.01:
                         valid_oh.append(oh)
                         valid_od.append(od)
                         valid_oa.append(oa)
@@ -1478,21 +1489,23 @@ with tab_scanner:
 
                 if criteria_name == "배트맨":
                     crit_h, crit_d, crit_a = bh, bd, ba
-                    match_cnt, hw, dr, aw = count_matched_in_db(cached_dbs.get("배트맨", pd.DataFrame()), bh, bd, ba)
-                    if match_cnt > 0:
-                        win_prob = round((hw / match_cnt) * 100, 1)
-                        draw_prob = round((dr / match_cnt) * 100, 1)
-                        lose_prob = round((aw / match_cnt) * 100, 1)
+                    if bh >= 1.01 and bd >= 1.01 and ba >= 1.01:
+                        match_cnt, hw, dr, aw = count_matched_in_db(cached_dbs.get("배트맨", pd.DataFrame()), bh, bd, ba)
+                        if match_cnt > 0:
+                            win_prob = round((hw / match_cnt) * 100, 1)
+                            draw_prob = round((dr / match_cnt) * 100, 1)
+                            lose_prob = round((aw / match_cnt) * 100, 1)
                 elif criteria_name in OVERSEAS_BOOKMAKERS:
                     crit_h, crit_d, crit_a = all_bms_odds.get(criteria_name, (0.0, 0.0, 0.0))
-                    match_cnt, hw, dr, aw = count_matched_in_db(cached_dbs.get(criteria_name, pd.DataFrame()), crit_h, crit_d, crit_a)
-                    if match_cnt > 0:
-                        win_prob = round((hw / match_cnt) * 100, 1)
-                        draw_prob = round((dr / match_cnt) * 100, 1)
-                        lose_prob = round((aw / match_cnt) * 100, 1)
+                    if crit_h >= 1.01 and crit_d >= 1.01 and crit_a >= 1.01:
+                        match_cnt, hw, dr, aw = count_matched_in_db(cached_dbs.get(criteria_name, pd.DataFrame()), crit_h, crit_d, crit_a)
+                        if match_cnt > 0:
+                            win_prob = round((hw / match_cnt) * 100, 1)
+                            draw_prob = round((dr / match_cnt) * 100, 1)
+                            lose_prob = round((aw / match_cnt) * 100, 1)
                 elif criteria_name == "🌟 해외 8개사 종합평균":
                     crit_h, crit_d, crit_a = avg_oh, avg_od, avg_oa
-                    if avg_oh > 0 and avg_od > 0 and avg_oa > 0:
+                    if avg_oh >= 1.01 and avg_od >= 1.01 and avg_oa >= 1.01:
                         tot_m, tot_hw, tot_dr, tot_aw = 0, 0, 0, 0
                         for obm in OVERSEAS_BOOKMAKERS:
                             c_m, c_hw, c_dr, c_aw = count_matched_in_db(cached_dbs.get(obm, pd.DataFrame()), avg_oh, avg_od, avg_oa)
@@ -1817,22 +1830,29 @@ with tab_analysis:
 
             if not df_bm.empty:
                 try:
-                    h_col = "해당_홈" if "해당_홈" in df_bm.columns else (df_bm.columns[12] if len(df_bm.columns) > 12 else None)
-                    d_col = "해당_무" if "해당_무" in df_bm.columns else (df_bm.columns[13] if len(df_bm.columns) > 13 else None)
-                    a_col = "해당_원" if "해당_원" in df_bm.columns else (df_bm.columns[14] if len(df_bm.columns) > 14 else None)
-                    res_col = "경기결과" if "경기결과" in df_bm.columns else (df_bm.columns[32] if len(df_bm.columns) > 32 else None)
-                    lg_col = "리그명" if "리그명" in df_bm.columns else (df_bm.columns[1] if len(df_bm.columns) > 1 else None)
+                    cols = list(df_bm.columns)
+                    h_col = next((c for c in cols if any(k in c for k in ["해당_홈", "배당_홈", "홈배당", "홈_승", "H_ODDS"])), None)
+                    d_col = next((c for c in cols if any(k in c for k in ["해당_무", "배당_무", "무배당", "무승부", "D_ODDS"])), None)
+                    a_col = next((c for c in cols if any(k in c for k in ["해당_원", "배당_원", "원정배당", "원정_승", "A_ODDS"])), None)
+                    res_col = next((c for c in cols if any(k in c for k in ["경기결과", "결과", "Result"])), None)
+                    lg_col = next((c for c in cols if any(k in c for k in ["리그명", "리그", "League"])), None)
+
+                    if not h_col and len(cols) > 14:
+                        h_col, d_col, a_col = cols[12], cols[13], cols[14]
+                    if not res_col:
+                        res_col = cols[32] if len(cols) > 32 else cols[-1]
 
                     if h_col and d_col and a_col and res_col:
                         df_work = df_bm.copy()
                         if is_league_filter and lg_col and league_name.strip():
                             df_work = df_work[df_work[lg_col].astype(str).str.upper() == league_name.strip().upper()]
 
-                        df_work["H_num"] = pd.to_numeric(df_work[h_col], errors="coerce")
-                        df_work["D_num"] = pd.to_numeric(df_work[d_col], errors="coerce")
-                        df_work["A_num"] = pd.to_numeric(df_work[a_col], errors="coerce")
+                        df_work["H_num"] = pd.to_numeric(df_work[h_col], errors="coerce").fillna(0.0)
+                        df_work["D_num"] = pd.to_numeric(df_work[d_col], errors="coerce").fillna(0.0)
+                        df_work["A_num"] = pd.to_numeric(df_work[a_col], errors="coerce").fillna(0.0)
 
                         cond = (
+                            (df_work["H_num"] >= 1.01) & (df_work["D_num"] >= 1.01) & (df_work["A_num"] >= 1.01) &
                             (df_work["H_num"] >= h - tol) & (df_work["H_num"] <= h + tol) &
                             (df_work["D_num"] >= d - tol) & (df_work["D_num"] <= d + tol) &
                             (df_work["A_num"] >= a - tol) & (df_work["A_num"] <= a + tol)
@@ -1910,13 +1930,13 @@ with tab_analysis:
             valid_h, valid_d, valid_a = [], [], []
             for obm in OVERSEAS_BOOKMAKERS:
                 oh, od, oa = odds_inputs_t2.get(obm, (0.0, 0.0, 0.0))
-                if oh > 0 and od > 0 and oa > 0:
+                if oh >= 1.01 and od >= 1.01 and oa >= 1.01:
                     valid_h.append(oh)
                     valid_d.append(od)
                     valid_a.append(oa)
             
             if valid_h:
-                avg_oh = round(float(np.mean(valid_oh)), 2)
+                avg_oh = round(float(np.mean(valid_h)), 2)
                 avg_od = round(float(np.mean(valid_d)), 2)
                 avg_oa = round(float(np.mean(valid_a)), 2)
                 o_odds_val = (avg_oh, avg_od, avg_oa)
