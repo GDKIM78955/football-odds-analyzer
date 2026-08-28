@@ -1678,7 +1678,7 @@ with tab_analysis:
             if valid_h:
                 avg_oh = round(float(np.mean(valid_h)), 2)
                 avg_od = round(float(np.mean(valid_d)), 2)
-                avg_oa = round(float(np.mean(valid_oa)), 2)
+                avg_oa = round(float(np.mean(valid_a)), 2)
                 o_odds_val = (avg_oh, avg_od, avg_oa)
             else:
                 o_odds_val = (0.0, 0.0, 0.0)
@@ -2068,7 +2068,7 @@ with tab_h2h:
         st.info("💡 10번 '경기내용' 탭에 데이터가 없습니다.")
 
 # =========================================================
-# TAB 6: 🚑 팀별 부상자/결장자 명단 & 퇴장자 자동 추적기 (신규 탑재 ⭐)
+# TAB 6: 🚑 팀별 부상자/결장자 명단 & 퇴장자 자동 추적기
 # =========================================================
 with tab_injuries:
     st.subheader("🚑 팀별 부상자/결장자 명단 및 카드 리포트 (11번 시트 연동)")
@@ -2076,13 +2076,13 @@ with tab_injuries:
     df_injuries = load_sheet_data(INJURY_SHEET_NAME)
     df_stats_red = load_sheet_data(STATS_SHEET_NAME)
 
-    # 1. 🚨 리그/기간별 퇴장 발생 경기 자동 추적기 (새로 추가된 기능 ⭐)
+    # 1. 🚨 리그/기간별 퇴장 발생 경기 자동 추적기
     with st.expander("🚨 [기간 및 리그별 퇴장 발생 경기 자동 추적 레이더] (놓친 징계 선수 찾기)", expanded=True):
         st.caption("10번 '경기내용' 시트에 기록된 경기 중 퇴장(레드카드)이 발생한 매치업을 기간 및 리그별로 자동 추출합니다.")
         
         c_rc1, c_rc2, c_rc3 = st.columns([1, 1, 1])
         
-        all_stat_leagues = ["전체 리그"] + sorted(df_stats_red["리그명"].dropna().unique().tolist()) if not df_stats_red.empty and "리그명" in df_stats_red.columns else ["전체 리그", "PL"]
+        all_stat_leagues = ["전체 리그"] + sorted([str(x) for x in df_stats_red["리그명"].dropna().unique().tolist() if str(x).strip()]) if not df_stats_red.empty and "리그명" in df_stats_red.columns else ["전체 리그", "PL"]
         sel_rc_league = c_rc1.selectbox("조회할 리그", all_stat_leagues, key="rc_filter_league")
         
         rc_date_from = c_rc2.text_input("시작 날짜 필터 (포함)", placeholder="예: 25.08.01 (비워두면 전체)", key="rc_date_from")
@@ -2105,17 +2105,14 @@ with tab_injuries:
                 rc_h = to_num_rc(r.get("퇴장_홈", 0))
                 rc_a = to_num_rc(r.get("퇴장_원", 0))
 
-                # 리그 필터링
                 if sel_rc_league != "전체 리그" and r_league.upper() != sel_rc_league.upper():
                     continue
 
-                # 날짜 필터링
                 if rc_date_from.strip() and r_date < rc_date_from.strip():
                     continue
                 if rc_date_to.strip() and r_date > rc_date_to.strip():
                     continue
 
-                # 퇴장이 1회 이상 발생한 경우
                 if rc_h > 0 or rc_a > 0:
                     red_teams = []
                     if rc_h > 0: red_teams.append(f"🔴 홈팀 [{r_home}] ({int(rc_h)}명 퇴장)")
