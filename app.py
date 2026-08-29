@@ -157,7 +157,7 @@ def render_clipboard_component(html_content, component_id, height=520):
     components.html(wrapper_html, height=height, scrolling=True)
 
 # =========================================================
-# 배당 인포그래픽 도표 (승무패 + 언오버 통합 지원)
+# 배당 인포그래픽 도표 (승무패 + 언오버 + 핸디캡 통합 지원)
 # =========================================================
 def generate_naver_odds_infographic(b_odds, overseas_name, o_odds, league_name="", home_team="", away_team="", market_type="1X2", line_val=2.5):
     if market_type == "1X2":
@@ -255,7 +255,7 @@ def generate_naver_odds_infographic(b_odds, overseas_name, o_odds, league_name="
             </tr>
         </table>
         """
-    else:
+    elif market_type == "OU":
         over_pct, under_pct, total_matches, over_count, under_count = b_odds
         match_title_ou = f"<div style='font-size: 18px; font-weight: bold; color: #0f172a; margin-top: 4px;'>{home_team} vs {away_team}</div>" if (home_team or away_team) else ""
         
@@ -280,6 +280,39 @@ def generate_naver_odds_infographic(b_odds, overseas_name, o_odds, league_name="
                         <tr>
                             <td style="padding: 14px; border: 1px solid #e2e8f0; font-weight: bold; color: #dc2626; font-size: 18px;">{over_pct}% <span style="font-size: 12px; color: #64748b;">({over_count}회)</span></td>
                             <td style="padding: 14px; border: 1px solid #e2e8f0; font-weight: bold; color: #2563eb; font-size: 18px;">{under_pct}% <span style="font-size: 12px; color: #64748b;">({under_count}회)</span></td>
+                        </tr>
+                    </table>
+                </td>
+            </tr>
+        </table>
+        """
+    else:
+        hc_home_pct, hc_draw_pct, hc_away_pct, total_matches, hc_hc_cnt, hc_dr_cnt, hc_ac_cnt = b_odds
+        match_title_hc = f"<div style='font-size: 18px; font-weight: bold; color: #0f172a; margin-top: 4px;'>{home_team} vs {away_team}</div>" if (home_team or away_team) else ""
+        
+        return f"""
+        <table align="center" border="0" cellpadding="0" cellspacing="0" style="width: 100%; max-width: 620px; margin: 0 auto; font-family: 'Malgun Gothic', '맑은 고딕', sans-serif; background-color: #ffffff; border: 1px solid #cbd5e1; border-radius: 10px; border-collapse: separate; color: #0f172a;">
+            <tr>
+                <td style="padding: 20px;">
+                    <table border="0" cellpadding="0" cellspacing="0" style="width: 100%; border-bottom: 2px solid #0f172a; margin-bottom: 16px;">
+                        <tr>
+                            <td align="center" style="padding-bottom: 10px; text-align: center;">
+                                <div style="font-size: 11px; font-weight: bold; color: #2563eb; letter-spacing: 1px;">HANDICAP STATS REPORT</div>
+                                {match_title_hc}
+                                <div style="font-size: 13px; color: #475569; margin-top: 4px;">기준 핸디캡: <b>{line_val}</b> (과거 동일 조건 표본: <b>{total_matches}경기</b>)</div>
+                            </td>
+                        </tr>
+                    </table>
+                    <table border="1" cellpadding="0" cellspacing="0" style="width: 100%; border-collapse: collapse; font-size: 13px; text-align: center; border: 1px solid #cbd5e1; margin-bottom: 14px;">
+                        <tr style="background-color: #f8fafc;">
+                            <th style="padding: 8px; border: 1px solid #cbd5e1; color: #dc2626; width: 33%;">🔴 홈 핸디승</th>
+                            <th style="padding: 8px; border: 1px solid #cbd5e1; color: #059669; width: 34%;">🟢 핸디 무</th>
+                            <th style="padding: 8px; border: 1px solid #cbd5e1; color: #2563eb; width: 33%;">🔵 원정 핸디승</th>
+                        </tr>
+                        <tr>
+                            <td style="padding: 12px; border: 1px solid #e2e8f0; font-weight: bold; color: #dc2626; font-size: 16px;">{hc_home_pct}% <span style="font-size: 11px; color: #64748b;">({hc_hc_cnt}회)</span></td>
+                            <td style="padding: 12px; border: 1px solid #e2e8f0; font-weight: bold; color: #059669; font-size: 16px;">{hc_draw_pct}% <span style="font-size: 11px; color: #64748b;">({hc_dr_cnt}회)</span></td>
+                            <td style="padding: 12px; border: 1px solid #e2e8f0; font-weight: bold; color: #2563eb; font-size: 16px;">{hc_away_pct}% <span style="font-size: 11px; color: #64748b;">({hc_ac_cnt}회)</span></td>
                         </tr>
                     </table>
                 </td>
@@ -1571,10 +1604,10 @@ with tab_scanner:
                         st.rerun()
 
 # =========================================================
-# TAB 3: 📊 9개사 동일 배당 분석 (확장형: 슬림한 승무패 칸 + 언오버 연동)
+# TAB 3: 📊 9개사 동일 배당 분석 + ⚽ 언오버 + 💪 핸디캡 자동 통계 통합
 # =========================================================
 with tab_analysis:
-    st.subheader("🔬 3번 탭: 9대 북메이커 배당 입력 및 승무패·언오버 통합 분석")
+    st.subheader("🔬 3번 탭: 9대 북메이커 배당 입력 및 승무패·언오버·핸디캡 통합 분석")
 
     if st.session_state.selected_scan_match:
         sm = st.session_state.selected_scan_match
@@ -1585,7 +1618,7 @@ with tab_analysis:
     t2_home_team = c_an_l2.text_input("🏠 홈팀명 (블로그 도표용)", value="", placeholder="예: 리버풀", key="t2_home_team")
     t2_away_team = c_an_l3.text_input("🚗 원정팀명 (블로그 도표용)", value="", placeholder="예: 본머스", key="t2_away_team")
 
-    st.markdown("##### 🏢 분석할 9대 북메이커 배당 입력 (승무패 컴팩트 슬림형)")
+    st.markdown("##### 🏢 분석할 9대 북메이커 배당 입력")
     odds_inputs_t2 = {}
     for i in range(0, len(BOOKMAKERS), 3):
         cols = st.columns(3)
@@ -1596,7 +1629,7 @@ with tab_analysis:
                 with cols[j]:
                     with st.container(border=True):
                         st.markdown(f"**[{idx+1}] {bm.upper()}**")
-                        oh, od, oa = st.columns([1, 1, 1])
+                        oh, od, oa = st.columns(3)
                         h_val = oh.number_input("홈", value=0.0, step=0.01, min_value=0.0, key=f"t2_{bm}_h")
                         d_val = od.number_input("무", value=0.0, step=0.01, min_value=0.0, key=f"t2_{bm}_d")
                         a_val = oa.number_input("원정", value=0.0, step=0.01, min_value=0.0, key=f"t2_{bm}_a")
@@ -1721,71 +1754,111 @@ with tab_analysis:
     st.subheader(f"2️⃣ [{target_league} 동일 리그 전용] 동일 배당 승률 분석표")
     st.dataframe(df_target_league, use_container_width=True, hide_index=True)
 
-    # 🌟 언오버 자동 통계 분석기 영역 추가
-    st.markdown("---")
-    st.subheader("⚽ [신규 추가] 과거 스코어 기반 언오버(Over/Under) 자동 통계 분석기")
-    st.caption("위의 9개사 동일 배당 분석표에서 매칭된 과거 경기들의 실제 스코어를 바탕으로 다득점/저득점 확률을 즉시 계산합니다.")
-
-    c_ou1, c_ou2 = st.columns([1, 2])
-    with c_ou1:
-        ou_user_line = st.number_input("분석할 언오버 기준점", value=2.5, step=0.5, key="analysis_ou_line")
-    with c_ou2:
-        ou_target_choice = st.selectbox("분석 대상 북메이커 선택", ["전체 매칭 통합"] + BOOKMAKERS, key="analysis_ou_target")
-
+    # 🌟 공통 데이터 풀 준비 (매칭된 과거 경기들)
     target_df_pool = pd.DataFrame()
-    if ou_target_choice == "전체 매칭 통합":
-        all_frames = []
-        for m_df in matched_all.values():
-            if not m_df.empty:
-                all_frames.append(m_df)
-        if all_frames:
-            target_df_pool = pd.concat(all_frames).drop_duplicates()
-    else:
-        if ou_target_choice.upper() in matched_all:
-            target_df_pool = matched_all[ou_target_choice.upper()]
+    all_frames = []
+    for m_df in matched_all.values():
+        if not m_df.empty:
+            all_frames.append(m_df)
+    if all_frames:
+        target_df_pool = pd.concat(all_frames).drop_duplicates()
 
-    ou_over_cnt = 0
-    ou_under_cnt = 0
-    ou_total_cnt = 0
+    # =========================================================
+    # 🌟 [신규 추가] 언오버 & 핸디캡 자동 통계 분석기 영역
+    # =========================================================
+    st.markdown("---")
+    st.subheader("⚽💪 [신규 추가] 과거 스코어 기반 언오버 & 핸디캡 자동 통계 분석기")
+    st.caption("위의 동일 배당 분석표에서 매칭된 과거 경기들의 실제 스코어를 바탕으로 다득점/저득점 및 핸디캡 성패 확률을 즉시 계산합니다.")
 
-    if not target_df_pool.empty:
-        cols = list(target_df_pool.columns)
-        h_score_col = next((c for c in cols if any(k in c for k in ["홈스코어", "홈_득점", "홈_스코어"])), None)
-        a_score_col = next((c for c in cols if any(k in c for k in ["원정스코어", "원정_득점", "원정_스코어"])), None)
+    stat_type_sel = st.radio("분석할 마켓 선택", ["⚽ 언오버 (Over/Under)", "💪 핸디캡 (Handicap)"], horizontal=True)
 
-        if not h_score_col and len(cols) > 27:
-            h_score_col, a_score_col = cols[27], cols[28]
-
-        if h_score_col and a_score_col:
-            for _, row in target_df_pool.iterrows():
-                try:
-                    hs = float(row[h_score_col])
-                    as_sc = float(row[a_score_col])
-                    total_g = hs + as_sc
-                    ou_total_cnt += 1
-                    if total_g > ou_user_line:
-                        ou_over_cnt += 1
-                    else:
-                        ou_under_cnt += 1
-                except:
-                    pass
-
-    if ou_total_cnt > 0:
-        pct_over = round((ou_over_cnt / ou_total_cnt) * 100, 1)
-        pct_under = round((ou_under_cnt / ou_total_cnt) * 100, 1)
+    if "언오버" in stat_type_sel:
+        ou_user_line = st.number_input("분석할 언오버 기준점", value=2.5, step=0.5, key="analysis_ou_line")
         
-        c_r1, c_r2, c_r3 = st.columns(3)
-        c_r1.metric(label=f"🔥 오버 (>{ou_user_line}) 확률", value=f"{pct_over}%", delta=f"{ou_over_cnt}경기")
-        c_r2.metric(label=f"❄️ 언더 (<{ou_user_line}) 확률", value=f"{pct_under}%", delta=f"{ou_under_cnt}경기")
-        c_r3.metric(label="총 분석 표본", value=f"{ou_total_cnt}경기")
+        ou_over_cnt = 0
+        ou_under_cnt = 0
+        ou_total_cnt = 0
+
+        if not target_df_pool.empty:
+            cols = list(target_df_pool.columns)
+            h_score_col = next((c for c in cols if any(k in c for k in ["홈스코어", "홈_득점", "홈_스코어"])), None)
+            a_score_col = next((c for c in cols if any(k in c for k in ["원정스코어", "원정_득점", "원정_스코어"])), None)
+            if not h_score_col and len(cols) > 27:
+                h_score_col, a_score_col = cols[27], cols[28]
+
+            if h_score_col and a_score_col:
+                for _, row in target_df_pool.iterrows():
+                    try:
+                        hs = float(row[h_score_col])
+                        as_sc = float(row[a_score_col])
+                        total_g = hs + as_sc
+                        ou_total_cnt += 1
+                        if total_g > ou_user_line:
+                            ou_over_cnt += 1
+                        else:
+                            ou_under_cnt += 1
+                    except:
+                        pass
+
+        if ou_total_cnt > 0:
+            pct_over = round((ou_over_cnt / ou_total_cnt) * 100, 1)
+            pct_under = round((ou_under_cnt / ou_total_cnt) * 100, 1)
+            
+            c_r1, c_r2, c_r3 = st.columns(3)
+            c_r1.metric(label=f"🔥 오버 (익힘 >{ou_user_line}) 확률", value=f"{pct_over}%", delta=f"{ou_over_cnt}경기")
+            c_r2.metric(label=f"❄️ 언더 (<{ou_user_line}) 확률", value=f"{pct_under}%", delta=f"{ou_under_cnt}경기")
+            c_r3.metric(label="총 분석 표본", value=f"{ou_total_cnt}경기")
+        else:
+            st.info("💡 매칭된 과거 경기 데이터가 없거나 스코어 정보가 없습니다.")
     else:
-        st.info("💡 선택한 조건에 매칭된 과거 경기 데이터가 없거나 스코어 정보가 없습니다.")
+        hc_user_line = st.number_input("분석할 핸디캡 기준점 (홈 기준, 예: -1.0, +1.0)", value=-1.0, step=0.5, key="analysis_hc_line")
+        
+        hc_home_win_cnt = 0
+        hc_draw_cnt = 0
+        hc_away_win_cnt = 0
+        hc_total_cnt = 0
+
+        if not target_df_pool.empty:
+            cols = list(target_df_pool.columns)
+            h_score_col = next((c for c in cols if any(k in c for k in ["홈스코어", "홈_득점", "홈_스코어"])), None)
+            a_score_col = next((c for c in cols if any(k in c for k in ["원정스코어", "원정_득점", "원정_스코어"])), None)
+            if not h_score_col and len(cols) > 27:
+                h_score_col, a_score_col = cols[27], cols[28]
+
+            if h_score_col and a_score_col:
+                for _, row in target_df_pool.iterrows():
+                    try:
+                        hs = float(row[h_score_col])
+                        as_sc = float(row[a_score_col])
+                        adjusted_diff = (hs + hc_user_line) - as_sc
+                        hc_total_cnt += 1
+                        if adjusted_diff > 0:
+                            hc_home_win_cnt += 1
+                        elif adjusted_diff == 0:
+                            hc_draw_cnt += 1
+                        else:
+                            hc_away_win_cnt += 1
+                    except:
+                        pass
+
+        if hc_total_cnt > 0:
+            pct_hc_h = round((hc_home_win_cnt / hc_total_cnt) * 100, 1)
+            pct_hc_d = round((hc_draw_cnt / hc_total_cnt) * 100, 1)
+            pct_hc_a = round((hc_away_win_cnt / hc_total_cnt) * 100, 1)
+            
+            c_hr1, c_hr2, c_hr3, c_hr4 = st.columns(4)
+            c_hr1.metric(label=f"🔴 홈 핸디승 ({hc_user_line})", value=f"{pct_hc_h}%", delta=f"{hc_home_win_cnt}경기")
+            c_hr2.metric(label="🟢 핸디 무승부", value=f"{pct_hc_d}%", delta=f"{hc_draw_cnt}경기")
+            c_hr3.metric(label="🔵 원정 핸디승", value=f"{pct_hc_a}%", delta=f"{hc_away_win_cnt}경기")
+            c_hr4.metric(label="총 분석 표본", value=f"{hc_total_cnt}경기")
+        else:
+            st.info("💡 매칭된 과거 경기 데이터가 없거나 스코어 정보가 없습니다.")
 
     st.markdown("---")
 
-    # 🌟 네이버 블로그용 인포그래픽 도표 복사 영역
+    # 🌟 네이버 블로그용 인포그래픽 도표 복사 영역 (승무패 / 언오버 / 핸디캡 탭 분리)
     st.subheader("📊 네이버 블로그/카페용 인포그래픽 도표 원클릭 복사")
-    tab_inf_1, tab_inf_2 = st.tabs(["🔴 승무패 (1X2) 도표", "⚽ 언오버 (Over/Under) 도표"])
+    tab_inf_1, tab_inf_2, tab_inf_3 = st.tabs(["🔴 승무패 (1X2) 도표", "⚽ 언오버 (Over/Under) 도표", "💪 핸디캡 (Handicap) 도표"])
 
     with tab_inf_1:
         compare_options = ["🌟 해외 종합 가중평균 (전체 평균)"] + OVERSEAS_BOOKMAKERS
@@ -1814,19 +1887,39 @@ with tab_analysis:
 
     with tab_inf_2:
         st.caption("위의 언오버 자동 통계 결과를 바탕으로 블로그용 도표를 생성합니다.")
-        blog_ou_line = st.number_input("블로그 도표 기준점", value=ou_user_line, step=0.5, key="blog_ou_line_input")
-        blog_over_pct = pct_over if ou_total_cnt > 0 else 50.0
-        blog_under_pct = pct_under if ou_total_cnt > 0 else 50.0
-        blog_oc = ou_over_cnt if ou_total_cnt > 0 else 0
-        blog_uc = ou_under_cnt if ou_total_cnt > 0 else 0
+        blog_ou_line = st.number_input("블로그 도표 기준점", value=2.5, step=0.5, key="blog_ou_line_input")
+        blog_over_pct = pct_over if 'pct_over' in locals() and ou_total_cnt > 0 else 50.0
+        blog_under_pct = pct_under if 'pct_under' in locals() and ou_total_cnt > 0 else 50.0
+        blog_oc = ou_over_cnt if 'ou_over_cnt' in locals() and ou_total_cnt > 0 else 0
+        blog_uc = ou_under_cnt if 'ou_under_cnt' in locals() and ou_total_cnt > 0 else 0
+        blog_tot = ou_total_cnt if 'ou_total_cnt' in locals() else 0
 
         naver_ou_html = generate_naver_odds_infographic(
-            (blog_over_pct, blog_under_pct, ou_total_cnt, blog_oc, blog_uc), 
+            (blog_over_pct, blog_under_pct, blog_tot, blog_oc, blog_uc), 
             "통계", (0, 0), 
             league_name=target_league, home_team=t2_home_team.strip(), away_team=t2_away_team.strip(), 
             market_type="OU", line_val=blog_ou_line
         )
         render_clipboard_component(naver_ou_html, "t2_clip_ou", height=420)
+
+    with tab_inf_3:
+        st.caption("위의 핸디캡 자동 통계 결과를 바탕으로 블로그용 도표를 생성합니다.")
+        blog_hc_line = st.number_input("블로그 핸디캡 기준점", value=-1.0, step=0.5, key="blog_hc_line_input")
+        blog_hc_h_pct = pct_hc_h if 'pct_hc_h' in locals() and hc_total_cnt > 0 else 33.3
+        blog_hc_d_pct = pct_hc_d if 'pct_hc_d' in locals() and hc_total_cnt > 0 else 33.3
+        blog_hc_a_pct = pct_hc_a if 'pct_hc_a' in locals() and hc_total_cnt > 0 else 33.4
+        blog_hc_tot = hc_total_cnt if 'hc_total_cnt' in locals() else 0
+        blog_h_cnt = hc_home_win_cnt if 'hc_home_win_cnt' in locals() else 0
+        blog_d_cnt = hc_draw_cnt if 'hc_draw_cnt' in locals() else 0
+        blog_a_cnt = hc_away_win_cnt if 'hc_away_win_cnt' in locals() else 0
+
+        naver_hc_html = generate_naver_odds_infographic(
+            (blog_hc_h_pct, blog_hc_d_pct, blog_hc_a_pct, blog_hc_tot, blog_h_cnt, blog_d_cnt, blog_a_cnt), 
+            "통계", (0, 0), 
+            league_name=target_league, home_team=t2_home_team.strip(), away_team=t2_away_team.strip(), 
+            market_type="HC", line_val=blog_hc_line
+        )
+        render_clipboard_component(naver_hc_html, "t2_clip_hc", height=450)
 
     st.markdown("---")
     st.subheader("📋 매칭된 과거 경기 상세 리스트 (업체별 전체 내역)")
