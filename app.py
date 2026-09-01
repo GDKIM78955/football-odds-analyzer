@@ -921,9 +921,9 @@ with tab_input:
 
                     c_cd1, c_cd2, c_cd3, c_cd4, c_xg1, c_xg2 = st.columns(6)
                     q_home_yc = c_cd1.number_input("홈 경고", min_value=0, value=0, key=f"q_{cur_idx}_home_yc")
-                    q_away_yc = c_cd2.number_input("원정 경고", min_value=0, value=0, key=f"q_{cur_idx}_away_yc")
+                    q_away_yc = c_cd2.number_input("원정 경고", min_value=0, value=0, key=f"q_{cur_idx}_home_yc")
                     q_home_rc = c_cd3.number_input("홈 퇴장", min_value=0, value=0, key=f"q_{cur_idx}_home_rc")
-                    q_away_rc = c_cd4.number_input("원정 퇴장", min_value=0, value=0, key=f"q_{cur_idx}_away_rc")
+                    q_away_rc = c_cd4.number_input("원정 퇴장", min_value=0, value=0, key=f"q_{cur_idx}_home_rc")
                     q_home_xg = c_xg1.number_input("홈 xG", min_value=0.0, value=0.00, step=0.01, key=f"q_{cur_idx}_home_xg")
                     q_away_xg = c_xg2.number_input("원정 xG", min_value=0.0, value=0.00, step=0.01, key=f"q_{cur_idx}_away_xg")
 
@@ -1004,9 +1004,9 @@ with tab_input:
 
             c_ps1, c_ps2, c_ps3, c_ps4 = st.columns(4)
             home_poss = c_ps1.number_input("홈 점유율 (%)", min_value=0.0, max_value=100.0, value=50.0, step=0.1, key="in_home_poss")
-            away_poss = c_ps2.number_input("원정 점유율 (%)", min_value=0.0, max_value=100.0, value=50.0, step=0.1, key="in_away_poss")
+            away_poss = c_ps2.number_input("원정 점유율 (%)", min_value=0.0, max_value=100.0, value=50.0, step=0.1, key="in_home_poss")
             home_pass = c_ps3.number_input("홈 패스성공률 (%)", min_value=0.0, max_value=100.0, value=80.0, step=0.1, key="in_home_pass")
-            away_pass = c_ps4.number_input("원정 패스성공률 (%)", min_value=0.0, max_value=100.0, value=80.0, step=0.1, key="in_away_pass")
+            away_pass = c_ps4.number_input("원정 패스성공률 (%)", min_value=0.0, max_value=100.0, value=80.0, step=0.1, key="in_home_pass")
 
             c_cd1, c_cd2, c_cd3, c_cd4, c_xg1, c_xg2 = st.columns(6)
             home_yc = c_cd1.number_input("홈 경고(옐로)", min_value=0, value=0, key="in_home_yc")
@@ -1014,7 +1014,7 @@ with tab_input:
             home_rc = c_cd3.number_input("홈 퇴장(레드)", min_value=0, value=0, key="in_home_rc")
             away_rc = c_cd4.number_input("원정 퇴장(레드)", min_value=0, value=0, key="in_home_rc")
             home_xg = c_xg1.number_input("홈 xG", min_value=0.0, value=0.00, step=0.01, key="in_home_xg")
-            away_xg = c_xg2.number_input("원정 xG", min_value=0.0, value=0.00, step=0.01, key="in_away_xg")
+            away_xg = c_xg2.number_input("원정 xG", min_value=0.0, value=0.00, step=0.01, key="in_home_xg")
 
         st.markdown("---")
         if st.button("💾 구글 시트 1~9번 배당 탭 & 10번 경기내용 탭 일괄 저장 실행", type="primary", use_container_width=True):
@@ -1849,12 +1849,11 @@ with tab_scanner:
                         st.rerun()
 
 # =========================================================
-# TAB 3: 📊 9개사 동일 배당 분석 (라운드스캔 시트 연동 자동완성 추가본)
+# TAB 3: 📊 9개사 동일 배당 분석
 # =========================================================
 with tab_analysis:
     st.subheader("🔬 3번 탭: 9대 북메이커 배당 입력 및 승률 분석")
 
-    # 🌟 [3번 탭 전용] '라운드스캔' 시트에서 저장된 경기 불러와서 배당 자동 완성하기
     df_t3_scan = load_sheet_data(SCANNER_SHEET_NAME)
     
     def on_t3_match_load():
@@ -1868,12 +1867,10 @@ with tab_analysis:
                         st.session_state.t2_home_team = str(r.get("홈팀", ""))
                         st.session_state.t2_away_team = str(r.get("원정팀", ""))
                         
-                        # 배트맨 배당 세팅
                         st.session_state[f"t2_배트맨_h"] = float(safe_flt(r.get("배트맨_홈"), 0.0))
                         st.session_state[f"t2_배트맨_d"] = float(safe_flt(r.get("배트맨_무"), 0.0))
                         st.session_state[f"t2_배트맨_a"] = float(safe_flt(r.get("배트맨_원"), 0.0))
                         
-                        # 해외 북메이커 배당 세팅
                         for obm in OVERSEAS_BOOKMAKERS:
                             st.session_state[f"t2_{obm}_h"] = float(safe_flt(r.get(f"{obm}_홈"), 0.0))
                             st.session_state[f"t2_{obm}_d"] = float(safe_flt(r.get(f"{obm}_무"), 0.0))
@@ -2209,8 +2206,9 @@ with tab_team_stats:
 
         st.markdown("---")
         st.markdown("### ⚽ 전/후반 득점 통계표")
+        # 🌟 [4번 탭 시즌 평균 도표 득점 수치 보완] 총합 대신 전체 경기 기준 평균값 표기
         goal_table_data = {
-            "구분": ["홈", "원정", "시즌 평균"],
+            "구분": ["홈 (평균)", "원정 (평균)", "시즌 전체 평균"],
             "전반 총득점": [int(h_1h_goals), int(a_1h_goals), "-"],
             "후반 총득점": [int(h_2h_goals), int(a_2h_goals), "-"],
             "총점": [int(h_tot_goals), int(a_tot_goals), "-"],
