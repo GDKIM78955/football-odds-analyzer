@@ -915,7 +915,7 @@ with tab_input:
 
                     c_ps1, c_ps2, c_ps3, c_ps4 = st.columns(4)
                     q_home_poss = c_ps1.number_input("홈 점유율 (%)", min_value=0.0, max_value=100.0, value=50.0, step=0.1, key=f"q_{cur_idx}_home_poss")
-                    q_away_poss = c_ps2.number_input("원정 점유율 (%)", min_value=0.0, max_value=100.0, value=50.0, step=0.1, key=f"q_{cur_idx}_away_poss")
+                    q_away_poss = c_ps2.number_input("원정 점유율 (%)", min_value=0.0, max_value=100.0, value=50.0, step=0.1, key=f"q_{cur_idx}_home_poss")
                     q_home_pass = c_ps3.number_input("홈 패스성공률 (%)", min_value=0.0, max_value=100.0, value=80.0, step=0.1, key=f"q_{cur_idx}_home_pass")
                     q_away_pass = c_ps4.number_input("원정 패스성공률 (%)", min_value=0.0, max_value=100.0, value=80.0, step=0.1, key=f"q_{cur_idx}_away_pass")
 
@@ -1039,7 +1039,7 @@ with tab_input:
                     st.error(f"저장 중 오류 발생: {msg}")
 
 # =========================================================
-# TAB 2: 📡 라운드 경기 자동 스캐너 & 추천픽 (스캔 대기열 수정 기능 추가본)
+# TAB 2: 📡 라운드 경기 자동 스캐너 & 추천픽
 # =========================================================
 with tab_scanner:
     st.subheader("📡 라운드 경기 배당 자동 스캐너 & 추천픽 레이더")
@@ -1106,7 +1106,6 @@ with tab_scanner:
                     })
                 st.dataframe(pd.DataFrame(sq_preview), use_container_width=True, hide_index=True)
 
-                # 🌟 [2번 탭 스캔 대기열 개별 수정 박스 추가]
                 with st.container(border=True):
                     st.markdown("##### ✏️ 스캔 대기열 특정 경기 내용 수정하기")
                     sq_indices = [f"#{i+1} : {m['home']} vs {m['away']}" for i, m in enumerate(st.session_state.scan_queue)]
@@ -1850,10 +1849,50 @@ with tab_scanner:
                         st.rerun()
 
 # =========================================================
-# TAB 3: 📊 9개사 동일 배당 분석
+# TAB 3: 📊 9개사 동일 배당 분석 (라운드스캔 시트 연동 자동완성 추가본)
 # =========================================================
 with tab_analysis:
     st.subheader("🔬 3번 탭: 9대 북메이커 배당 입력 및 승률 분석")
+
+    # 🌟 [3번 탭 전용] '라운드스캔' 시트에서 저장된 경기 불러와서 배당 자동 완성하기
+    df_t3_scan = load_sheet_data(SCANNER_SHEET_NAME)
+    
+    def on_t3_match_load():
+        sel_t3 = st.session_state.sel_t3_match_loader
+        if sel_t3 != "➕ [직접 수동 입력하기]":
+            if not df_t3_scan.empty:
+                for _, r in df_t3_scan.iterrows():
+                    match_lbl = f"[{r.get('리그명', '')}] {r.get('홈팀', '')} vs {r.get('원정팀', '')} ({r.get('경기날짜', '')})"
+                    if match_lbl == sel_t3:
+                        st.session_state.t2_target_league = str(r.get("리그명", "PL"))
+                        st.session_state.t2_home_team = str(r.get("홈팀", ""))
+                        st.session_state.t2_away_team = str(r.get("원정팀", ""))
+                        
+                        # 배트맨 배당 세팅
+                        st.session_state[f"t2_배트맨_h"] = float(safe_flt(r.get("배트맨_홈"), 0.0))
+                        st.session_state[f"t2_배트맨_d"] = float(safe_flt(r.get("배트맨_무"), 0.0))
+                        st.session_state[f"t2_배트맨_a"] = float(safe_flt(r.get("배트맨_원"), 0.0))
+                        
+                        # 해외 북메이커 배당 세팅
+                        for obm in OVERSEAS_BOOKMAKERS:
+                            st.session_state[f"t2_{obm}_h"] = float(safe_flt(r.get(f"{obm}_홈"), 0.0))
+                            st.session_state[f"t2_{obm}_d"] = float(safe_flt(r.get(f"{obm}_무"), 0.0))
+                            st.session_state[f"t2_{obm}_a"] = float(safe_flt(r.get(f"{obm}_원"), 0.0))
+                        break
+
+    with st.container(border=True):
+        if not df_t3_scan.empty and "홈팀" in df_t3_scan.columns:
+            st.markdown("##### 🔍 [라운드스캔 시트에서 분석할 경기 불러오기] (선택 시 9개사 배당 자동 세팅)")
+            t3_match_labels = ["➕ [직접 수동 입력하기]"] + [f"[{r.get('리그명', '')}] {r.get('홈팀', '')} vs {r.get('원정팀', '')} ({r.get('경기날짜', '')})" for _, r in df_t3_scan.iterrows()]
+            st.selectbox(
+                "분석할 경기를 선택하면 아래 입력창에 배당이 자동으로 채워집니다.",
+                t3_match_labels,
+                index=0,
+                key="sel_t3_match_loader",
+                on_change=on_t3_match_load
+            )
+        else:
+            st.caption("💡 2번 탭(스캐너)에 등록된 경기가 있으면 여기에 목록이 나타납니다. (현재 스캔 시트 비어있음)")
 
     if st.session_state.selected_scan_match:
         sm = st.session_state.selected_scan_match
