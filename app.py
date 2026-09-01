@@ -277,7 +277,7 @@ def generate_naver_odds_infographic(b_odds, overseas_name, o_odds, league_name="
     return html
 
 # =========================================================
-# 단일 팀 시즌 평균 리포트
+# 단일 팀 시즌 평균 리포트 (도표 내부 수정본)
 # =========================================================
 def generate_naver_team_stats_infographic(team_name, season, league, match_count_info, df_summary, tac_df, df_goals):
     html = f"""
@@ -331,8 +331,10 @@ def generate_naver_team_stats_infographic(team_name, season, league, match_count
 
     if df_goals is not None and not df_goals.empty:
         try:
-            sub1 = df_goals[["구분", "전반 총득점", "후반 총득점", "총점"]].copy()
-            sub2 = df_goals[["구분", "전반 평균", "후반 평균", "합계 평균"]].copy()
+            # 🌟 인포그래픽 도표 안에서도 시즌 전체 평균 행이 예쁘게 들어가도록 조정
+            g_df_copy = df_goals.copy()
+            sub1 = g_df_copy[["구분", "전반 총득점", "후반 총득점", "총점"]].copy()
+            sub2 = g_df_copy[["구분", "전반 평균", "후반 평균", "합계 평균"]].copy()
 
             t1_html = sub1.to_html(index=False, escape=False).replace('<table border="1" class="dataframe">', '<table border="1" cellpadding="0" cellspacing="0" style="width: 100%; border-collapse: collapse; font-size: 12px; text-align: center; border: 1px solid #cbd5e1; margin-bottom: 10px;">')
             t1_html = t1_html.replace('<th>', '<th align="center" style="background-color: #f8fafc; color: #334155; padding: 7px 3px; border: 1px solid #cbd5e1; font-weight: bold; text-align: center !important;">')
@@ -1004,7 +1006,7 @@ with tab_input:
 
             c_ps1, c_ps2, c_ps3, c_ps4 = st.columns(4)
             home_poss = c_ps1.number_input("홈 점유율 (%)", min_value=0.0, max_value=100.0, value=50.0, step=0.1, key="in_home_poss")
-            away_poss = c_ps2.number_input("원정 점유율 (%)", min_value=0.0, max_value=100.0, value=50.0, step=0.1, key="in_home_poss")
+            away_poss = c_ps2.number_input("원정 점유율 (%)", min_value=0.0, max_value=100.0, value=50.0, step=0.1, key="in_away_poss")
             home_pass = c_ps3.number_input("홈 패스성공률 (%)", min_value=0.0, max_value=100.0, value=80.0, step=0.1, key="in_home_pass")
             away_pass = c_ps4.number_input("원정 패스성공률 (%)", min_value=0.0, max_value=100.0, value=80.0, step=0.1, key="in_home_pass")
 
@@ -2057,7 +2059,7 @@ with tab_analysis:
             if valid_h:
                 avg_oh = round(float(np.mean(valid_h)), 2)
                 avg_od = round(float(np.mean(valid_d)), 2)
-                avg_oa = round(float(np.mean(valid_a)), 2)
+                avg_oa = round(float(np.mean(valid_oa)), 2)
                 o_odds_val = (avg_oh, avg_od, avg_oa)
             else:
                 o_odds_val = (0.0, 0.0, 0.0)
@@ -2206,7 +2208,6 @@ with tab_team_stats:
 
         st.markdown("---")
         st.markdown("### ⚽ 전/후반 득점 통계표")
-        # 🌟 [4번 탭 시즌 평균 도표 득점 수치 보완] 총합 대신 전체 경기 기준 평균값 표기
         goal_table_data = {
             "구분": ["홈 (평균)", "원정 (평균)", "시즌 전체 평균"],
             "전반 총득점": [int(h_1h_goals), int(a_1h_goals), "-"],
