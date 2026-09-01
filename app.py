@@ -745,7 +745,7 @@ tab_input, tab_scanner, tab_analysis, tab_team_stats, tab_h2h, tab_injuries = st
 ])
 
 # =========================================================
-# TAB 1: 📝 경기 데이터 입력 & 저장 (대기열 개별 수정 기능 포함)
+# TAB 1: 📝 경기 데이터 입력 & 저장
 # =========================================================
 with tab_input:
     input_mode = st.radio(
@@ -811,7 +811,6 @@ with tab_input:
                     })
                 st.dataframe(pd.DataFrame(q_preview), use_container_width=True, hide_index=True)
 
-                # 🌟 [대기열 개별 수정 박스] 명확히 눈에 띄도록 배치
                 with st.container(border=True):
                     st.markdown("##### ✏️ 대기열 특정 경기 내용 수정하기")
                     q_indices = [f"#{i+1} : {m['home']} vs {m['away']}" for i, m in enumerate(st.session_state.match_queue)]
@@ -1015,7 +1014,7 @@ with tab_input:
             home_rc = c_cd3.number_input("홈 퇴장(레드)", min_value=0, value=0, key="in_home_rc")
             away_rc = c_cd4.number_input("원정 퇴장(레드)", min_value=0, value=0, key="in_home_rc")
             home_xg = c_xg1.number_input("홈 xG", min_value=0.0, value=0.00, step=0.01, key="in_home_xg")
-            away_xg = c_xg2.number_input("원정 xG", min_value=0.0, value=0.00, step=0.01, key="in_home_xg")
+            away_xg = c_xg2.number_input("원정 xG", min_value=0.0, value=0.00, step=0.01, key="in_away_xg")
 
         st.markdown("---")
         if st.button("💾 구글 시트 1~9번 배당 탭 & 10번 경기내용 탭 일괄 저장 실행", type="primary", use_container_width=True):
@@ -1040,7 +1039,7 @@ with tab_input:
                     st.error(f"저장 중 오류 발생: {msg}")
 
 # =========================================================
-# TAB 2: 📡 라운드 경기 자동 스캐너 & 추천픽
+# TAB 2: 📡 라운드 경기 자동 스캐너 & 추천픽 (스캔 대기열 수정 기능 추가본)
 # =========================================================
 with tab_scanner:
     st.subheader("📡 라운드 경기 배당 자동 스캐너 & 추천픽 레이더")
@@ -1106,6 +1105,34 @@ with tab_scanner:
                         "배트맨 배당": f"{m['batman_odds'][0]} / {m['batman_odds'][1]} / {m['batman_odds'][2]}"
                     })
                 st.dataframe(pd.DataFrame(sq_preview), use_container_width=True, hide_index=True)
+
+                # 🌟 [2번 탭 스캔 대기열 개별 수정 박스 추가]
+                with st.container(border=True):
+                    st.markdown("##### ✏️ 스캔 대기열 특정 경기 내용 수정하기")
+                    sq_indices = [f"#{i+1} : {m['home']} vs {m['away']}" for i, m in enumerate(st.session_state.scan_queue)]
+                    sel_sq_str = st.selectbox("수정할 스캔 대기 경기 선택", sq_indices, key="sel_scan_queue_to_edit")
+                    sel_sq_idx = int(sel_sq_str.split(":")[0].replace("#", "").strip()) - 1
+                    target_sq_item = st.session_state.scan_queue[sel_sq_idx]
+
+                    e_sqh = st.text_input("홈팀명 수정", value=target_sq_item["home"], key="edit_sqh")
+                    e_sqa = st.text_input("원정팀명 수정", value=target_sq_item["away"], key="edit_sqa")
+                    e_sql = st.text_input("리그명 수정", value=target_sq_item["league"], key="edit_sql")
+                    e_sqd = st.text_input("날짜 수정", value=target_sq_item["date"], key="edit_sqd")
+                    
+                    seb1, seb2, seb3 = st.columns(3)
+                    e_sbh = seb1.number_input("배트맨 홈", value=float(target_sq_item["batman_odds"][0]), step=0.01, key="edit_sbh")
+                    e_sbd = seb2.number_input("배트맨 무", value=float(target_sq_item["batman_odds"][1]), step=0.01, key="edit_sbd")
+                    e_sba = seb3.number_input("배트맨 원정", value=float(target_sq_item["batman_odds"][2]), step=0.01, key="edit_sba")
+
+                    if st.button("🔄 선택한 스캔 대기 경기 갱신", type="primary", use_container_width=True):
+                        st.session_state.scan_queue[sel_sq_idx]["home"] = e_sqh.strip()
+                        st.session_state.scan_queue[sel_sq_idx]["away"] = e_sqa.strip()
+                        st.session_state.scan_queue[sel_sq_idx]["league"] = e_sql.strip()
+                        st.session_state.scan_queue[sel_sq_idx]["date"] = e_sqd.strip()
+                        st.session_state.scan_queue[sel_sq_idx]["batman_odds"] = (e_sbh, e_sbd, e_sba)
+                        st.success(f"🎉 스캔 대기열 #{sel_sq_idx + 1} 경기 정보가 성공적으로 수정되었습니다!")
+                        st.rerun()
+
                 if st.button("🗑️ 스캔 대기열 비우기", key="btn_clear_scan_queue"):
                     st.session_state.scan_queue = []
                     st.session_state.current_scan_queue_idx = 0
@@ -1197,7 +1224,7 @@ with tab_scanner:
                             
                             st.session_state.current_scan_queue_idx += 1
                             st.cache_data.clear()
-                            st.success(f"🎉 [{cur_s_match['home']} vs {cur_match['away']}] 저장 완료!")
+                            st.success(f"🎉 [{cur_s_match['home']} vs {cur_s_match['away']}] 저장 완료!")
                             time.sleep(0.4)
                             st.rerun()
                         except Exception as e:
