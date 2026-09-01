@@ -277,7 +277,7 @@ def generate_naver_odds_infographic(b_odds, overseas_name, o_odds, league_name="
     return html
 
 # =========================================================
-# 단일 팀 시즌 평균 리포트 (도표 내부 수정본)
+# 단일 팀 시즌 평균 리포트 (인포그래픽 도표 - 평균 득점 표만 깔끔하게 출력)
 # =========================================================
 def generate_naver_team_stats_infographic(team_name, season, league, match_count_info, df_summary, tac_df, df_goals):
     html = f"""
@@ -331,22 +331,15 @@ def generate_naver_team_stats_infographic(team_name, season, league, match_count
 
     if df_goals is not None and not df_goals.empty:
         try:
-            # 🌟 인포그래픽 도표 안에서도 시즌 전체 평균 행이 예쁘게 들어가도록 조정
             g_df_copy = df_goals.copy()
-            sub1 = g_df_copy[["구분", "전반 총득점", "후반 총득점", "총점"]].copy()
+            # 🌟 총합 표는 제외하고 깔끔하게 '경기당 평균 득점 통계' 표만 도표에 포함
             sub2 = g_df_copy[["구분", "전반 평균", "후반 평균", "합계 평균"]].copy()
-
-            t1_html = sub1.to_html(index=False, escape=False).replace('<table border="1" class="dataframe">', '<table border="1" cellpadding="0" cellspacing="0" style="width: 100%; border-collapse: collapse; font-size: 12px; text-align: center; border: 1px solid #cbd5e1; margin-bottom: 10px;">')
-            t1_html = t1_html.replace('<th>', '<th align="center" style="background-color: #f8fafc; color: #334155; padding: 7px 3px; border: 1px solid #cbd5e1; font-weight: bold; text-align: center !important;">')
-            t1_html = t1_html.replace('<td>', '<td align="center" style="background-color: #ffffff; color: #1e293b; padding: 6px 3px; border: 1px solid #e2e8f0; text-align: center !important;">')
 
             t2_html = sub2.to_html(index=False, escape=False).replace('<table border="1" class="dataframe">', '<table border="1" cellpadding="0" cellspacing="0" style="width: 100%; border-collapse: collapse; font-size: 12px; text-align: center; border: 1px solid #cbd5e1; margin-bottom: 6px;">')
             t2_html = t2_html.replace('<th>', '<th align="center" style="background-color: #f8fafc; color: #334155; padding: 7px 3px; border: 1px solid #cbd5e1; font-weight: bold; text-align: center !important;">')
             t2_html = t2_html.replace('<td>', '<td align="center" style="background-color: #ffffff; color: #1e293b; padding: 6px 3px; border: 1px solid #e2e8f0; text-align: center !important;">')
 
             html += f"""
-                    <div style="font-size: 13px; font-weight: bold; color: #1e293b; margin-top: 10px; margin-bottom: 6px;">⚽ 전/후반 득점 총합 통계</div>
-                    {t1_html}
                     <div style="font-size: 13px; font-weight: bold; color: #1e293b; margin-top: 10px; margin-bottom: 6px;">📈 경기당 평균 득점 통계</div>
                     {t2_html}
             """
@@ -723,7 +716,7 @@ def save_match_data_to_sheets(match_info, odds_dict, stats_dict):
         except gspread.exceptions.WorksheetNotFound:
             pass
         
-        return True, f"배당 {saved_count}개 탭 & '경기내용' 탭 저장 완료"
+        return True, f"배당 {saved_count}개사 탭 & '경기내용' 탭 저장 완료"
     except Exception as e:
         return False, str(e)
 
@@ -919,7 +912,7 @@ with tab_input:
                     q_home_poss = c_ps1.number_input("홈 점유율 (%)", min_value=0.0, max_value=100.0, value=50.0, step=0.1, key=f"q_{cur_idx}_home_poss")
                     q_away_poss = c_ps2.number_input("원정 점유율 (%)", min_value=0.0, max_value=100.0, value=50.0, step=0.1, key=f"q_{cur_idx}_home_poss")
                     q_home_pass = c_ps3.number_input("홈 패스성공률 (%)", min_value=0.0, max_value=100.0, value=80.0, step=0.1, key=f"q_{cur_idx}_home_pass")
-                    q_away_pass = c_ps4.number_input("원정 패스성공률 (%)", min_value=0.0, max_value=100.0, value=80.0, step=0.1, key=f"q_{cur_idx}_away_pass")
+                    q_away_pass = c_ps4.number_input("원정 패스성공률 (%)", min_value=0.0, max_value=100.0, value=80.0, step=0.1, key=f"q_{cur_idx}_home_pass")
 
                     c_cd1, c_cd2, c_cd3, c_cd4, c_xg1, c_xg2 = st.columns(6)
                     q_home_yc = c_cd1.number_input("홈 경고", min_value=0, value=0, key=f"q_{cur_idx}_home_yc")
@@ -1006,7 +999,7 @@ with tab_input:
 
             c_ps1, c_ps2, c_ps3, c_ps4 = st.columns(4)
             home_poss = c_ps1.number_input("홈 점유율 (%)", min_value=0.0, max_value=100.0, value=50.0, step=0.1, key="in_home_poss")
-            away_poss = c_ps2.number_input("원정 점유율 (%)", min_value=0.0, max_value=100.0, value=50.0, step=0.1, key="in_away_poss")
+            away_poss = c_ps2.number_input("원정 점유율 (%)", min_value=0.0, max_value=100.0, value=50.0, step=0.1, key="in_home_poss")
             home_pass = c_ps3.number_input("홈 패스성공률 (%)", min_value=0.0, max_value=100.0, value=80.0, step=0.1, key="in_home_pass")
             away_pass = c_ps4.number_input("원정 패스성공률 (%)", min_value=0.0, max_value=100.0, value=80.0, step=0.1, key="in_home_pass")
 
