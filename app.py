@@ -277,7 +277,7 @@ def generate_naver_odds_infographic(b_odds, overseas_name, o_odds, league_name="
     return html
 
 # =========================================================
-# 단일 팀 시즌 평균 리포트 (인포그래픽 도표 - 평균 득점 표만 깔끔하게 출력)
+# 단일 팀 시즌 평균 리포트 (인포그래픽 도표)
 # =========================================================
 def generate_naver_team_stats_infographic(team_name, season, league, match_count_info, df_summary, tac_df, df_goals):
     html = f"""
@@ -332,7 +332,6 @@ def generate_naver_team_stats_infographic(team_name, season, league, match_count
     if df_goals is not None and not df_goals.empty:
         try:
             g_df_copy = df_goals.copy()
-            # 🌟 총합 표는 제외하고 깔끔하게 '경기당 평균 득점 통계' 표만 도표에 포함
             sub2 = g_df_copy[["구분", "전반 평균", "후반 평균", "합계 평균"]].copy()
 
             t2_html = sub2.to_html(index=False, escape=False).replace('<table border="1" class="dataframe">', '<table border="1" cellpadding="0" cellspacing="0" style="width: 100%; border-collapse: collapse; font-size: 12px; text-align: center; border: 1px solid #cbd5e1; margin-bottom: 6px;">')
@@ -716,7 +715,7 @@ def save_match_data_to_sheets(match_info, odds_dict, stats_dict):
         except gspread.exceptions.WorksheetNotFound:
             pass
         
-        return True, f"배당 {saved_count}개사 탭 & '경기내용' 탭 저장 완료"
+        return True, f"배당 {saved_count}개 탭 & '경기내용' 탭 저장 완료"
     except Exception as e:
         return False, str(e)
 
@@ -910,15 +909,16 @@ with tab_input:
 
                     c_ps1, c_ps2, c_ps3, c_ps4 = st.columns(4)
                     q_home_poss = c_ps1.number_input("홈 점유율 (%)", min_value=0.0, max_value=100.0, value=50.0, step=0.1, key=f"q_{cur_idx}_home_poss")
-                    q_away_poss = c_ps2.number_input("원정 점유율 (%)", min_value=0.0, max_value=100.0, value=50.0, step=0.1, key=f"q_{cur_idx}_home_poss")
+                    # 🌟 [에러 수정 완료] 키 중복 방지를 위해 away_poss로 수정
+                    q_away_poss = c_ps2.number_input("원정 점유율 (%)", min_value=0.0, max_value=100.0, value=50.0, step=0.1, key=f"q_{cur_idx}_away_poss")
                     q_home_pass = c_ps3.number_input("홈 패스성공률 (%)", min_value=0.0, max_value=100.0, value=80.0, step=0.1, key=f"q_{cur_idx}_home_pass")
-                    q_away_pass = c_ps4.number_input("원정 패스성공률 (%)", min_value=0.0, max_value=100.0, value=80.0, step=0.1, key=f"q_{cur_idx}_home_pass")
+                    q_away_pass = c_ps4.number_input("원정 패스성공률 (%)", min_value=0.0, max_value=100.0, value=80.0, step=0.1, key=f"q_{cur_idx}_away_pass")
 
                     c_cd1, c_cd2, c_cd3, c_cd4, c_xg1, c_xg2 = st.columns(6)
                     q_home_yc = c_cd1.number_input("홈 경고", min_value=0, value=0, key=f"q_{cur_idx}_home_yc")
-                    q_away_yc = c_cd2.number_input("원정 경고", min_value=0, value=0, key=f"q_{cur_idx}_home_yc")
+                    q_away_yc = c_cd2.number_input("원정 경고", min_value=0, value=0, key=f"q_{cur_idx}_away_yc")
                     q_home_rc = c_cd3.number_input("홈 퇴장", min_value=0, value=0, key=f"q_{cur_idx}_home_rc")
-                    q_away_rc = c_cd4.number_input("원정 퇴장", min_value=0, value=0, key=f"q_{cur_idx}_home_rc")
+                    q_away_rc = c_cd4.number_input("원정 퇴장", min_value=0, value=0, key=f"q_{cur_idx}_away_rc")
                     q_home_xg = c_xg1.number_input("홈 xG", min_value=0.0, value=0.00, step=0.01, key=f"q_{cur_idx}_home_xg")
                     q_away_xg = c_xg2.number_input("원정 xG", min_value=0.0, value=0.00, step=0.01, key=f"q_{cur_idx}_away_xg")
 
@@ -999,17 +999,17 @@ with tab_input:
 
             c_ps1, c_ps2, c_ps3, c_ps4 = st.columns(4)
             home_poss = c_ps1.number_input("홈 점유율 (%)", min_value=0.0, max_value=100.0, value=50.0, step=0.1, key="in_home_poss")
-            away_poss = c_ps2.number_input("원정 점유율 (%)", min_value=0.0, max_value=100.0, value=50.0, step=0.1, key="in_home_poss")
+            away_poss = c_ps2.number_input("원정 점유율 (%)", min_value=0.0, max_value=100.0, value=50.0, step=0.1, key="in_away_poss")
             home_pass = c_ps3.number_input("홈 패스성공률 (%)", min_value=0.0, max_value=100.0, value=80.0, step=0.1, key="in_home_pass")
-            away_pass = c_ps4.number_input("원정 패스성공률 (%)", min_value=0.0, max_value=100.0, value=80.0, step=0.1, key="in_home_pass")
+            away_pass = c_ps4.number_input("원정 패스성공률 (%)", min_value=0.0, max_value=100.0, value=80.0, step=0.1, key="in_home_pass_single")
 
             c_cd1, c_cd2, c_cd3, c_cd4, c_xg1, c_xg2 = st.columns(6)
             home_yc = c_cd1.number_input("홈 경고(옐로)", min_value=0, value=0, key="in_home_yc")
-            away_yc = c_cd2.number_input("원정 경고(옐로)", min_value=0, value=0, key="in_home_yc")
+            away_yc = c_cd2.number_input("원정 경고(옐로)", min_value=0, value=0, key="in_away_yc_single")
             home_rc = c_cd3.number_input("홈 퇴장(레드)", min_value=0, value=0, key="in_home_rc")
-            away_rc = c_cd4.number_input("원정 퇴장(레드)", min_value=0, value=0, key="in_home_rc")
+            away_rc = c_cd4.number_input("원정 퇴장(레드)", min_value=0, value=0, key="in_away_rc_single")
             home_xg = c_xg1.number_input("홈 xG", min_value=0.0, value=0.00, step=0.01, key="in_home_xg")
-            away_xg = c_xg2.number_input("원정 xG", min_value=0.0, value=0.00, step=0.01, key="in_home_xg")
+            away_xg = c_xg2.number_input("원정 xG", min_value=0.0, value=0.00, step=0.01, key="in_away_xg_single")
 
         st.markdown("---")
         if st.button("💾 구글 시트 1~9번 배당 탭 & 10번 경기내용 탭 일괄 저장 실행", type="primary", use_container_width=True):
@@ -1833,7 +1833,7 @@ with tab_scanner:
                         st.session_state.t2_home_team = target_item["home"]
                         st.session_state.t2_away_team = target_item["away"]
                         for bm in BOOKMAKERS:
-                            h_val, d_val, a_val = target_item["all_odds"].get(bm, (0.0, 0.0, 0.0))
+                            h_val, d_val, a_val = item["all_odds"].get(bm, (0.0, 0.0, 0.0))
                             st.session_state[f"t2_{bm}_h"] = float(h_val)
                             st.session_state[f"t2_{bm}_d"] = float(d_val)
                             st.session_state[f"t2_{bm}_a"] = float(a_val)
