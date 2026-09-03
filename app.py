@@ -277,7 +277,7 @@ def generate_naver_odds_infographic(b_odds, overseas_name, o_odds, league_name="
     return html
 
 # =========================================================
-# 단일 팀 시즌 평균 리포트 (인포그래픽 도표)
+# 단일 팀 시즌 평균 리포트
 # =========================================================
 def generate_naver_team_stats_infographic(team_name, season, league, match_count_info, df_summary, tac_df, df_goals):
     html = f"""
@@ -321,7 +321,7 @@ def generate_naver_team_stats_infographic(team_name, season, league, match_count
         for _, r in tac_df.iterrows():
             html += f"""
                     <tr>
-                        <td align="center" style="padding: 6px 3px; border: 1px solid #e2e8f0; font-weight: bold; text-align: center;">{r.get('전술 (포메이션)', '-')}</td>
+                        <td align="center" style="padding: 6px 3px; border: 1px solid #e2e8f0; font-weight: bold; text-align: center;">{r.get('전술 (포메이션', '-')}</td>
                         <td align="center" style="padding: 6px 3px; border: 1px solid #e2e8f0; color: #0284c7; font-weight: bold; text-align: center;">{r.get('전체 사용 횟수', '-')}</td>
                         <td align="center" style="padding: 6px 3px; border: 1px solid #e2e8f0; text-align: center;">{r.get('홈경기 사용', '-')}</td>
                         <td align="center" style="padding: 6px 3px; border: 1px solid #e2e8f0; text-align: center;">{r.get('원정경기 사용', '-')}</td>
@@ -443,7 +443,7 @@ def generate_naver_match_infographic(home_team, away_team, stats_data, goal_df=N
     return html
 
 # =========================================================
-# 부상자 인포그래픽 도표
+# 부상자 인포그래픽 도표 (결장자 없을 때 '누수 없음' 안내 카드 출력)
 # =========================================================
 def generate_naver_injury_infographic(team_name, league_title, confirmed_list, doubt_list):
     html = f"""
@@ -462,6 +462,18 @@ def generate_naver_injury_infographic(team_name, league_title, confirmed_list, d
                     </tr>
                 </table>
     """
+
+    if not confirmed_list and not doubt_list:
+        html += """
+                <table border="0" cellpadding="0" cellspacing="0" style="width: 100%; background-color: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; margin-top: 10px; margin-bottom: 10px;">
+                    <tr>
+                        <td align="center" style="padding: 20px; text-align: center; color: #166534; font-size: 14px; font-weight: bold;">
+                            ✅ 현재 등록된 부상 및 징계 결장자가 없습니다.<br>
+                            <span style="font-size: 12px; color: #15803d; font-weight: normal; margin-top: 4px; display: inline-block;">(스쿼드 100% 전력 구성 완료 👑)</span>
+                        </td>
+                    </tr>
+                </table>
+        """
 
     if confirmed_list:
         html += """
@@ -637,7 +649,7 @@ def save_match_data_to_sheets(match_info, odds_dict, stats_dict):
             bm_prob_a = (1/a) / bm_inv
             
             diff_h = round(b_h - h, 2) if b_h > 0 else 0.0
-            diff_d = round(b_d - d, 2) if b_d > 0 else 0.0
+            diff_d = round(b_d - d, 2) if d > 0 else 0.0
             diff_a = round(b_a - a, 2) if b_a > 0 else 0.0
             
             fair_h = round(b_payout / bm_prob_h, 6) if (b_payout > 0 and bm_prob_h > 0) else 0.0
@@ -715,7 +727,7 @@ def save_match_data_to_sheets(match_info, odds_dict, stats_dict):
         except gspread.exceptions.WorksheetNotFound:
             pass
         
-        return True, f"배당 {saved_count}개 탭 & '경기내용' 탭 저장 완료"
+        return True, f"배당 {saved_count}개사 탭 & '경기내용' 탭 저장 완료"
     except Exception as e:
         return False, str(e)
 
@@ -909,16 +921,15 @@ with tab_input:
 
                     c_ps1, c_ps2, c_ps3, c_ps4 = st.columns(4)
                     q_home_poss = c_ps1.number_input("홈 점유율 (%)", min_value=0.0, max_value=100.0, value=50.0, step=0.1, key=f"q_{cur_idx}_home_poss")
-                    # 🌟 [에러 수정 완료] 키 중복 방지를 위해 away_poss로 수정
                     q_away_poss = c_ps2.number_input("원정 점유율 (%)", min_value=0.0, max_value=100.0, value=50.0, step=0.1, key=f"q_{cur_idx}_away_poss")
                     q_home_pass = c_ps3.number_input("홈 패스성공률 (%)", min_value=0.0, max_value=100.0, value=80.0, step=0.1, key=f"q_{cur_idx}_home_pass")
                     q_away_pass = c_ps4.number_input("원정 패스성공률 (%)", min_value=0.0, max_value=100.0, value=80.0, step=0.1, key=f"q_{cur_idx}_away_pass")
 
                     c_cd1, c_cd2, c_cd3, c_cd4, c_xg1, c_xg2 = st.columns(6)
                     q_home_yc = c_cd1.number_input("홈 경고", min_value=0, value=0, key=f"q_{cur_idx}_home_yc")
-                    q_away_yc = c_cd2.number_input("원정 경고", min_value=0, value=0, key=f"q_{cur_idx}_away_yc")
+                    q_away_yc = c_cd2.number_input("원정 경고", min_value=0, value=0, key=f"q_{cur_idx}_home_yc")
                     q_home_rc = c_cd3.number_input("홈 퇴장", min_value=0, value=0, key=f"q_{cur_idx}_home_rc")
-                    q_away_rc = c_cd4.number_input("원정 퇴장", min_value=0, value=0, key=f"q_{cur_idx}_away_rc")
+                    q_away_rc = c_cd4.number_input("원정 퇴장", min_value=0, value=0, key=f"q_{cur_idx}_home_rc")
                     q_home_xg = c_xg1.number_input("홈 xG", min_value=0.0, value=0.00, step=0.01, key=f"q_{cur_idx}_home_xg")
                     q_away_xg = c_xg2.number_input("원정 xG", min_value=0.0, value=0.00, step=0.01, key=f"q_{cur_idx}_away_xg")
 
@@ -1005,11 +1016,11 @@ with tab_input:
 
             c_cd1, c_cd2, c_cd3, c_cd4, c_xg1, c_xg2 = st.columns(6)
             home_yc = c_cd1.number_input("홈 경고(옐로)", min_value=0, value=0, key="in_home_yc")
-            away_yc = c_cd2.number_input("원정 경고(옐로)", min_value=0, value=0, key="in_away_yc_single")
+            away_yc = c_cd2.number_input("원정 경고(옐로)", min_value=0, value=0, key="in_home_yc_single")
             home_rc = c_cd3.number_input("홈 퇴장(레드)", min_value=0, value=0, key="in_home_rc")
             away_rc = c_cd4.number_input("원정 퇴장(레드)", min_value=0, value=0, key="in_away_rc_single")
             home_xg = c_xg1.number_input("홈 xG", min_value=0.0, value=0.00, step=0.01, key="in_home_xg")
-            away_xg = c_xg2.number_input("원정 xG", min_value=0.0, value=0.00, step=0.01, key="in_away_xg_single")
+            away_xg = c_xg2.number_input("원정 xG", min_value=0.0, value=0.00, step=0.01, key="in_home_xg_single")
 
         st.markdown("---")
         if st.button("💾 구글 시트 1~9번 배당 탭 & 10번 경기내용 탭 일괄 저장 실행", type="primary", use_container_width=True):
@@ -1833,7 +1844,7 @@ with tab_scanner:
                         st.session_state.t2_home_team = target_item["home"]
                         st.session_state.t2_away_team = target_item["away"]
                         for bm in BOOKMAKERS:
-                            h_val, d_val, a_val = item["all_odds"].get(bm, (0.0, 0.0, 0.0))
+                            h_val, d_val, a_val = target_item["all_odds"].get(bm, (0.0, 0.0, 0.0))
                             st.session_state[f"t2_{bm}_h"] = float(h_val)
                             st.session_state[f"t2_{bm}_d"] = float(d_val)
                             st.session_state[f"t2_{bm}_a"] = float(a_val)
@@ -2051,7 +2062,7 @@ with tab_analysis:
             
             if valid_h:
                 avg_oh = round(float(np.mean(valid_h)), 2)
-                avg_od = round(float(np.mean(valid_d)), 2)
+                avg_od = round(float(np.mean(valid_od)), 2)
                 avg_oa = round(float(np.mean(valid_oa)), 2)
                 o_odds_val = (avg_oh, avg_od, avg_oa)
             else:
@@ -2535,9 +2546,19 @@ with tab_injuries:
 
     st.markdown("---")
 
+    # 🌟 [개선] 부상자 시트 + 10번 경기내용 시트의 모든 팀 목록을 통합하여 결장자가 없는 팀도 언제든 조회 가능하게 처리
+    all_known_teams = set()
+    if not df_injuries.empty and "팀명" in df_injuries.columns:
+        all_known_teams.update(df_injuries["팀명"].dropna().unique())
+    if not df_stats_red.empty:
+        if "홈팀" in df_stats_red.columns:
+            all_known_teams.update(df_stats_red["홈팀"].dropna().unique())
+        if "원정팀" in df_stats_red.columns:
+            all_known_teams.update(df_stats_red["원정팀"].dropna().unique())
+
+    team_options = sorted(list(all_known_teams)) if all_known_teams else ["웨스트햄", "리버풀", "맨체스터시티"]
+
     c_s1, c_s2 = st.columns(2)
-    team_options = sorted(df_injuries["팀명"].dropna().unique().tolist()) if not df_injuries.empty and "팀명" in df_injuries.columns else ["웨스트햄", "리버풀", "맨체스터시티"]
-    
     default_inj_idx = 0
     if st.session_state.selected_scan_match:
         sm = st.session_state.selected_scan_match
@@ -2633,74 +2654,76 @@ with tab_injuries:
 
     st.markdown("---")
 
+    filtered_df = pd.DataFrame()
     if not df_injuries.empty and "팀명" in df_injuries.columns:
         filtered_df = df_injuries[df_injuries["팀명"] == selected_team]
 
-        if not filtered_df.empty:
-            st.subheader(f"📋 [{selected_team}] 결장자 현황 (총 {len(filtered_df)}명)")
+    reason_col = "결장사유" if not filtered_df.empty and "결장사유" in filtered_df.columns else "사유"
+    confirmed_players = filtered_df[filtered_df[reason_col] != "결장의심"].to_dict("records") if not filtered_df.empty else []
+    doubt_players = filtered_df[filtered_df[reason_col] == "결장의심"].to_dict("records") if not filtered_df.empty else []
 
-            reason_col = "결장사유" if "결장사유" in filtered_df.columns else "사유"
-            confirmed_players = filtered_df[filtered_df[reason_col] != "결장의심"].to_dict("records")
-            doubt_players = filtered_df[filtered_df[reason_col] == "결장의심"].to_dict("records")
+    st.subheader(f"📋 [{selected_team}] 결장자 현황 (총 {len(filtered_df)}명)")
 
-            with st.expander("📊 / 📋 네이버 블로그/카페용 결장자 인포그래픽 도표 복사 (추천 ⭐)", expanded=True):
-                st.markdown(f"##### 🌟 [네이버 블로그/카페 전용] [{selected_team}] 결장자 리포트 카드")
-                st.caption("초록색 버튼을 1번만 클릭하면 네이버 블로그 서식으로 복사됩니다. 블로그 글쓰기에서 Ctrl+V를 누르세요!")
+    with st.expander("📊 / 📋 네이버 블로그/카페용 결장자 인포그래픽 도표 복사 (추천 ⭐)", expanded=True):
+        st.markdown(f"##### 🌟 [네이버 블로그/카페 전용] [{selected_team}] 결장자 리포트 카드")
+        st.caption("초록색 버튼을 1번만 클릭하면 네이버 블로그 서식으로 복사됩니다. 블로그 글쓰기에서 Ctrl+V를 누르세요!")
 
-                naver_inj_html = generate_naver_injury_infographic(
-                    selected_team, inj_league_title, confirmed_players, doubt_players
-                )
+        naver_inj_html = generate_naver_injury_infographic(
+            selected_team, inj_league_title, confirmed_players, doubt_players
+        )
 
-                render_clipboard_component(naver_inj_html, "t5_clip", height=520)
+        render_clipboard_component(naver_inj_html, "t5_clip", height=520)
 
-            card_text = f"### 🚑 {selected_team} 결장 & 결장의심 명단\n"
-            card_text += f"*({inj_league_title})*\n\n"
+    card_text = f"### 🚑 {selected_team} 결장 & 결장의심 명단\n"
+    card_text += f"*({inj_league_title})*\n\n"
 
-            if confirmed_players:
-                card_text += "🔴 **[결장 확정 / 징계]**\n"
-                for p in confirmed_players:
-                    kr = p.get("선수한글명", "")
-                    en = p.get("선수영문명", "")
-                    name_str = f"{kr} ({en})" if kr and en else (kr or en)
-                    role = p.get("역할", "-")
-                    pos = p.get("포지션", "MF")
-                    start = p.get("선발", 0)
-                    sub = p.get("교체", 0)
-                    goals = p.get("골", 0)
-                    assists = p.get("도움", 0)
-                    reason = p.get(reason_col, "부상")
-                    note = p.get("특이사항", "-")
-                    icon = "👑" if "주전" in role else "🏃"
-                    note_str = f" *({note})*" if note != "-" else ""
-                    card_text += f"* {icon} **{name_str}** | `{pos}` · `{role}`\n"
-                    card_text += f"  * 📊 **기록**: {start}선발 {sub}교체 / {goals}골 {assists}도움\n"
-                    card_text += f"  * ⚠️ **사유**: {reason}{note_str}\n\n"
+    if not filtered_df.empty:
+        if confirmed_players:
+            card_text += "🔴 **[결장 확정 / 징계]**\n"
+            for p in confirmed_players:
+                kr = p.get("선수한글명", "")
+                en = p.get("선수영문명", "")
+                name_str = f"{kr} ({en})" if kr and en else (kr or en)
+                role = p.get("역할", "-")
+                pos = p.get("포지션", "MF")
+                start = p.get("선발", 0)
+                sub = p.get("교체", 0)
+                goals = p.get("골", 0)
+                assists = p.get("도움", 0)
+                reason = p.get(reason_col, "부상")
+                note = p.get("특이사항", "-")
+                icon = "👑" if "주전" in role else "🏃"
+                note_str = f" *({note})*" if note != "-" else ""
+                card_text += f"* {icon} **{name_str}** | `{pos}` · `{role}`\n"
+                card_text += f"  * 📊 **기록**: {start}선발 {sub}교체 / {goals}골 {assists}도움\n"
+                card_text += f"  * ⚠️ **사유**: {reason}{note_str}\n\n"
 
-            if doubt_players:
-                card_text += "---\n\n🟡 **[결장 의심 (GTD)]**\n"
-                for p in doubt_players:
-                    kr = p.get("선수한글명", "")
-                    en = p.get("선수영문명", "")
-                    name_str = f"{kr} ({en})" if kr and en else (kr or en)
-                    role = p.get("역할", "-")
-                    pos = p.get("포지션", "MF")
-                    start = p.get("선발", 0)
-                    sub = p.get("교체", 0)
-                    goals = p.get("골", 0)
-                    assists = p.get("도움", 0)
-                    reason = p.get(reason_col, "결장의심")
-                    note = p.get("특이사항", "-")
-                    note_str = f" *({note})*" if note != "-" else ""
-                    card_text += f"* ❓ **{name_str}** | `{pos}` · `{role}`\n"
-                    card_text += f"  * 📊 **기록**: {start}선발 {sub}교체 / {goals}골 {assists}도움\n"
-                    card_text += f"  * ⚠️ **사유**: {reason}{note_str}\n\n"
-
-            with st.expander("📝 심플 텍스트 복사용"):
-                st.text_area("텍스트 복사창", value=card_text, height=250)
-            
-            with st.expander("🔍 시트에 저장된 원본 데이터 표 보기"):
-                st.dataframe(filtered_df, use_container_width=True, hide_index=True)
-        else:
-            st.info(f"💡 현재 [{selected_team}]에 등록된 결장 선수가 없습니다. 위의 '➕ 새로운 결장 선수 추가'에서 등록해 보세요.")
+        if doubt_players:
+            card_text += "---\n\n🟡 **[결장 의심 (GTD)]**\n"
+            for p in doubt_players:
+                kr = p.get("선수한글명", "")
+                en = p.get("선수영문명", "")
+                name_str = f"{kr} ({en})" if kr and en else (kr or en)
+                role = p.get("역할", "-")
+                pos = p.get("포지션", "MF")
+                start = p.get("선발", 0)
+                sub = p.get("교체", 0)
+                goals = p.get("골", 0)
+                assists = p.get("도움", 0)
+                reason = p.get(reason_col, "결장의심")
+                note = p.get("특이사항", "-")
+                note_str = f" *({note})*" if note != "-" else ""
+                card_text += f"* ❓ **{name_str}** | `{pos}` · `{role}`\n"
+                card_text += f"  * 📊 **기록**: {start}선발 {sub}교체 / {goals}골 {assists}도움\n"
+                card_text += f"  * ⚠️ **사유**: {reason}{note_str}\n\n"
     else:
-        st.info("💡 11번 구글 시트(`부상자명단`)에 데이터가 없거나 탭이 생성되지 않았습니다.")
+        card_text += "✅ 현재 등록된 부상 및 징계 결장자가 없습니다. (스쿼드 100% 전력 구성 완료 👑)\n"
+
+    with st.expander("📝 심플 텍스트 복사용"):
+        st.text_area("텍스트 복사창", value=card_text, height=250)
+    
+    with st.expander("🔍 시트에 저장된 원본 데이터 표 보기"):
+        if not filtered_df.empty:
+            st.dataframe(filtered_df, use_container_width=True, hide_index=True)
+        else:
+            st.info(f"💡 [{selected_team}]에 등록된 부상/결장 선수 데이터가 없습니다.")
