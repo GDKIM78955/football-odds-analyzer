@@ -321,7 +321,7 @@ def generate_naver_team_stats_infographic(team_name, season, league, match_count
         for _, r in tac_df.iterrows():
             html += f"""
                     <tr>
-                        <td align="center" style="padding: 6px 3px; border: 1px solid #e2e8f0; font-weight: bold; text-align: center;">{r.get('전술 (포메이션', '-')}</td>
+                        <td align="center" style="padding: 6px 3px; border: 1px solid #e2e8f0; font-weight: bold; text-align: center;">{r.get('전술 (포메이션)', '-')}</td>
                         <td align="center" style="padding: 6px 3px; border: 1px solid #e2e8f0; color: #0284c7; font-weight: bold; text-align: center;">{r.get('전체 사용 횟수', '-')}</td>
                         <td align="center" style="padding: 6px 3px; border: 1px solid #e2e8f0; text-align: center;">{r.get('홈경기 사용', '-')}</td>
                         <td align="center" style="padding: 6px 3px; border: 1px solid #e2e8f0; text-align: center;">{r.get('원정경기 사용', '-')}</td>
@@ -443,7 +443,7 @@ def generate_naver_match_infographic(home_team, away_team, stats_data, goal_df=N
     return html
 
 # =========================================================
-# 부상자 인포그래픽 도표 (결장자 없을 때 '누수 없음' 안내 카드 출력)
+# 부상자 인포그래픽 도표
 # =========================================================
 def generate_naver_injury_infographic(team_name, league_title, confirmed_list, doubt_list):
     html = f"""
@@ -1018,9 +1018,9 @@ with tab_input:
             home_yc = c_cd1.number_input("홈 경고(옐로)", min_value=0, value=0, key="in_home_yc")
             away_yc = c_cd2.number_input("원정 경고(옐로)", min_value=0, value=0, key="in_home_yc_single")
             home_rc = c_cd3.number_input("홈 퇴장(레드)", min_value=0, value=0, key="in_home_rc")
-            away_rc = c_cd4.number_input("원정 퇴장(레드)", min_value=0, value=0, key="in_away_rc_single")
+            away_rc = c_cd4.number_input("원정 퇴장(레드)", min_value=0, value=0, key="in_home_rc_single")
             home_xg = c_xg1.number_input("홈 xG", min_value=0.0, value=0.00, step=0.01, key="in_home_xg")
-            away_xg = c_xg2.number_input("원정 xG", min_value=0.0, value=0.00, step=0.01, key="in_home_xg_single")
+            away_xg = c_xg2.number_input("원정 xG", min_value=0.0, value=0.00, step=0.01, key="in_away_xg_single")
 
         st.markdown("---")
         if st.button("💾 구글 시트 1~9번 배당 탭 & 10번 경기내용 탭 일괄 저장 실행", type="primary", use_container_width=True):
@@ -2062,7 +2062,7 @@ with tab_analysis:
             
             if valid_h:
                 avg_oh = round(float(np.mean(valid_h)), 2)
-                avg_od = round(float(np.mean(valid_od)), 2)
+                avg_od = round(float(np.mean(valid_d)), 2)
                 avg_oa = round(float(np.mean(valid_oa)), 2)
                 o_odds_val = (avg_oh, avg_od, avg_oa)
             else:
@@ -2546,7 +2546,6 @@ with tab_injuries:
 
     st.markdown("---")
 
-    # 🌟 [개선] 부상자 시트 + 10번 경기내용 시트의 모든 팀 목록을 통합하여 결장자가 없는 팀도 언제든 조회 가능하게 처리
     all_known_teams = set()
     if not df_injuries.empty and "팀명" in df_injuries.columns:
         all_known_teams.update(df_injuries["팀명"].dropna().unique())
@@ -2568,10 +2567,10 @@ with tab_injuries:
     selected_team = c_s1.selectbox("조회할 팀명 선택", team_options if team_options else ["직접 등록 필요"], index=default_inj_idx, key="inj_filter_team")
     inj_league_title = c_s2.text_input("리그/대회 기준 표기", value="잉글랜드 1부리그 기록", key="inj_custom_league")
 
-    col_btn1, col_btn2 = st.columns(2)
+    col_btn1, col_btn2, col_btn3 = st.columns(3)
 
     with col_btn1:
-        with st.expander(f"➕ [{selected_team}] 새로운 결장 선수 추가 (부상 / 징계 / 퇴장)", expanded=False):
+        with st.expander(f"➕ 새로운 결장 선수 추가", expanded=False):
             f_s1, f_s2, f_s3 = st.columns(3)
             add_season = f_s1.text_input("시즌", value="25-26", key="add_inj_season")
             add_league = f_s2.text_input("리그명", value="PL", key="add_inj_league")
@@ -2589,11 +2588,11 @@ with tab_injuries:
             p_assists = f7.number_input("도움", min_value=0, value=0, key="p_assists")
 
             f8, f9, f10 = st.columns(3)
-            p_role = f8.text_input("팀 내 역할", value="주전", placeholder="예: 주전, 로테이션, 백업", key="p_role")
+            p_role = f8.text_input("팀 내 역할", value="주전", placeholder="예: 주전, 로테이션", key="p_role")
             p_reason = f9.selectbox("결장 사유", ["부상", "결장의심", "징계/퇴장", "기타"], key="p_reason")
-            p_note = f10.text_input("특이사항", value="-", placeholder="예: 직전 경기 다이렉트 퇴장", key="p_note")
+            p_note = f10.text_input("특이사항", value="-", placeholder="예: 복귀 예정 10월", key="p_note")
 
-            if st.button("💾 구글 시트 11번 탭(부상자명단)에 저장", type="primary", use_container_width=True):
+            if st.button("💾 구글 시트 11번 탭에 저장", type="primary", use_container_width=True):
                 if p_name_en.strip() or p_name_kr.strip():
                     client = get_gspread_client()
                     if client:
@@ -2611,15 +2610,90 @@ with tab_injuries:
                             ws_inj.append_row(new_row, value_input_option="USER_ENTERED")
                             time.sleep(0.2)
                             st.cache_data.clear()
-                            st.success(f"🎉 {add_team}의 [{p_name_kr or p_name_en}] 선수가 11번 시트에 성공적으로 저장되었습니다!")
+                            st.success(f"🎉 {add_team}의 [{p_name_kr or p_name_en}] 선수가 저장되었습니다!")
                             st.rerun()
                         except Exception as e:
                             st.error(f"저장 실패: {e}")
                 else:
-                    st.warning("선수 이름을 최소 1개 이상 입력해 주세요.")
+                    st.warning("선수 이름을 입력해 주세요.")
 
+    # 🌟 [신규 추가] 등록된 부상 선수 정보 수정하기 기능
     with col_btn2:
-        with st.expander(f"🗑️ [{selected_team}] 부상/징계 복귀 선수 명단에서 제외하기", expanded=False):
+        with st.expander(f"✏️ 부상 선수 정보 수정하기", expanded=False):
+            if not df_injuries.empty and "팀명" in df_injuries.columns:
+                filtered_df_edit = df_injuries[df_injuries["팀명"] == selected_team]
+                if not filtered_df_edit.empty:
+                    edit_player_opts = []
+                    for idx, row in filtered_df_edit.iterrows():
+                        kr = row.get("선수한글명", "")
+                        en = row.get("선수영문명", "")
+                        disp_name = f"{kr} ({en})" if kr and en else (kr or en)
+                        edit_player_opts.append((idx, disp_name, row))
+                    
+                    sel_edit_item = st.selectbox("수정할 선수 선택", edit_player_opts, format_func=lambda x: x[1], key="sel_edit_player_target")
+                    target_row_idx = sel_edit_item[0]
+                    target_row_data = sel_edit_item[2]
+
+                    e_kr = st.text_input("선수 한글명 수정", value=str(target_row_data.get("선수한글명", "")), key="edit_p_kr")
+                    e_en = st.text_input("선수 영문명 수정", value=str(target_row_data.get("선수영문명", "")), key="edit_p_en")
+                    
+                    pos_list = ["FW", "MF", "DF", "GK"]
+                    curr_pos = str(target_row_data.get("포지션", "MF"))
+                    pos_idx = pos_list.index(curr_pos) if curr_pos in pos_list else 1
+                    e_pos = st.selectbox("포지션 수정", pos_list, index=pos_idx, key="edit_p_pos")
+
+                    e1, e2, e3, e4 = st.columns(4)
+                    e_start = e1.number_input("선발", min_value=0, value=int(target_row_data.get("선발", 0) or 0), key="edit_p_start")
+                    e_sub = e2.number_input("교체", min_value=0, value=int(target_row_data.get("교체", 0) or 0), key="edit_p_sub")
+                    e_goals = e3.number_input("골", min_value=0, value=int(target_row_data.get("골", 0) or 0), key="edit_p_goals")
+                    e_assists = e4.number_input("도움", min_value=0, value=int(target_row_data.get("도움", 0) or 0), key="edit_p_assists")
+
+                    e_role = st.text_input("팀 내 역할 수정", value=str(target_row_data.get("역할", "주전")), key="edit_p_role")
+                    
+                    reason_list = ["부상", "결장의심", "징계/퇴장", "기타"]
+                    curr_reason = str(target_row_data.get("결장사유", target_row_data.get("사유", "부상")))
+                    reason_idx = reason_list.index(curr_reason) if curr_reason in reason_list else 0
+                    e_reason = st.selectbox("결장 사유 수정", reason_list, index=reason_idx, key="edit_p_reason")
+                    
+                    e_note = st.text_input("특이사항 (복귀예상일 등) 수정", value=str(target_row_data.get("특이사항", "-")), key="edit_p_note")
+
+                    if st.button("🔄 부상 선수 정보 갱신하기", type="primary", use_container_width=True):
+                        client = get_gspread_client()
+                        if client:
+                            try:
+                                spreadsheet = client.open_by_key(SPREADSHEET_ID)
+                                ws_inj = spreadsheet.worksheet(INJURY_SHEET_NAME)
+                                
+                                updated_row_values = [
+                                    str(target_row_data.get("시즌", "25-26")),
+                                    str(target_row_data.get("리그명", "PL")),
+                                    str(selected_team),
+                                    e_en.strip(),
+                                    e_kr.strip(),
+                                    e_pos,
+                                    e_start,
+                                    e_sub,
+                                    e_goals,
+                                    e_assists,
+                                    e_role.strip() if e_role.strip() else "-",
+                                    e_reason,
+                                    e_note.strip() if e_note.strip() else "-"
+                                ]
+                                
+                                ws_inj.update(f"A{target_row_idx + 2}:M{target_row_idx + 2}", [updated_row_values], value_input_option="USER_ENTERED")
+                                time.sleep(0.2)
+                                st.cache_data.clear()
+                                st.success(f"🎉 [{e_kr or e_en}] 선수의 부상/결장 정보가 성공적으로 수정되었습니다!")
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"수정 실패: {e}")
+                else:
+                    st.info(f"현재 [{selected_team}]에 수정할 부상 선수가 없습니다.")
+            else:
+                st.info("시트에 등록된 선수 데이터가 없습니다.")
+
+    with col_btn3:
+        with st.expander(f"🗑️ 복귀 선수 명단에서 제외", expanded=False):
             if not df_injuries.empty and "팀명" in df_injuries.columns:
                 filtered_df_rm = df_injuries[df_injuries["팀명"] == selected_team]
                 if not filtered_df_rm.empty:
@@ -2632,7 +2706,7 @@ with tab_injuries:
                     
                     sel_player_to_remove = st.selectbox("복귀한 선수 선택", player_options, format_func=lambda x: x[1], key="sel_remove_player")
                     
-                    if st.button("🚀 선택한 선수 복귀 완료 (시트에서 삭제)", type="secondary", use_container_width=True):
+                    if st.button("🚀 선택한 선수 복귀 완료 (삭제)", type="secondary", use_container_width=True):
                         client = get_gspread_client()
                         if client:
                             with st.spinner("구글 시트에서 선수 삭제 중..."):
