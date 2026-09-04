@@ -574,8 +574,8 @@ def get_gspread_client():
     except Exception:
         return None
 
-# 🌟 [개선] 캐시 수동 클리어 연동 및 안전한 시트 로딩
-@st.cache_data(ttl=60, show_spinner=False)
+# 🌟 [보완] 캐시 오작동 방지를 위해 TTL 10초 및 안전한 컬럼 전처리 적용
+@st.cache_data(ttl=10, show_spinner=False)
 def load_sheet_data(sheet_name):
     client = get_gspread_client()
     if not client:
@@ -586,7 +586,9 @@ def load_sheet_data(sheet_name):
             ws = spreadsheet.worksheet(sheet_name)
             data = ws.get_all_values()
             if len(data) > 1:
-                df = pd.DataFrame(data[1:], columns=data[0])
+                # 🌟 컬럼명 공백 제거로 매칭 오류 원천 차단
+                cols = [str(c).strip() for c in data[0]]
+                df = pd.DataFrame(data[1:], columns=cols)
                 df = df.dropna(how='all')
                 return df
             return pd.DataFrame()
@@ -1019,7 +1021,7 @@ with tab_input:
             home_yc = c_cd1.number_input("홈 경고(옐로)", min_value=0, value=0, key="in_home_yc")
             away_yc = c_cd2.number_input("원정 경고(옐로)", min_value=0, value=0, key="in_home_yc_single")
             home_rc = c_cd3.number_input("홈 퇴장(레드)", min_value=0, value=0, key="in_home_rc")
-            away_rc = c_cd4.number_input("원정 퇴장(레드)", min_value=0, value=0, key="in_away_rc_single")
+            away_rc = c_cd4.number_input("원정 퇴장(레드)", min_value=0, value=0, key="in_home_rc_single")
             home_xg = c_xg1.number_input("홈 xG", min_value=0.0, value=0.00, step=0.01, key="in_home_xg")
             away_xg = c_xg2.number_input("원정 xG", min_value=0.0, value=0.00, step=0.01, key="in_home_xg_single")
 
@@ -1176,7 +1178,7 @@ with tab_scanner:
                 if next_s_match:
                     st.caption(f"⏭️ **다음 대기 경기:** [{next_s_match['home']} vs {next_s_match['away']}] ({next_s_match['league']})")
                 else:
-                    st.caption("🏁 이번 경기가 스캔 대기열의 마지막 경기입니다.")
+                    st.caption("🏁 이번 경기가 대기열의 마지막 경기입니다.")
 
                 st.markdown("##### 🌐 주요 해외 북메이커 배당 입력 (있는 것만 입력)")
                 sq_overseas_inputs = {}
@@ -2609,8 +2611,8 @@ with tab_injuries:
                                 p_note.strip() if p_note.strip() else "-"
                             ]
                             ws_inj.append_row(new_row, value_input_option="USER_ENTERED")
-                            time.sleep(0.2)
-                            st.cache_data.clear()
+                            time.sleep(0.3)
+                            st.cache_data.clear() # 🌟 저장 직후 캐시 완벽 초기화
                             st.success(f"🎉 {add_team}의 [{p_name_kr or p_name_en}] 선수가 저장되었습니다!")
                             st.rerun()
                         except Exception as e:
@@ -2691,8 +2693,8 @@ with tab_injuries:
                                 ]
                                 
                                 ws_inj.update(f"A{sel_idx + 2}:M{sel_idx + 2}", [updated_row_values], value_input_option="USER_ENTERED")
-                                time.sleep(0.2)
-                                st.cache_data.clear()
+                                time.sleep(0.3)
+                                st.cache_data.clear() # 🌟 수정 직후 캐시 완벽 초기화
                                 st.success(f"🎉 [{e_kr or e_en}] 선수의 부상/결장 정보가 성공적으로 수정되었습니다!")
                                 st.rerun()
                             except Exception as e:
@@ -2725,8 +2727,8 @@ with tab_injuries:
                                     ws_inj = spreadsheet.worksheet(INJURY_SHEET_NAME)
                                     target_row_index = sel_player_to_remove[0] + 2
                                     ws_inj.delete_rows(target_row_index)
-                                    time.sleep(0.2)
-                                    st.cache_data.clear()
+                                    time.sleep(0.3)
+                                    st.cache_data.clear() # 🌟 삭제 직후 캐시 완벽 초기화
                                     st.success(f"🎉 [{sel_player_to_remove[1]}] 선수가 명단에서 정상적으로 제외되었습니다!")
                                     st.rerun()
                                 except Exception as e:
@@ -2742,20 +2744,20 @@ with tab_injuries:
     if not df_injuries.empty and "팀명" in df_injuries.columns:
         filtered_df = df_injuries[df_injuries["팀명"] == selected_team]
 
-    # 🌟 [보완] 결장사유 컬럼명을 유연하게 탐색하여 모든 팀이 0명으로 증발하는 현상 방지
+    # 🌟 [강화] 결장사유 컬럼명을 유연하고 안전하게 탐색
     reason_col = None
     if not filtered_df.empty:
-        for c in ["결장사유", "사유", "사유/비고"]:
-            if c in filtered_df.columns:
+        for c in filtered_df.columns:
+            if any(k in c for k in ["결장사유", "사유", "비고"]):
                 reason_col = c
                 break
-        if reason_col is None:
-            reason_col = filtered_df.columns[11] if len(filtered_df.columns) > 11 else filtered_df.columns[-1]
+        if reason_col is None and len(filtered_df.columns) > 11:
+            reason_col = filtered_df.columns[11]
 
     confirmed_players = []
     doubt_players = []
 
-    if not filtered_df.empty and reason_col in filtered_df.columns:
+    if not filtered_df.empty and reason_col and reason_col in filtered_df.columns:
         for _, p_row in filtered_df.iterrows():
             p_dict = p_row.to_dict()
             val_reason = str(p_dict.get(reason_col, "")).strip()
@@ -2763,6 +2765,9 @@ with tab_injuries:
                 doubt_players.append(p_dict)
             else:
                 confirmed_players.append(p_dict)
+    elif not filtered_df.empty:
+        # 사유 컬럼을 못 찾더라도 데이터가 있으면 전체를 확정 명단으로 안전하게 처리
+        confirmed_players = filtered_df.to_dict("records")
 
     st.subheader(f"📋 [{selected_team}] 결장자 현황 (총 {len(filtered_df)}명)")
 
@@ -2792,7 +2797,7 @@ with tab_injuries:
                 sub = p.get("교체", 0)
                 goals = p.get("골", 0)
                 assists = p.get("도움", 0)
-                reason = p.get(reason_col, "부상")
+                reason = p.get(reason_col, "부상") if reason_col else "부상"
                 note = p.get("특이사항", "-")
                 icon = "👑" if "주전" in role else "🏃"
                 note_str = f" *({note})*" if note != "-" else ""
@@ -2812,7 +2817,7 @@ with tab_injuries:
                 sub = p.get("교체", 0)
                 goals = p.get("골", 0)
                 assists = p.get("도움", 0)
-                reason = p.get(reason_col, "결장의심")
+                reason = p.get(reason_col, "결장의심") if reason_col else "결장의심"
                 note = p.get("특이사항", "-")
                 note_str = f" *({note})*" if note != "-" else ""
                 card_text += f"* ❓ **{name_str}** | `{pos}` · `{role}`\n"
