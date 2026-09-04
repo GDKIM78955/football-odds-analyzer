@@ -574,7 +574,8 @@ def get_gspread_client():
     except Exception:
         return None
 
-@st.cache_data(ttl=600, show_spinner=False)
+# 🌟 [개선] 캐시 수동 클리어 연동 및 안전한 시트 로딩
+@st.cache_data(ttl=60, show_spinner=False)
 def load_sheet_data(sheet_name):
     client = get_gspread_client()
     if not client:
@@ -1018,9 +1019,9 @@ with tab_input:
             home_yc = c_cd1.number_input("홈 경고(옐로)", min_value=0, value=0, key="in_home_yc")
             away_yc = c_cd2.number_input("원정 경고(옐로)", min_value=0, value=0, key="in_home_yc_single")
             home_rc = c_cd3.number_input("홈 퇴장(레드)", min_value=0, value=0, key="in_home_rc")
-            away_rc = c_cd4.number_input("원정 퇴장(레드)", min_value=0, value=0, key="in_home_rc_single")
+            away_rc = c_cd4.number_input("원정 퇴장(레드)", min_value=0, value=0, key="in_away_rc_single")
             home_xg = c_xg1.number_input("홈 xG", min_value=0.0, value=0.00, step=0.01, key="in_home_xg")
-            away_xg = c_xg2.number_input("원정 xG", min_value=0.0, value=0.00, step=0.01, key="in_away_xg_single")
+            away_xg = c_xg2.number_input("원정 xG", min_value=0.0, value=0.00, step=0.01, key="in_home_xg_single")
 
         st.markdown("---")
         if st.button("💾 구글 시트 1~9번 배당 탭 & 10번 경기내용 탭 일괄 저장 실행", type="primary", use_container_width=True):
@@ -2741,9 +2742,27 @@ with tab_injuries:
     if not df_injuries.empty and "팀명" in df_injuries.columns:
         filtered_df = df_injuries[df_injuries["팀명"] == selected_team]
 
-    reason_col = "결장사유" if not filtered_df.empty and "결장사유" in filtered_df.columns else "사유"
-    confirmed_players = filtered_df[filtered_df[reason_col] != "결장의심"].to_dict("records") if not filtered_df.empty else []
-    doubt_players = filtered_df[filtered_df[reason_col] == "결장의심"].to_dict("records") if not filtered_df.empty else []
+    # 🌟 [보완] 결장사유 컬럼명을 유연하게 탐색하여 모든 팀이 0명으로 증발하는 현상 방지
+    reason_col = None
+    if not filtered_df.empty:
+        for c in ["결장사유", "사유", "사유/비고"]:
+            if c in filtered_df.columns:
+                reason_col = c
+                break
+        if reason_col is None:
+            reason_col = filtered_df.columns[11] if len(filtered_df.columns) > 11 else filtered_df.columns[-1]
+
+    confirmed_players = []
+    doubt_players = []
+
+    if not filtered_df.empty and reason_col in filtered_df.columns:
+        for _, p_row in filtered_df.iterrows():
+            p_dict = p_row.to_dict()
+            val_reason = str(p_dict.get(reason_col, "")).strip()
+            if "의심" in val_reason or "GTD" in val_reason:
+                doubt_players.append(p_dict)
+            else:
+                confirmed_players.append(p_dict)
 
     st.subheader(f"📋 [{selected_team}] 결장자 현황 (총 {len(filtered_df)}명)")
 
