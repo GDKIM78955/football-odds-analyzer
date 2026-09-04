@@ -1010,7 +1010,7 @@ with tab_input:
 
             c_ps1, c_ps2, c_ps3, c_ps4 = st.columns(4)
             home_poss = c_ps1.number_input("홈 점유율 (%)", min_value=0.0, max_value=100.0, value=50.0, step=0.1, key="in_home_poss")
-            away_poss = c_ps2.number_input("원정 점유율 (%)", min_value=0.0, max_value=100.0, value=50.0, step=0.1, key="in_away_poss")
+            away_poss = c_ps2.number_input("원정 점유율 (%)", min_value=0.0, max_value=100.0, value=50.0, step=0.1, key="in_home_poss")
             home_pass = c_ps3.number_input("홈 패스성공률 (%)", min_value=0.0, max_value=100.0, value=80.0, step=0.1, key="in_home_pass")
             away_pass = c_ps4.number_input("원정 패스성공률 (%)", min_value=0.0, max_value=100.0, value=80.0, step=0.1, key="in_home_pass_single")
 
@@ -1020,7 +1020,7 @@ with tab_input:
             home_rc = c_cd3.number_input("홈 퇴장(레드)", min_value=0, value=0, key="in_home_rc")
             away_rc = c_cd4.number_input("원정 퇴장(레드)", min_value=0, value=0, key="in_home_rc_single")
             home_xg = c_xg1.number_input("홈 xG", min_value=0.0, value=0.00, step=0.01, key="in_home_xg")
-            away_xg = c_xg2.number_input("원정 xG", min_value=0.0, value=0.00, step=0.01, key="in_away_xg_single")
+            away_xg = c_xg2.number_input("원정 xG", min_value=0.0, value=0.00, step=0.01, key="in_home_xg_single")
 
         st.markdown("---")
         if st.button("💾 구글 시트 1~9번 배당 탭 & 10번 경기내용 탭 일괄 저장 실행", type="primary", use_container_width=True):
@@ -2617,7 +2617,6 @@ with tab_injuries:
                 else:
                     st.warning("선수 이름을 입력해 주세요.")
 
-    # 🌟 [신규 추가] 등록된 부상 선수 정보 수정하기 기능
     with col_btn2:
         with st.expander(f"✏️ 부상 선수 정보 수정하기", expanded=False):
             if not df_injuries.empty and "팀명" in df_injuries.columns:
@@ -2630,12 +2629,45 @@ with tab_injuries:
                         disp_name = f"{kr} ({en})" if kr and en else (kr or en)
                         edit_player_opts.append((idx, disp_name, row))
                     
-                    sel_edit_item = st.selectbox("수정할 선수 선택", edit_player_opts, format_func=lambda x: x[1], key="sel_edit_player_target")
+                    # 🌟 [해결책] on_change를 통해 선수가 바뀔 때마다 세션 상태에 해당 선수 데이터를 강제로 즉시 반영
+                    def on_edit_player_select():
+                        sel = st.session_state.sel_edit_player_target
+                        if sel:
+                            r_data = sel[2]
+                            st.session_state.edit_p_kr_val = str(r_data.get("선수한글명", ""))
+                            st.session_state.edit_p_en_val = str(r_data.get("선수영문명", ""))
+                            st.session_state.edit_p_role_val = str(r_data.get("역할", "주전"))
+                            st.session_state.edit_p_note_val = str(r_data.get("특이사항", "-"))
+                            st.session_state.edit_p_start_val = int(r_data.get("선발", 0) or 0)
+                            st.session_state.edit_p_sub_val = int(r_data.get("교체", 0) or 0)
+                            st.session_state.edit_p_goals_val = int(r_data.get("골", 0) or 0)
+                            st.session_state.edit_p_assists_val = int(r_data.get("도움", 0) or 0)
+
+                    # 최초 실행 시 초기값 세팅
+                    if "edit_p_kr_val" not in st.session_state and edit_player_opts:
+                        init_r = edit_player_opts[0][2]
+                        st.session_state.edit_p_kr_val = str(init_r.get("선수한글명", ""))
+                        st.session_state.edit_p_en_val = str(init_r.get("선수영문명", ""))
+                        st.session_state.edit_p_role_val = str(init_r.get("역할", "주전"))
+                        st.session_state.edit_p_note_val = str(init_r.get("특이사항", "-"))
+                        st.session_state.edit_p_start_val = int(init_r.get("선발", 0) or 0)
+                        st.session_state.edit_p_sub_val = int(init_r.get("교체", 0) or 0)
+                        st.session_state.edit_p_goals_val = int(init_r.get("골", 0) or 0)
+                        st.session_state.edit_p_assists_val = int(init_r.get("도움", 0) or 0)
+
+                    sel_edit_item = st.selectbox(
+                        "수정할 선수 선택", 
+                        edit_player_opts, 
+                        format_func=lambda x: x[1], 
+                        key="sel_edit_player_target",
+                        on_change=on_edit_player_select
+                    )
+                    
                     target_row_idx = sel_edit_item[0]
                     target_row_data = sel_edit_item[2]
 
-                    e_kr = st.text_input("선수 한글명 수정", value=str(target_row_data.get("선수한글명", "")), key="edit_p_kr")
-                    e_en = st.text_input("선수 영문명 수정", value=str(target_row_data.get("선수영문명", "")), key="edit_p_en")
+                    e_kr = st.text_input("선수 한글명 수정", value=st.session_state.get("edit_p_kr_val", str(target_row_data.get("선수한글명", ""))), key="edit_p_kr")
+                    e_en = st.text_input("선수 영문명 수정", value=st.session_state.get("edit_p_en_val", str(target_row_data.get("선수영문명", ""))), key="edit_p_en")
                     
                     pos_list = ["FW", "MF", "DF", "GK"]
                     curr_pos = str(target_row_data.get("포지션", "MF"))
@@ -2643,19 +2675,19 @@ with tab_injuries:
                     e_pos = st.selectbox("포지션 수정", pos_list, index=pos_idx, key="edit_p_pos")
 
                     e1, e2, e3, e4 = st.columns(4)
-                    e_start = e1.number_input("선발", min_value=0, value=int(target_row_data.get("선발", 0) or 0), key="edit_p_start")
-                    e_sub = e2.number_input("교체", min_value=0, value=int(target_row_data.get("교체", 0) or 0), key="edit_p_sub")
-                    e_goals = e3.number_input("골", min_value=0, value=int(target_row_data.get("골", 0) or 0), key="edit_p_goals")
-                    e_assists = e4.number_input("도움", min_value=0, value=int(target_row_data.get("도움", 0) or 0), key="edit_p_assists")
+                    e_start = e1.number_input("선발", min_value=0, value=st.session_state.get("edit_p_start_val", int(target_row_data.get("선발", 0) or 0)), key="edit_p_start")
+                    e_sub = e2.number_input("교체", min_value=0, value=st.session_state.get("edit_p_sub_val", int(target_row_data.get("교체", 0) or 0)), key="edit_p_sub")
+                    e_goals = e3.number_input("골", min_value=0, value=st.session_state.get("edit_p_goals_val", int(target_row_data.get("골", 0) or 0)), key="edit_p_goals")
+                    e_assists = e4.number_input("도움", min_value=0, value=st.session_state.get("edit_p_assists_val", int(target_row_data.get("도움", 0) or 0)), key="edit_p_assists")
 
-                    e_role = st.text_input("팀 내 역할 수정", value=str(target_row_data.get("역할", "주전")), key="edit_p_role")
+                    e_role = st.text_input("팀 내 역할 수정", value=st.session_state.get("edit_p_role_val", str(target_row_data.get("역할", "주전"))), key="edit_p_role")
                     
                     reason_list = ["부상", "결장의심", "징계/퇴장", "기타"]
                     curr_reason = str(target_row_data.get("결장사유", target_row_data.get("사유", "부상")))
                     reason_idx = reason_list.index(curr_reason) if curr_reason in reason_list else 0
                     e_reason = st.selectbox("결장 사유 수정", reason_list, index=reason_idx, key="edit_p_reason")
                     
-                    e_note = st.text_input("특이사항 (복귀예상일 등) 수정", value=str(target_row_data.get("특이사항", "-")), key="edit_p_note")
+                    e_note = st.text_input("특이사항 (복귀예상일 등) 수정", value=st.session_state.get("edit_p_note_val", str(target_row_data.get("특이사항", "-"))), key="edit_p_note")
 
                     if st.button("🔄 부상 선수 정보 갱신하기", type="primary", use_container_width=True):
                         client = get_gspread_client()
