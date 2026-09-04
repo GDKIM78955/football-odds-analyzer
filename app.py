@@ -574,8 +574,7 @@ def get_gspread_client():
     except Exception:
         return None
 
-# 🌟 [보완] 캐시 오작동 방지를 위해 TTL 10초 및 안전한 컬럼 전처리 적용
-@st.cache_data(ttl=10, show_spinner=False)
+@st.cache_data(ttl=30, show_spinner=False)
 def load_sheet_data(sheet_name):
     client = get_gspread_client()
     if not client:
@@ -586,7 +585,6 @@ def load_sheet_data(sheet_name):
             ws = spreadsheet.worksheet(sheet_name)
             data = ws.get_all_values()
             if len(data) > 1:
-                # 🌟 컬럼명 공백 제거로 매칭 오류 원천 차단
                 cols = [str(c).strip() for c in data[0]]
                 df = pd.DataFrame(data[1:], columns=cols)
                 df = df.dropna(how='all')
@@ -1013,7 +1011,7 @@ with tab_input:
 
             c_ps1, c_ps2, c_ps3, c_ps4 = st.columns(4)
             home_poss = c_ps1.number_input("홈 점유율 (%)", min_value=0.0, max_value=100.0, value=50.0, step=0.1, key="in_home_poss")
-            away_poss = c_ps2.number_input("원정 점유율 (%)", min_value=0.0, max_value=100.0, value=50.0, step=0.1, key="in_away_poss")
+            away_poss = c_ps2.number_input("원정 점유율 (%)", min_value=0.0, max_value=100.0, value=50.0, step=0.1, key="in_home_poss")
             home_pass = c_ps3.number_input("홈 패스성공률 (%)", min_value=0.0, max_value=100.0, value=80.0, step=0.1, key="in_home_pass")
             away_pass = c_ps4.number_input("원정 패스성공률 (%)", min_value=0.0, max_value=100.0, value=80.0, step=0.1, key="in_home_pass_single")
 
@@ -1178,7 +1176,7 @@ with tab_scanner:
                 if next_s_match:
                     st.caption(f"⏭️ **다음 대기 경기:** [{next_s_match['home']} vs {next_s_match['away']}] ({next_s_match['league']})")
                 else:
-                    st.caption("🏁 이번 경기가 대기열의 마지막 경기입니다.")
+                    st.caption("🏁 이번 경기가 스캔 대기열의 마지막 경기입니다.")
 
                 st.markdown("##### 🌐 주요 해외 북메이커 배당 입력 (있는 것만 입력)")
                 sq_overseas_inputs = {}
@@ -2065,7 +2063,7 @@ with tab_analysis:
             
             if valid_h:
                 avg_oh = round(float(np.mean(valid_h)), 2)
-                avg_od = round(float(np.mean(valid_d)), 2)
+                avg_od = round(float(np.mean(valid_od)), 2)
                 avg_oa = round(float(np.mean(valid_oa)), 2)
                 o_odds_val = (avg_oh, avg_od, avg_oa)
             else:
@@ -2549,16 +2547,31 @@ with tab_injuries:
 
     st.markdown("---")
 
+    # 🌟 [강화] 팀 목록이 일시적으로 누락되지 않도록 다중 시트 통합 및 안전한 폴백 처리
     all_known_teams = set()
-    if not df_injuries.empty and "팀명" in df_injuries.columns:
-        all_known_teams.update(df_injuries["팀명"].dropna().unique())
-    if not df_stats_red.empty:
-        if "홈팀" in df_stats_red.columns:
-            all_known_teams.update(df_stats_red["홈팀"].dropna().unique())
-        if "원정팀" in df_stats_red.columns:
-            all_known_teams.update(df_stats_red["원정팀"].dropna().unique())
+    if not df_injuries.empty:
+        for col_cand in ["팀명", "팀", "Team"]:
+            if col_cand in df_injuries.columns:
+                all_known_teams.update(df_injuries[col_cand].dropna().unique())
+                break
+        if not all_known_teams and len(df_injuries.columns) > 2:
+            all_known_teams.update(df_injuries.iloc[:, 2].dropna().unique())
 
-    team_options = sorted(list(all_known_teams)) if all_known_teams else ["웨스트햄", "리버풀", "맨체스터시티"]
+    if not df_stats_red.empty:
+        for col_cand in ["홈팀", "Home"]:
+            if col_cand in df_stats_red.columns:
+                all_known_teams.update(df_stats_red[col_cand].dropna().unique())
+                break
+        for col_cand in ["원정팀", "Away"]:
+            if col_cand in df_stats_red.columns:
+                all_known_teams.update(df_stats_red[col_cand].dropna().unique())
+                break
+
+    # 기본 샘플 팀들을 기본 베이스로 깔아두고 시트에서 읽은 팀들을 합침 (팀 목록 증발 원천 차단)
+    fallback_teams = ["웨스트햄", "리버풀", "맨체스터시티", "아스날", "첼시", "토트넘", "맨체스터유나이티드", "뉴캐슬", "아스톤빌라", "브라이튼"]
+    all_known_teams.update(fallback_teams)
+    
+    team_options = sorted([str(t).strip() for t in all_known_teams if str(t).strip() and str(t).strip() != "nan"])
 
     c_s1, c_s2 = st.columns(2)
     default_inj_idx = 0
@@ -2567,7 +2580,7 @@ with tab_injuries:
         if sm["home"] in team_options:
             default_inj_idx = team_options.index(sm["home"])
 
-    selected_team = c_s1.selectbox("조회할 팀명 선택", team_options if team_options else ["직접 등록 필요"], index=default_inj_idx, key="inj_filter_team")
+    selected_team = c_s1.selectbox("조회할 팀명 선택", team_options, index=default_inj_idx, key="inj_filter_team")
     inj_league_title = c_s2.text_input("리그/대회 기준 표기", value="잉글랜드 1부리그 기록", key="inj_custom_league")
 
     col_btn1, col_btn2, col_btn3 = st.columns(3)
@@ -2612,7 +2625,7 @@ with tab_injuries:
                             ]
                             ws_inj.append_row(new_row, value_input_option="USER_ENTERED")
                             time.sleep(0.3)
-                            st.cache_data.clear() # 🌟 저장 직후 캐시 완벽 초기화
+                            st.cache_data.clear()
                             st.success(f"🎉 {add_team}의 [{p_name_kr or p_name_en}] 선수가 저장되었습니다!")
                             st.rerun()
                         except Exception as e:
@@ -2622,14 +2635,16 @@ with tab_injuries:
 
     with col_btn2:
         with st.expander(f"✏️ 부상 선수 정보 수정하기", expanded=False):
-            if not df_injuries.empty and "팀명" in df_injuries.columns:
-                filtered_df_edit = df_injuries[df_injuries["팀명"] == selected_team]
+            team_col_name = "팀명" if not df_injuries.empty and "팀명" in df_injuries.columns else df_injuries.columns[2] if not df_injuries.empty and len(df_injuries.columns) > 2 else None
+            
+            if not df_injuries.empty and team_col_name:
+                filtered_df_edit = df_injuries[df_injuries[team_col_name] == selected_team]
                 if not filtered_df_edit.empty:
                     edit_player_ids = []
                     edit_player_labels = {}
                     for idx, row in filtered_df_edit.iterrows():
-                        kr = row.get("선수한글명", "")
-                        en = row.get("선수영문명", "")
+                        kr = row.get("선수한글명", row.get(df_injuries.columns[4], ""))
+                        en = row.get("선수영문명", row.get(df_injuries.columns[3], ""))
                         disp_name = f"{kr} ({en})" if kr and en else (kr or en)
                         edit_player_ids.append(idx)
                         edit_player_labels[idx] = disp_name
@@ -2646,28 +2661,28 @@ with tab_injuries:
                     
                     target_row_data = filtered_df_edit.loc[sel_idx]
 
-                    e_kr = st.text_input("선수 한글명 수정", value=str(target_row_data.get("선수한글명", "")), key=f"edit_kr_{sel_idx}")
-                    e_en = st.text_input("선수 영문명 수정", value=str(target_row_data.get("선수영문명", "")), key=f"edit_en_{sel_idx}")
+                    e_kr = st.text_input("선수 한글명 수정", value=str(target_row_data.get("선수한글명", target_row_data.get(df_injuries.columns[4], ""))), key=f"edit_kr_{sel_idx}")
+                    e_en = st.text_input("선수 영문명 수정", value=str(target_row_data.get("선수영문명", target_row_data.get(df_injuries.columns[3], ""))), key=f"edit_en_{sel_idx}")
                     
                     pos_list = ["FW", "MF", "DF", "GK"]
-                    curr_pos = str(target_row_data.get("포지션", "MF"))
+                    curr_pos = str(target_row_data.get("포지션", target_row_data.get(df_injuries.columns[5], "MF")))
                     pos_idx = pos_list.index(curr_pos) if curr_pos in pos_list else 1
                     e_pos = st.selectbox("포지션 수정", pos_list, index=pos_idx, key=f"edit_pos_{sel_idx}")
 
                     e1, e2, e3, e4 = st.columns(4)
-                    e_start = e1.number_input("선발", min_value=0, value=int(target_row_data.get("선발", 0) or 0), key=f"edit_start_{sel_idx}")
-                    e_sub = e2.number_input("교체", min_value=0, value=int(target_row_data.get("교체", 0) or 0), key=f"edit_sub_{sel_idx}")
-                    e_goals = e3.number_input("골", min_value=0, value=int(target_row_data.get("골", 0) or 0), key=f"edit_goals_{sel_idx}")
-                    e_assists = e4.number_input("도움", min_value=0, value=int(target_row_data.get("도움", 0) or 0), key=f"edit_assists_{sel_idx}")
+                    e_start = e1.number_input("선발", min_value=0, value=int(target_row_data.get("선발", target_row_data.get(df_injuries.columns[6], 0)) or 0), key=f"edit_start_{sel_idx}")
+                    e_sub = e2.number_input("교체", min_value=0, value=int(target_row_data.get("교체", target_row_data.get(df_injuries.columns[7], 0)) or 0), key=f"edit_sub_{sel_idx}")
+                    e_goals = e3.number_input("골", min_value=0, value=int(target_row_data.get("골", target_row_data.get(df_injuries.columns[8], 0)) or 0), key=f"edit_goals_{sel_idx}")
+                    e_assists = e4.number_input("도움", min_value=0, value=int(target_row_data.get("도움", target_row_data.get(df_injuries.columns[9], 0)) or 0), key=f"edit_assists_{sel_idx}")
 
-                    e_role = st.text_input("팀 내 역할 수정", value=str(target_row_data.get("역할", "주전")), key=f"edit_role_{sel_idx}")
+                    e_role = st.text_input("팀 내 역할 수정", value=str(target_row_data.get("역할", target_row_data.get(df_injuries.columns[10], "주전"))), key=f"edit_role_{sel_idx}")
                     
                     reason_list = ["부상", "결장의심", "징계/퇴장", "기타"]
-                    curr_reason = str(target_row_data.get("결장사유", target_row_data.get("사유", "부상")))
+                    curr_reason = str(target_row_data.get("결장사유", target_row_data.get("사유", target_row_data.get(df_injuries.columns[11], "부상"))))
                     reason_idx = reason_list.index(curr_reason) if curr_reason in reason_list else 0
                     e_reason = st.selectbox("결장 사유 수정", reason_list, index=reason_idx, key=f"edit_reason_{sel_idx}")
                     
-                    e_note = st.text_input("특이사항 (복귀예상일 등) 수정", value=str(target_row_data.get("특이사항", "-")), key=f"edit_note_{sel_idx}")
+                    e_note = st.text_input("특이사항 (복귀예상일 등) 수정", value=str(target_row_data.get("특이사항", target_row_data.get(df_injuries.columns[12], "-"))), key=f"edit_note_{sel_idx}")
 
                     if st.button("🔄 부상 선수 정보 갱신하기", type="primary", use_container_width=True):
                         client = get_gspread_client()
@@ -2694,7 +2709,7 @@ with tab_injuries:
                                 
                                 ws_inj.update(f"A{sel_idx + 2}:M{sel_idx + 2}", [updated_row_values], value_input_option="USER_ENTERED")
                                 time.sleep(0.3)
-                                st.cache_data.clear() # 🌟 수정 직후 캐시 완벽 초기화
+                                st.cache_data.clear()
                                 st.success(f"🎉 [{e_kr or e_en}] 선수의 부상/결장 정보가 성공적으로 수정되었습니다!")
                                 st.rerun()
                             except Exception as e:
@@ -2706,8 +2721,9 @@ with tab_injuries:
 
     with col_btn3:
         with st.expander(f"🗑️ 복귀 선수 명단에서 제외", expanded=False):
-            if not df_injuries.empty and "팀명" in df_injuries.columns:
-                filtered_df_rm = df_injuries[df_injuries["팀명"] == selected_team]
+            team_col_name = "팀명" if not df_injuries.empty and "팀명" in df_injuries.columns else df_injuries.columns[2] if not df_injuries.empty and len(df_injuries.columns) > 2 else None
+            if not df_injuries.empty and team_col_name:
+                filtered_df_rm = df_injuries[df_injuries[team_col_name] == selected_team]
                 if not filtered_df_rm.empty:
                     player_options = []
                     for idx, row in filtered_df_rm.iterrows():
@@ -2728,7 +2744,7 @@ with tab_injuries:
                                     target_row_index = sel_player_to_remove[0] + 2
                                     ws_inj.delete_rows(target_row_index)
                                     time.sleep(0.3)
-                                    st.cache_data.clear() # 🌟 삭제 직후 캐시 완벽 초기화
+                                    st.cache_data.clear()
                                     st.success(f"🎉 [{sel_player_to_remove[1]}] 선수가 명단에서 정상적으로 제외되었습니다!")
                                     st.rerun()
                                 except Exception as e:
@@ -2741,10 +2757,11 @@ with tab_injuries:
     st.markdown("---")
 
     filtered_df = pd.DataFrame()
-    if not df_injuries.empty and "팀명" in df_injuries.columns:
-        filtered_df = df_injuries[df_injuries["팀명"] == selected_team]
+    if not df_injuries.empty:
+        team_col_name = "팀명" if "팀명" in df_injuries.columns else (df_injuries.columns[2] if len(df_injuries.columns) > 2 else None)
+        if team_col_name:
+            filtered_df = df_injuries[df_injuries[team_col_name].astype(str).str.strip() == str(selected_team).strip()]
 
-    # 🌟 [강화] 결장사유 컬럼명을 유연하고 안전하게 탐색
     reason_col = None
     if not filtered_df.empty:
         for c in filtered_df.columns:
@@ -2766,7 +2783,6 @@ with tab_injuries:
             else:
                 confirmed_players.append(p_dict)
     elif not filtered_df.empty:
-        # 사유 컬럼을 못 찾더라도 데이터가 있으면 전체를 확정 명단으로 안전하게 처리
         confirmed_players = filtered_df.to_dict("records")
 
     st.subheader(f"📋 [{selected_team}] 결장자 현황 (총 {len(filtered_df)}명)")
