@@ -169,7 +169,7 @@ def render_tab1(spreadsheet_id, bookmakers):
                     q_home_shots = c_st1.number_input("홈 슈팅", min_value=0, value=0, key=f"q_{cur_idx}_home_shots")
                     q_away_shots = c_st2.number_input("원정 슈팅", min_value=0, value=0, key=f"q_{cur_idx}_away_shots")
                     q_home_sot = c_st3.number_input("홈 유효슈팅", min_value=0, value=0, key=f"q_{cur_idx}_home_sot")
-                    q_away_sot = c_st4.number_input("원정 유효슈팅", min_value=0, value=0, key=f"q_{cur_idx}_home_sot")
+                    q_away_sot = c_st4.number_input("원정 유효슈팅", min_value=0, value=0, key=f"q_{cur_idx}_away_sot")
 
                     c_ps1, c_ps2, c_ps3, c_ps4 = st.columns(4)
                     q_home_poss = c_ps1.number_input("홈 점유율 (%)", min_value=0.0, max_value=100.0, value=50.0, step=0.1, key=f"q_{cur_idx}_home_poss")
@@ -259,13 +259,13 @@ def render_tab1(spreadsheet_id, bookmakers):
         with st.expander("📊 슈팅 / 점유율 / 패스 / 파울 / xG 세부 스탯", expanded=True):
             c_st1, c_st2, c_st3, c_st4 = st.columns(4)
             home_shots = c_st1.number_input("홈 슈팅", min_value=0, value=0, key="in_home_shots")
-            away_shots = c_st2.number_input("원정 슈팅", min_value=0, value=0, key="in_away_shots")
+            away_shots = c_st2.number_input("원정 슈팅", min_value=0, value=0, key="in_home_shots_single")
             home_sot = c_st3.number_input("홈 유효슈팅", min_value=0, value=0, key="in_home_sot")
             away_sot = c_st4.number_input("원정 유효슈팅", min_value=0, value=0, key="in_home_sot_single")
 
             c_ps1, c_ps2, c_ps3, c_ps4 = st.columns(4)
             home_poss = c_ps1.number_input("홈 점유율 (%)", min_value=0.0, max_value=100.0, value=50.0, step=0.1, key="in_home_poss")
-            away_poss = c_ps2.number_input("원정 점유율 (%)", min_value=0.0, max_value=100.0, value=50.0, step=0.1, key="in_away_poss_single")
+            away_poss = c_ps2.number_input("원정 점유율 (%)", min_value=0.0, max_value=100.0, value=50.0, step=0.1, key="in_home_poss_single")
             home_pass = c_ps3.number_input("홈 패스성공률 (%)", min_value=0.0, max_value=100.0, value=80.0, step=0.1, key="in_home_pass")
             away_pass = c_ps4.number_input("원정 패스성공률 (%)", min_value=0.0, max_value=100.0, value=80.0, step=0.1, key="in_home_pass_single")
 
