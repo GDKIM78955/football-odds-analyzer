@@ -169,7 +169,7 @@ def render_tab1(spreadsheet_id, bookmakers):
                     q_home_shots = c_st1.number_input("홈 슈팅", min_value=0, value=0, key=f"q_{cur_idx}_home_shots")
                     q_away_shots = c_st2.number_input("원정 슈팅", min_value=0, value=0, key=f"q_{cur_idx}_away_shots")
                     q_home_sot = c_st3.number_input("홈 유효슈팅", min_value=0, value=0, key=f"q_{cur_idx}_home_sot")
-                    q_away_sot = c_st4.number_input("원정 유효슈팅", min_value=0, value=0, key=f"q_{cur_idx}_away_sot")
+                    q_away_sot = c_st4.number_input("원정 유효슈팅", min_value=0, value=0, key=f"q_{cur_idx}_home_sot")
 
                     c_ps1, c_ps2, c_ps3, c_ps4 = st.columns(4)
                     q_home_poss = c_ps1.number_input("홈 점유율 (%)", min_value=0.0, max_value=100.0, value=50.0, step=0.1, key=f"q_{cur_idx}_home_poss")
@@ -179,9 +179,9 @@ def render_tab1(spreadsheet_id, bookmakers):
 
                     c_cd1, c_cd2, c_cd3, c_cd4, c_xg1, c_xg2 = st.columns(6)
                     q_home_yc = c_cd1.number_input("홈 경고", min_value=0, value=0, key=f"q_{cur_idx}_home_yc")
-                    q_away_yc = c_cd2.number_input("원정 경고", min_value=0, value=0, key=f"q_{cur_idx}_home_yc")
+                    q_away_yc = c_cd2.number_input("원정 경고", min_value=0, value=0, key=f"q_{cur_idx}_away_yc")
                     q_home_rc = c_cd3.number_input("홈 퇴장", min_value=0, value=0, key=f"q_{cur_idx}_home_rc")
-                    q_away_rc = c_cd4.number_input("원정 퇴장", min_value=0, value=0, key=f"q_{cur_idx}_home_rc")
+                    q_away_rc = c_cd4.number_input("원정 퇴장", min_value=0, value=0, key=f"q_{cur_idx}_away_rc")
                     q_home_xg = c_xg1.number_input("홈 xG", min_value=0.0, value=0.00, step=0.01, key=f"q_{cur_idx}_home_xg")
                     q_away_xg = c_xg2.number_input("원정 xG", min_value=0.0, value=0.00, step=0.01, key=f"q_{cur_idx}_away_xg")
 
@@ -206,6 +206,7 @@ def render_tab1(spreadsheet_id, bookmakers):
                             st.session_state.current_queue_idx += 1
                             st.cache_data.clear()
                             st.success(f"🎉 [{cur_match['home']} vs {cur_match['away']}] 저장 완료!")
+                            import time
                             time.sleep(0.5)
                             st.rerun()
                         else:
@@ -260,11 +261,11 @@ def render_tab1(spreadsheet_id, bookmakers):
             home_shots = c_st1.number_input("홈 슈팅", min_value=0, value=0, key="in_home_shots")
             away_shots = c_st2.number_input("원정 슈팅", min_value=0, value=0, key="in_away_shots")
             home_sot = c_st3.number_input("홈 유효슈팅", min_value=0, value=0, key="in_home_sot")
-            away_sot = c_st4.number_input("원정 유효슈팅", min_value=0, value=0, key="in_home_sot")
+            away_sot = c_st4.number_input("원정 유효슈팅", min_value=0, value=0, key="in_home_sot_single")
 
             c_ps1, c_ps2, c_ps3, c_ps4 = st.columns(4)
             home_poss = c_ps1.number_input("홈 점유율 (%)", min_value=0.0, max_value=100.0, value=50.0, step=0.1, key="in_home_poss")
-            away_poss = c_ps2.number_input("원정 점유율 (%)", min_value=0.0, max_value=100.0, value=50.0, step=0.1, key="in_away_poss")
+            away_poss = c_ps2.number_input("원정 점유율 (%)", min_value=0.0, max_value=100.0, value=50.0, step=0.1, key="in_away_poss_single")
             home_pass = c_ps3.number_input("홈 패스성공률 (%)", min_value=0.0, max_value=100.0, value=80.0, step=0.1, key="in_home_pass")
             away_pass = c_ps4.number_input("원정 패스성공률 (%)", min_value=0.0, max_value=100.0, value=80.0, step=0.1, key="in_home_pass_single")
 
