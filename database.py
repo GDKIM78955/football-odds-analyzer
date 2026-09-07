@@ -1,64 +1,18 @@
-import streamlit as st
-import pandas as pd
-import gspread
-import time
-from oauth2client.service_account import ServiceAccountCredentials
+# database.py 내부의 save_match_data_to_sheets 함수 수정 예시
 
-# 1. 구글 시트 연동 클라이언트
-@st.cache_resource(show_spinner=False)
-def get_gspread_client():
-    try:
-        if "gcp_service_account" in st.secrets:
-            creds_dict = dict(st.secrets["gcp_service_account"])
-            scope = [
-                "https://spreadsheets.google.com/feeds",
-                "https://www.googleapis.com/auth/drive"
-            ]
-            creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
-            return gspread.authorize(creds)
-        return None
-    except Exception:
-        return None
-
-# 2. 안전한 시트 데이터 로딩 함수 (캐시 적용)
-@st.cache_data(ttl=30, show_spinner=False)
-def load_sheet_data(sheet_name, spreadsheet_id=""):
-    client = get_gspread_client()
-    if not client or not spreadsheet_id:
-        return pd.DataFrame()
-    for attempt in range(4):
-        try:
-            spreadsheet = client.open_by_key(spreadsheet_id)
-            ws = spreadsheet.worksheet(sheet_name)
-            data = ws.get_all_values()
-            if len(data) > 1:
-                cols = [str(c).strip() for c in data[0]]
-                df = pd.DataFrame(data[1:], columns=cols)
-                df = df.dropna(how='all')
-                return df
-            return pd.DataFrame()
-        except Exception:
-            time.sleep(1.0 * (attempt + 1))
-            continue
-    return pd.DataFrame()
-
-# 3. 경기 데이터 구글 시트 일괄 저장 함수 (429 에러 방어 및 누락/중복 감지 장치 포함)
-def save_match_data_to_sheets(spreadsheet_id, bookmakers, stats_sheet_name, match_info, odds_dict, stats_dict):
+def save_match_data_to_sheets(match_info, odds_dict, stats_dict):
     client = get_gspread_client()
     if not client:
         return False, "구글 시트 연동 실패: Secrets 설정을 확인하세요."
-    
+
     try:
-        spreadsheet = client.open_by_key(spreadsheet_id)
-        
+        spreadsheet = client.open_by_key(SPREADSHEET_ID)
+
         season = match_info["season"]
         league = match_info["league"]
         match_date = match_info["date"]
         home_team = match_info["home"]
         away_team = match_info["away"]
-        
-        expected_bms = [bm for bm in bookmakers if bm in odds_dict and odds_dict[bm][0] > 0 and odds_dict[bm][1] > 0 and odds_dict[bm][2] > 0]
-        expected_count = len(expected_bms)
 
         b_h, b_d, b_a = odds_dict.get("배트맨", (0.0, 0.0, 0.0))
         if b_h > 0 and b_d > 0 and b_a > 0:
@@ -83,52 +37,36 @@ def save_match_data_to_sheets(spreadsheet_id, bookmakers, stats_sheet_name, matc
         score_total = home_score + away_score
         score_diff = home_score - away_score
         score_diff_abs = abs(score_diff)
-        
+
         saved_count = 0
-        failed_bms = []
-        duplicate_bms = []
-        
-        for bm_name in bookmakers:
+        failed_bookmakers = []
+
+        # 1. 대상 북메이커 시트 일괄 저장
+        for bm_name in BOOKMAKERS:
             if bm_name not in odds_dict:
                 continue
             h, d, a = odds_dict[bm_name]
             if h <= 0 or d <= 0 or a <= 0:
                 continue
-            
-            # 🛡️ [중복 방지 검사]
-            try:
-                ws = spreadsheet.worksheet(bm_name)
-                all_rows = ws.get_all_values()
-                if len(all_rows) > 1:
-                    last_row = all_rows[-1]
-                    if len(last_row) >= 5:
-                        if (str(last_row[0]).strip() == str(season).strip() and
-                            str(last_row[1]).strip() == str(league).strip() and
-                            str(last_row[3]).strip() == str(home_team).strip() and
-                            str(last_row[4]).strip() == str(away_team).strip()):
-                            duplicate_bms.append(bm_name)
-                            continue
-            except Exception:
-                pass
-            
+
             bm_inv = (1/h) + (1/d) + (1/a)
             bm_payout = 1 / bm_inv
             bm_prob_h = (1/h) / bm_inv
             bm_prob_d = (1/d) / bm_inv
             bm_prob_a = (1/a) / bm_inv
-            
+
             diff_h = round(b_h - h, 2) if b_h > 0 else 0.0
             diff_d = round(b_d - d, 2) if d > 0 else 0.0
             diff_a = round(b_a - a, 2) if b_a > 0 else 0.0
-            
+
             fair_h = round(b_payout / bm_prob_h, 6) if (b_payout > 0 and bm_prob_h > 0) else 0.0
             fair_d = round(b_payout / bm_prob_d, 6) if (b_payout > 0 and bm_prob_d > 0) else 0.0
             fair_a = round(b_payout / bm_prob_a, 6) if (b_payout > 0 and bm_prob_a > 0) else 0.0
-            
+
             loss_h = round(((b_h - fair_h) / fair_h) * 100, 5) if fair_h > 0 else 0.0
             loss_d = round(((b_d - fair_d) / fair_d) * 100, 5) if fair_d > 0 else 0.0
             loss_a = round(((b_a - fair_a) / fair_a) * 100, 5) if fair_a > 0 else 0.0
-            
+
             min_odd, max_odd = min(h, d, a), max(h, d, a)
             win_odd = h if match_res == "홈승" else (d if match_res == "무승부" else a)
             odd_type = "정배" if win_odd == min_odd else ("역배" if win_odd == max_odd else "중배")
@@ -147,23 +85,27 @@ def save_match_data_to_sheets(spreadsheet_id, bookmakers, stats_sheet_name, matc
                 home_score, away_score, score_total, score_diff, score_diff_abs,
                 odd_type, match_res, win_odd
             ]
-            
-            # 🛡️ [429 방어 및 누락 감지 재시도 로직]
-            success_written = False
-            for attempt in range(3): # 429 에러 시 최대 3번까지 재시도
+
+            success_flag = False
+            # 429 에러 방지를 위한 재시도(Retry) 로직 추가
+            for attempt in range(3):
                 try:
                     ws = spreadsheet.worksheet(bm_name)
                     ws.append_row(row_data_odds, value_input_option="USER_ENTERED")
                     saved_count += 1
-                    success_written = True
-                    time.sleep(0.3) # 429 방지를 위해 간격 살짝 상향
+                    success_flag = True
+                    time.sleep(0.3)  # API 호출 간격 확보 (429 방지)
                     break
-                except Exception:
-                    time.sleep(1.0 * (attempt + 1))
+                except Exception as e:
+                    if "429" in str(e):
+                        time.sleep(1.5 * (attempt + 1)) # 429 발생 시 대기 시간 연장
+                    else:
+                        time.sleep(0.5)
             
-            if not success_written:
-                failed_bms.append(bm_name)
+            if not success_flag:
+                failed_bookmakers.append(bm_name.upper())
 
+        # 2. '경기내용' 시트 저장
         h_1h = stats_dict["home_1h"]
         h_2h = stats_dict["home_2h"]
         a_1h = stats_dict["away_1h"]
@@ -177,7 +119,7 @@ def save_match_data_to_sheets(spreadsheet_id, bookmakers, stats_sheet_name, matc
         h_2h_ratio = round((h_2h / home_score) * 100, 2) if home_score > 0 else 0.0
         a_1h_ratio = round((a_1h / away_score) * 100, 2) if away_score > 0 else 0.0
         a_2h_ratio = round((a_2h / away_score) * 100, 2) if away_score > 0 else 0.0
-        
+
         h_sot_ratio = round((h_sot / h_shots) * 100, 2) if h_shots > 0 else 0.0
         a_sot_ratio = round((a_sot / a_shots) * 100, 2) if a_shots > 0 else 0.0
 
@@ -197,49 +139,28 @@ def save_match_data_to_sheets(spreadsheet_id, bookmakers, stats_sheet_name, matc
             stats_dict['home_xg'], stats_dict['away_xg']
         ]
 
-        stats_duplicate = False
-        try:
-            ws_stats = spreadsheet.worksheet(stats_sheet_name)
-            all_stats_rows = ws_stats.get_all_values()
-            if len(all_stats_rows) > 1:
-                last_stats_row = all_stats_rows[-1]
-                if len(last_stats_row) >= 5:
-                    if (str(last_stats_row[0]).strip() == str(season).strip() and
-                        str(last_stats_row[1]).strip() == str(league).strip() and
-                        str(last_stats_row[3]).strip() == str(home_team).strip() and
-                        str(last_stats_row[4]).strip() == str(away_team).strip()):
-                        stats_duplicate = True
-        except Exception:
-            pass
-
         stats_saved = False
-        if not stats_duplicate:
-            for attempt in range(3):
-                try:
-                    ws_stats = spreadsheet.worksheet(stats_sheet_name)
-                    ws_stats.append_row(row_data_stats, value_input_option="USER_ENTERED")
-                    stats_saved = True
-                    time.sleep(0.3)
-                    break
-                except Exception:
-                    time.sleep(1.0 * (attempt + 1))
-        
-        msg_parts = [f"배당 {saved_count}/{expected_count}개사 저장"]
-        if stats_saved:
-            msg_parts.append(f"'{stats_sheet_name}' 탭 기록 완료")
-        elif stats_duplicate:
-            msg_parts.append(f"'{stats_sheet_name}' 탭 중복 감지(건너뜀)")
-        else:
-            msg_parts.append(f"'{stats_sheet_name}' 탭 저장 실패")
+        for attempt in range(3):
+            try:
+                ws_stats = spreadsheet.worksheet(STATS_SHEET_NAME)
+                ws_stats.append_row(row_data_stats, value_input_option="USER_ENTERED")
+                stats_saved = True
+                time.sleep(0.3)
+                break
+            except Exception as e:
+                if "429" in str(e):
+                    time.sleep(1.5 * (attempt + 1))
+                else:
+                    time.sleep(0.5)
 
-        final_msg = " & ".join(msg_parts)
-        
-        if failed_bms:
-            return True, f"⚠️ [일부 누락 경고] 다음 북메이커 시트 저장이 누락되었습니다: [{', '.join(failed_bms)}]. (결과: {final_msg})"
-        if duplicate_bms:
-            return True, f"🔄 [중복 감지 알람] 이미 동일 경기가 등록되어 있어 다음 업체의 저장을 건너뛰었습니다: [{', '.join(duplicate_bms)}]."
-        
-        return True, f"🎉 성공: {final_msg}"
+        if not stats_saved:
+            failed_bookmakers.append(STATS_SHEET_NAME)
+
+        # 3. 실패한 시트가 하나라도 존재하면 에러 반환 (대기열 안 넘어가도록 방지)
+        if failed_bookmakers:
+            return False, f"⚠️ 다음 시트 저장 실패 (429 과부하 또는 네트워크 오류): {', '.join(failed_bookmakers)}. 다시 시도해 주세요."
+
+        return True, f"배당 {saved_count}개사 탭 및 '{STATS_SHEET_NAME}' 탭 저장 완료"
+
     except Exception as e:
-        # 429나 치명적 오류 발생 시 앱이 죽지 않고 경고 문구로 출력되도록 방어
-        return False, f"🚨 [통신/구글 API 오류 발생]: {str(e)}"
+        return False, f"시스템 오류 발생: {str(e)}"
