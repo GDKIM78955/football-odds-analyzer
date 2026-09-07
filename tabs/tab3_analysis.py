@@ -216,8 +216,8 @@ def render_tab3(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
             
             if valid_h:
                 avg_oh = round(float(np.mean(valid_h)), 2)
-                avg_od = round(float(np.mean(valid_od)), 2)
-                avg_oa = round(float(np.mean(valid_oa)), 2)
+                avg_od = round(float(np.mean(valid_d)), 2)
+                avg_oa = round(float(np.mean(valid_a)), 2)
                 o_odds_val = (avg_oh, avg_od, avg_oa)
             else:
                 o_odds_val = (0.0, 0.0, 0.0)
