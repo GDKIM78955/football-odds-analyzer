@@ -42,12 +42,27 @@ def load_sheet_data(sheet_name, spreadsheet_id=""):
             continue
     return pd.DataFrame()
 
-# 3. 경기 데이터 구글 시트 일괄 저장 함수
+# 3. 경기 데이터 구글 시트 일괄 저장 함수 (배당 누락 엄격 검증 기능 추가)
 def save_match_data_to_sheets(spreadsheet_id, bookmakers, stats_sheet_name, match_info, odds_dict, stats_dict):
     client = get_gspread_client()
     if not client:
         return False, "구글 시트 연동 실패: Secrets 설정을 확인하세요."
     
+    # 1단계: 지정된 bookmakers 목록 중 입력이 누락되었거나 0 이하인 시트(북메이커) 검증
+    missing_bms = []
+    for bm_name in bookmakers:
+        if bm_name not in odds_dict:
+            missing_bms.append(bm_name.upper())
+            continue
+        h, d, a = odds_dict[bm_name]
+        if h <= 0 or d <= 0 or a <= 0:
+            missing_bms.append(bm_name.upper())
+
+    # 누락된 북메이커가 단 하나라도 존재하면 저장을 차단하고 누락된 시트 이름 알람 반환
+    if missing_bms:
+        missing_str = ", ".join(missing_bms)
+        return False, f"🚨 [저장 실패] 다음 북메이커(시트)의 배당이 누락되었거나 0으로 입력되었습니다: [{missing_str}]"
+
     try:
         spreadsheet = client.open_by_key(spreadsheet_id)
         
@@ -83,12 +98,9 @@ def save_match_data_to_sheets(spreadsheet_id, bookmakers, stats_sheet_name, matc
         
         saved_count = 0
         
+        # 검증을 모두 통과한 북메이커만 안전하게 시트에 반영
         for bm_name in bookmakers:
-            if bm_name not in odds_dict:
-                continue
             h, d, a = odds_dict[bm_name]
-            if h <= 0 or d <= 0 or a <= 0:
-                continue
             
             bm_inv = (1/h) + (1/d) + (1/a)
             bm_payout = 1 / bm_inv
