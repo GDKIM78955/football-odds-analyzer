@@ -37,12 +37,12 @@ def load_sheet_data(sheet_name, spreadsheet_id=""):
                 df = df.dropna(how='all')
                 return df
             return pd.DataFrame()
-        except Exception as e:
+        except Exception:
             time.sleep(1.0 * (attempt + 1))
             continue
     return pd.DataFrame()
 
-# 3. 경기 데이터 구글 시트 일괄 저장 함수 (중복 방지 및 누락 검증 장치 포함)
+# 3. 경기 데이터 구글 시트 일괄 저장 함수 (429 에러 방어 및 누락/중복 감지 장치 포함)
 def save_match_data_to_sheets(spreadsheet_id, bookmakers, stats_sheet_name, match_info, odds_dict, stats_dict):
     client = get_gspread_client()
     if not client:
@@ -57,7 +57,6 @@ def save_match_data_to_sheets(spreadsheet_id, bookmakers, stats_sheet_name, matc
         home_team = match_info["home"]
         away_team = match_info["away"]
         
-        # 실제 입력 대상인 유효 북메이커 개수 산출 (누락 감지용)
         expected_bms = [bm for bm in bookmakers if bm in odds_dict and odds_dict[bm][0] > 0 and odds_dict[bm][1] > 0 and odds_dict[bm][2] > 0]
         expected_count = len(expected_bms)
 
@@ -96,7 +95,7 @@ def save_match_data_to_sheets(spreadsheet_id, bookmakers, stats_sheet_name, matc
             if h <= 0 or d <= 0 or a <= 0:
                 continue
             
-            # 🛡️ [중복 방지 검사] 시트의 마지막 행과 현재 입력하려는 경기가 완벽히 일치하는지 대조
+            # 🛡️ [중복 방지 검사]
             try:
                 ws = spreadsheet.worksheet(bm_name)
                 all_rows = ws.get_all_values()
@@ -108,7 +107,7 @@ def save_match_data_to_sheets(spreadsheet_id, bookmakers, stats_sheet_name, matc
                             str(last_row[3]).strip() == str(home_team).strip() and
                             str(last_row[4]).strip() == str(away_team).strip()):
                             duplicate_bms.append(bm_name)
-                            continue # 중복이므로 저장을 건너뜀
+                            continue
             except Exception:
                 pass
             
@@ -149,13 +148,20 @@ def save_match_data_to_sheets(spreadsheet_id, bookmakers, stats_sheet_name, matc
                 odd_type, match_res, win_odd
             ]
             
-            # 🛡️ [누락 검증] 429 에러 등으로 통신 실패 시 실패 목록에 담음
-            try:
-                ws = spreadsheet.worksheet(bm_name)
-                ws.append_row(row_data_odds, value_input_option="USER_ENTERED")
-                saved_count += 1
-                time.sleep(0.12)
-            except Exception:
+            # 🛡️ [429 방어 및 누락 감지 재시도 로직]
+            success_written = False
+            for attempt in range(3): # 429 에러 시 최대 3번까지 재시도
+                try:
+                    ws = spreadsheet.worksheet(bm_name)
+                    ws.append_row(row_data_odds, value_input_option="USER_ENTERED")
+                    saved_count += 1
+                    success_written = True
+                    time.sleep(0.3) # 429 방지를 위해 간격 살짝 상향
+                    break
+                except Exception:
+                    time.sleep(1.0 * (attempt + 1))
+            
+            if not success_written:
                 failed_bms.append(bm_name)
 
         h_1h = stats_dict["home_1h"]
@@ -191,7 +197,6 @@ def save_match_data_to_sheets(spreadsheet_id, bookmakers, stats_sheet_name, matc
             stats_dict['home_xg'], stats_dict['away_xg']
         ]
 
-        # 경기내용 탭 중복 검사
         stats_duplicate = False
         try:
             ws_stats = spreadsheet.worksheet(stats_sheet_name)
@@ -209,15 +214,16 @@ def save_match_data_to_sheets(spreadsheet_id, bookmakers, stats_sheet_name, matc
 
         stats_saved = False
         if not stats_duplicate:
-            try:
-                ws_stats = spreadsheet.worksheet(stats_sheet_name)
-                ws_stats.append_row(row_data_stats, value_input_option="USER_ENTERED")
-                stats_saved = True
-                time.sleep(0.12)
-            except Exception:
-                pass
+            for attempt in range(3):
+                try:
+                    ws_stats = spreadsheet.worksheet(stats_sheet_name)
+                    ws_stats.append_row(row_data_stats, value_input_option="USER_ENTERED")
+                    stats_saved = True
+                    time.sleep(0.3)
+                    break
+                except Exception:
+                    time.sleep(1.0 * (attempt + 1))
         
-        # 🚨 [알람 메시지 조립] 결과에 따라 누락/중복 상태를 상세히 안내
         msg_parts = [f"배당 {saved_count}/{expected_count}개사 저장"]
         if stats_saved:
             msg_parts.append(f"'{stats_sheet_name}' 탭 기록 완료")
@@ -235,4 +241,5 @@ def save_match_data_to_sheets(spreadsheet_id, bookmakers, stats_sheet_name, matc
         
         return True, f"🎉 성공: {final_msg}"
     except Exception as e:
-        return False, str(e)
+        # 429나 치명적 오류 발생 시 앱이 죽지 않고 경고 문구로 출력되도록 방어
+        return False, f"🚨 [통신/구글 API 오류 발생]: {str(e)}"
