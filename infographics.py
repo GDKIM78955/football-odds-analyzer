@@ -72,7 +72,7 @@ def render_clipboard_component(html_content, component_id, height=520):
     components.html(wrapper_html, height=height, scrolling=True)
 
 # =========================================================
-# 📊 승무패 + 자동계산 핸디캡·언오버 인포그래픽 도표 생성 함수 (3번 탭용)
+# 📊 승무패 + 동일 배당 매칭 스코어 기반 핸디캡·언오버 인포그래픽 도표 생성 함수 (3번 탭용)
 # =========================================================
 def generate_naver_odds_with_handicap_infographic(b_odds, overseas_name, o_odds, league_name="", home_team="", away_team="", hc_stats=None, ou_stats=None):
     b_h, b_d, b_a = b_odds
@@ -113,7 +113,7 @@ def generate_naver_odds_with_handicap_infographic(b_odds, overseas_name, o_odds,
     if home_team or away_team:
         match_title = f"<div style='font-size: 19px; font-weight: bold; color: #0f172a; margin-top: 4px;'><span style='color: #dc2626;'>{home_team}</span> <span style='font-size: 14px; color: #64748b;'>VS</span> <span style='color: #2563eb;'>{away_team}</span></div>"
     else:
-        match_title = f"<div style='font-size: 18px; font-weight: bold; color: #0f172a; margin-top: 4px;'>{lg_badge}배당 및 과거 데이터 기반 핸디캡·언오버 분석 리포트</div>"
+        match_title = f"<div style='font-size: 18px; font-weight: bold; color: #0f172a; margin-top: 4px;'>{lg_badge}배당 및 동일 배당 매칭 스코어 기반 분석 리포트</div>"
 
     h_col_name = f"홈 ({home_team})" if home_team else "홈 승 (Home)"
     a_col_name = f"원정 ({away_team})" if away_team else "원정승 (Away)"
@@ -183,7 +183,7 @@ def generate_naver_odds_with_handicap_infographic(b_odds, overseas_name, o_odds,
         hw_cnt = hc_stats.get("home_win_cnt", 0)
         aw_cnt = hc_stats.get("away_win_cnt", 0)
         html += f"""
-                <div style="font-size: 13px; font-weight: bold; color: #1e293b; margin-top: 12px; margin-bottom: 6px;">🎯 [과거 매칭 기반 핸디캡 ({line})] 적중 확률 (총 {cnt}건)</div>
+                <div style="font-size: 13px; font-weight: bold; color: #1e293b; margin-top: 12px; margin-bottom: 6px;">🎯 [동일 배당 매칭 스코어 기반 핸디캡 ({line})] 적중 확률 (총 {cnt}건)</div>
                 <table border="1" cellpadding="0" cellspacing="0" style="width: 100%; border-collapse: collapse; font-size: 13px; text-align: center; border: 1px solid #cbd5e1; margin-bottom: 14px;">
                     <tr style="background-color: #f8fafc;">
                         <th style="padding: 8px 4px; border: 1px solid #cbd5e1; color: #dc2626; width: 50%;">🔴 홈 핸디캡 승률</th>
@@ -204,7 +204,7 @@ def generate_naver_odds_with_handicap_infographic(b_odds, overseas_name, o_odds,
         ov_cnt = ou_stats.get("over_cnt", 0)
         un_cnt = ou_stats.get("under_cnt", 0)
         html += f"""
-                <div style="font-size: 13px; font-weight: bold; color: #1e293b; margin-top: 12px; margin-bottom: 6px;">⚡ [과거 매칭 기반 언오버 ({line})] 적중 확률 (총 {cnt}건)</div>
+                <div style="font-size: 13px; font-weight: bold; color: #1e293b; margin-top: 12px; margin-bottom: 6px;">⚡ [동일 배당 매칭 스코어 기반 언오버 ({line})] 적중 확률 (총 {cnt}건)</div>
                 <table border="1" cellpadding="0" cellspacing="0" style="width: 100%; border-collapse: collapse; font-size: 13px; text-align: center; border: 1px solid #cbd5e1; margin-bottom: 14px;">
                     <tr style="background-color: #f8fafc;">
                         <th style="padding: 8px 4px; border: 1px solid #cbd5e1; color: #059669; width: 50%;">🟢 오버 (Over) 확률</th>
