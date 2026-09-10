@@ -257,27 +257,28 @@ def render_tab3(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
             display_name = sel_compare_target
 
         # =========================================================
-        # 🔍 과거 매칭 경기들의 스코어를 역추적하여 핸디캡/언오버 확률 계산
+        # 🔍 과거 매칭 경기들의 스코어를 정밀 역추적하여 핸디캡/언오버 확률 계산
         # =========================================================
         hc_stats_dict = None
         ou_stats_dict = None
 
-        # 배트맨 북메이커의 매칭된 데이터프레임 활용 (없으면 전체 매칭 데이터 활용)
-        target_matched_df = matched_all.get("배트맨", pd.DataFrame())
-        if target_matched_df.empty and matched_all:
-            for k, df_m in matched_all.items():
-                if not df_m.empty:
-                    target_matched_df = df_m
-                    break
+        target_matched_df = pd.DataFrame()
+        for k, df_m in matched_all.items():
+            if not df_m.empty:
+                target_matched_df = df_m
+                break
 
         if not target_matched_df.empty:
             try:
                 cols = list(target_matched_df.columns)
-                h_score_col = next((c for c in cols if any(k in c for k in ["홈스코어", "홈_득점", "Home_Score"])), None)
-                a_score_col = next((c for c in cols if any(k in c for k in ["원정스코어", "원정_득점", "Away_Score"])), None)
+                # 시트 컬럼에서 홈스코어/원정스코어 컬럼명을 정밀 탐색
+                h_score_col = next((c for c in cols if any(k in c for k in ["홈스코어", "홈_스코어", "Home_Score", "홈득점"])), None)
+                a_score_col = next((c for c in cols if any(k in c for k in ["원정스코어", "원정_스코어", "Away_Score", "원정득점"])), None)
 
-                if not h_score_col and len(cols) > 28:
-                    h_score_col, a_score_col = cols[28], cols[29]
+                # 컬럼 이름으로 못 찾았을 경우 인덱스 위치(예: 보통 28, 29번째 인근)로 보조 탐색
+                if not h_score_col or not a_score_col:
+                    if len(cols) > 29:
+                        h_score_col, a_score_col = cols[28], cols[29]
 
                 if h_score_col and a_score_col:
                     hw_count, aw_count = 0, 0
@@ -286,17 +287,17 @@ def render_tab3(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
 
                     for _, mr in target_matched_df.iterrows():
                         try:
-                            hs = float(mr[h_score_col])
-                            as_sc = float(mr[a_score_col])
+                            hs = float(str(mr[h_score_col]).strip())
+                            as_sc = float(str(mr[a_score_col]).strip())
                             valid_matches += 1
 
-                            # 핸디캡 시뮬레이션 (홈 기준: 홈스코어 + 핸디캡 > 원정스코어)
+                            # 핸디캡 시뮬레이션 (홈 기준: 홈스코어 + 핸디캡 > 원정스코어이면 홈 마핸 승)
                             if (hs + hc_line_val) > as_sc:
                                 hw_count += 1
                             else:
                                 aw_count += 1
 
-                            # 언오버 시뮬레이션 (총 득점 > 언오버 기준점)
+                            # 언오버 시뮬레이션 (총 득점 > 언오버 기준점이면 오버)
                             if (hs + as_sc) > ou_line_val:
                                 ov_count += 1
                             else:
