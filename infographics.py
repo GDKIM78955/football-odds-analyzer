@@ -1,4 +1,4 @@
-import streamlit as st
+import streamlit as str_st
 import json
 import streamlit.components.v1 as components
 
@@ -167,12 +167,12 @@ def generate_naver_odds_with_handicap_infographic(b_odds, overseas_name, o_odds,
                 <div style="font-size: 13px; font-weight: bold; color: #1e293b; margin-top: 12px; margin-bottom: 6px;">⚡ [동일 배당 매칭 스코어 기반 언오버 ({line})] 적중 확률 (총 {cnt}건)</div>
                 <table border="1" cellpadding="0" cellspacing="0" style="width: 100%; border-collapse: collapse; font-size: 13px; text-align: center; border: 1px solid #cbd5e1; margin-bottom: 14px;">
                     <tr style="background-color: #f8fafc;">
-                        <th style="padding: 8px 4px; border: 1px solid #cbd5e1; color: #059669; width: 50%;">🟢 오버 (Over) 확률</th>
                         <th style="padding: 8px 4px; border: 1px solid #cbd5e1; color: #d97706; width: 50%;">🟠 언더 (Under) 확률</th>
+                        <th style="padding: 8px 4px; border: 1px solid #cbd5e1; color: #059669; width: 50%;">🟢 오버 (Over) 확률</th>
                     </tr>
                     <tr>
-                        <td style="padding: 8px 4px; border: 1px solid #e2e8f0; font-weight: bold; color: #059669; font-size: 14px;">{ov_p}% ({ov_cnt}회)</td>
                         <td style="padding: 8px 4px; border: 1px solid #e2e8f0; font-weight: bold; color: #d97706; font-size: 14px;">{un_p}% ({un_cnt}회)</td>
+                        <td style="padding: 8px 4px; border: 1px solid #e2e8f0; font-weight: bold; color: #059669; font-size: 14px;">{ov_p}% ({ov_cnt}회)</td>
                     </tr>
                 </table>
         """
