@@ -37,18 +37,17 @@ def load_sheet_data(sheet_name, spreadsheet_id=""):
                 df = df.dropna(how='all')
                 return df
             return pd.DataFrame()
-        except Exception as e:
+        except Exception:
             time.sleep(1.0 * (attempt + 1))
             continue
     return pd.DataFrame()
 
-# 3. 경기 데이터 구글 시트 일괄 저장 함수 (배당 누락 엄격 검증 기능 추가)
-def save_match_data_to_sheets(spreadsheet_id, bookmakers, stats_sheet_name, match_info, odds_dict, stats_dict):
+# 3. 경기 데이터 구글 시트 일괄 저장 함수 (핸디캡, 언오버 확장)
+def save_match_data_to_sheets(spreadsheet_id, bookmakers, stats_sheet_name, match_info, odds_dict, stats_dict, hc_info=None, ou_info=None):
     client = get_gspread_client()
     if not client:
         return False, "구글 시트 연동 실패: Secrets 설정을 확인하세요."
     
-    # 1단계: 지정된 bookmakers 목록 중 입력이 누락되었거나 0 이하인 시트(북메이커) 검증
     missing_bms = []
     for bm_name in bookmakers:
         if bm_name not in odds_dict:
@@ -58,7 +57,6 @@ def save_match_data_to_sheets(spreadsheet_id, bookmakers, stats_sheet_name, matc
         if h <= 0 or d <= 0 or a <= 0:
             missing_bms.append(bm_name.upper())
 
-    # 누락된 북메이커가 단 하나라도 존재하면 저장을 차단하고 누락된 시트 이름 알람 반환
     if missing_bms:
         missing_str = ", ".join(missing_bms)
         return False, f"🚨 [저장 실패] 다음 북메이커(시트)의 배당이 누락되었거나 0으로 입력되었습니다: [{missing_str}]"
@@ -71,6 +69,10 @@ def save_match_data_to_sheets(spreadsheet_id, bookmakers, stats_sheet_name, matc
         match_date = match_info["date"]
         home_team = match_info["home"]
         away_team = match_info["away"]
+        
+        # 핸디캡 / 언오버 기본값 처리
+        hc_line = hc_info.get("line", -1.0) if hc_info else -1.0
+        ou_line = ou_info.get("line", 2.5) if ou_info else 2.5
         
         b_h, b_d, b_a = odds_dict.get("배트맨", (0.0, 0.0, 0.0))
         if b_h > 0 and b_d > 0 and b_a > 0:
@@ -98,9 +100,14 @@ def save_match_data_to_sheets(spreadsheet_id, bookmakers, stats_sheet_name, matc
         
         saved_count = 0
         
-        # 검증을 모두 통과한 북메이커만 안전하게 시트에 반영
         for bm_name in bookmakers:
             h, d, a = odds_dict[bm_name]
+            
+            # 핸디캡 / 언오버 배당 추출 (없으면 기본 0.0)
+            hc_h_val = hc_info.get(bm_name, {}).get("h", 0.0) if hc_info else 0.0
+            hc_a_val = hc_info.get(bm_name, {}).get("a", 0.0) if hc_info else 0.0
+            ou_o_val = ou_info.get(bm_name, {}).get("over", 0.0) if ou_info else 0.0
+            ou_u_val = ou_info.get(bm_name, {}).get("under", 0.0) if ou_info else 0.0
             
             bm_inv = (1/h) + (1/d) + (1/a)
             bm_payout = 1 / bm_inv
@@ -135,6 +142,8 @@ def save_match_data_to_sheets(spreadsheet_id, bookmakers, stats_sheet_name, matc
                 diff_h, diff_d, diff_a,
                 loss_h, loss_d, loss_a,
                 fair_h, fair_d, fair_a,
+                hc_line, hc_h_val, hc_a_val,
+                ou_line, ou_o_val, ou_u_val,
                 home_score, away_score, score_total, score_diff, score_diff_abs,
                 odd_type, match_res, win_odd
             ]
