@@ -57,8 +57,8 @@ def render_tab3(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
 
     c_an_l1, c_an_l2, c_an_l3 = st.columns([1, 1, 1])
     target_league = c_an_l1.text_input("🔍 리그명", value="PL", key="t2_target_league")
-    t2_home_team = c_an_l2.text_input("🏠 홈팀명 (블로그 도표용)", value="", placeholder="예: 리버풀", key="t2_home_team")
-    t2_away_team = c_an_l3.text_input("🚗 원정팀명 (블로그 도표용)", value="", placeholder="예: 본머스", key="t2_away_team")
+    t2_home_team = c_an_l2.text_input("🏠 홈팀명 (블로그 도표용)", value="", placeholder="예: 헤타페", key="t2_home_team")
+    t2_away_team = c_an_l3.text_input("🚗 원정팀명 (블로그 도표용)", value="", placeholder="예: 셀타비고", key="t2_away_team")
 
     st.markdown("##### 🏢 분석할 9대 북메이커 배당 입력")
     odds_inputs_t2 = {}
@@ -78,7 +78,7 @@ def render_tab3(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
                         odds_inputs_t2[bm] = (h_val, d_val, a_val)
 
     # =========================================================
-    # 🎯 핸디캡 및 언오버 기준점 설정 영역 (핸디캡 -5~+5, 언오버 2.5~6.5, 기본값 -1 / 2.5, 직접입력)
+    # 🎯 핸디캡 및 언오버 기준점 설정 영역 (-5 ~ +5, 2.5 ~ 6.5, 직접 입력)
     # =========================================================
     st.markdown("---")
     st.markdown("##### 🎯 과거 데이터 기반 핸디캡 & 언오버 확률 분석 기준점 설정")
@@ -257,73 +257,79 @@ def render_tab3(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
             display_name = sel_compare_target
 
         # =========================================================
-        # 🔍 과거 매칭 경기들의 스코어를 정밀 역추적하여 핸디캡/언오버 확률 계산
+        # 🔍 과거 매칭된 데이터프레임에서 스코어 열을 정밀 추적하여 핸디캡/언오버 산출
         # =========================================================
         hc_stats_dict = None
         ou_stats_dict = None
 
         target_matched_df = pd.DataFrame()
-        for k, df_m in matched_all.items():
-            if not df_m.empty:
-                target_matched_df = df_m
+        # 배트맨 매칭 데이터 우선 탐색, 없으면 다른 북메이커 매칭 데이터 활용
+        for bm_key in ["배트맨"] + list(matched_all.keys()):
+            if bm_key in matched_all and not matched_all[bm_key].empty:
+                target_matched_df = matched_all[bm_key]
                 break
 
         if not target_matched_df.empty:
-            try:
-                cols = list(target_matched_df.columns)
-                # 시트 컬럼에서 홈스코어/원정스코어 컬럼명을 정밀 탐색
-                h_score_col = next((c for c in cols if any(k in c for k in ["홈스코어", "홈_스코어", "Home_Score", "홈득점"])), None)
-                a_score_col = next((c for c in cols if any(k in c for k in ["원정스코어", "원정_스코어", "Away_Score", "원정득점"])), None)
+            cols = list(target_matched_df.index.names) if hasattr(target_matched_df, 'index') else []
+            cols = list(target_matched_df.columns)
+            
+            # 스코어 컬럼 이름 후보군 정밀 매칭
+            h_score_col = next((c for c in cols if any(k in str(c) for k in ["홈스코어", "홈_스코어", "Home_Score", "홈득점"])), None)
+            a_score_col = next((c for c in cols if any(k in str(c) for k in ["원정스코어", "원정_스코어", "Away_Score", "원정득점"])), None)
 
-                # 컬럼 이름으로 못 찾았을 경우 인덱스 위치(예: 보통 28, 29번째 인근)로 보조 탐색
-                if not h_score_col or not a_score_col:
-                    if len(cols) > 29:
-                        h_score_col, a_score_col = cols[28], cols[29]
+            # 컬럼명으로 못 찾았을 경우, 구글 시트 저장 규격상 일반적으로 28, 29번째 컬럼(또는 뒤에서 5~6번째)에 위치함
+            if not h_score_col or not a_score_col:
+                if len(cols) > 29:
+                    h_score_col, a_score_col = cols[28], cols[29]
 
-                if h_score_col and a_score_col:
-                    hw_count, aw_count = 0, 0
-                    ov_count, un_count = 0, 0
-                    valid_matches = 0
+            if h_score_col and a_score_col:
+                hw_count, aw_count = 0, 0
+                ov_count, un_count = 0, 0
+                valid_matches = 0
 
-                    for _, mr in target_matched_df.iterrows():
-                        try:
-                            hs = float(str(mr[h_score_col]).strip())
-                            as_sc = float(str(mr[a_score_col]).strip())
-                            valid_matches += 1
+                for _, mr in target_matched_df.iterrows():
+                    try:
+                        hs = float(str(mr[h_score_col]).strip())
+                        as_sc = float(str(mr[a_score_col]).strip())
+                        valid_matches += 1
 
-                            # 핸디캡 시뮬레이션 (홈 기준: 홈스코어 + 핸디캡 > 원정스코어이면 홈 마핸 승)
-                            if (hs + hc_line_val) > as_sc:
-                                hw_count += 1
-                            else:
-                                aw_count += 1
+                        # 핸디캡 시뮬레이션 (홈 기준: 홈스코어 + 핸디캡 > 원정스코어)
+                        if (hs + hc_line_val) > as_sc:
+                            hw_count += 1
+                        else:
+                            aw_count += 1
 
-                            # 언오버 시뮬레이션 (총 득점 > 언오버 기준점이면 오버)
-                            if (hs + as_sc) > ou_line_val:
-                                ov_count += 1
-                            else:
-                                un_count += 1
-                        except:
-                            continue
+                        # 언오버 시뮬레이션 (총 득점 > 기준점)
+                        if (hs + as_sc) > ou_line_val:
+                            ov_count += 1
+                        else:
+                            un_count += 1
+                    except:
+                        continue
 
-                    if valid_matches > 0:
-                        hc_stats_dict = {
-                            "line": hc_line_val,
-                            "count": valid_matches,
-                            "home_win_pct": round((hw_count / valid_matches) * 100, 1),
-                            "away_win_pct": round((aw_count / valid_matches) * 100, 1),
-                            "home_win_cnt": hw_count,
-                            "away_win_cnt": aw_count
-                        }
-                        ou_stats_dict = {
-                            "line": ou_line_val,
-                            "count": valid_matches,
-                            "over_pct": round((ov_count / valid_matches) * 100, 1),
-                            "under_pct": round((un_count / valid_matches) * 100, 1),
-                            "over_cnt": ov_count,
-                            "under_cnt": un_count
-                        }
-            except Exception:
-                pass
+                if valid_matches > 0:
+                    hc_stats_dict = {
+                        "line": hc_line_val,
+                        "count": valid_matches,
+                        "home_win_pct": round((hw_count / valid_matches) * 100, 1),
+                        "away_win_pct": round((aw_count / valid_matches) * 100, 1),
+                        "home_win_cnt": hw_count,
+                        "away_win_cnt": aw_count
+                    }
+                    ou_stats_dict = {
+                        "line": ou_line_val,
+                        "count": valid_matches,
+                        "over_pct": round((ov_count / valid_matches) * 100, 1),
+                        "under_pct": round((un_count / valid_matches) * 100, 1),
+                        "over_cnt": ov_count,
+                        "under_cnt": un_count
+                    }
+
+        # 만약 매칭 건수가 0이거나 스코어를 못 읽었을 때도 화면에 레이아웃이 누락되지 않도록 기본 0% 통계 주입 (테스트용 안전장치)
+        if not hc_stats_dict:
+            hc_stats_dict = {"line": hc_line_val, "count": 0, "home_win_pct": 0.0, "away_win_pct": 0.0, "home_win_cnt": 0, "away_win_cnt": 0}
+        if not ou_stats_dict:
+            ou_stats_dict = {"line": ou_line_val, "count": 0, "over_pct": 0.0, "under_pct": 0.0, "over_cnt": 0, "under_cnt": 0}
 
         naver_odds_html = generate_naver_odds_with_handicap_infographic(
             b_odds_val, display_name, o_odds_val, 
