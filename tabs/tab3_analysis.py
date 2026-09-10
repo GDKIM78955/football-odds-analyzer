@@ -2,10 +2,10 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 from database import load_sheet_data
-from infographics import generate_naver_odds_infographic, render_clipboard_component
+from infographics import generate_naver_odds_with_handicap_infographic, render_clipboard_component
 
 def render_tab3(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
-    st.subheader("🔬 3번 탭: 9대 북메이커 배당 입력 및 승률 분석")
+    st.subheader("🔬 3번 탭: 9대 북메이커 배당 입력 및 승률 분석 (핸디캡 · 언오버 확장)")
 
     scanner_sheet_name = "라운드스캔"
     df_t3_scan = load_sheet_data(scanner_sheet_name, spreadsheet_id)
@@ -76,6 +76,43 @@ def render_tab3(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
                         d_val = od.number_input("무", value=0.0, step=0.01, min_value=0.0, key=f"t2_{bm}_d")
                         a_val = oa.number_input("원정", value=0.0, step=0.01, min_value=0.0, key=f"t2_{bm}_a")
                         odds_inputs_t2[bm] = (h_val, d_val, a_val)
+
+    # =========================================================
+    # 🎯 핸디캡 및 언오버 기준점 설정 영역 (요청사항 반영완료)
+    # =========================================================
+    st.markdown("---")
+    st.markdown("##### 🎯 핸디캡 & 언오버 기준점 및 배당 상세 설정")
+    
+    hc_options = [-5.0, -4.0, -3.0, -2.5, -2.0, -1.5, -1.0, -0.5, 0.0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 4.0, 5.0, "직접 입력"]
+    ou_options = [1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0, 5.5, 6.0, 6.5, "직접 입력"]
+
+    hc_col1, ou_col1 = st.columns(2)
+    
+    with hc_col1:
+        with st.container(border=True):
+            st.markdown("**🎯 핸디캡 (기본 -1.0)**")
+            sel_hc_opt = st.selectbox("핸디캡 기준점 선택", hc_options, index=hc_options.index(-1.0) if -1.0 in hc_options else 6, key="t3_sel_hc_line")
+            if sel_hc_opt == "직접 입력":
+                hc_line_val = st.number_input("핸디캡 기준점 직접 입력", value=-1.0, step=0.5, key="t3_custom_hc_line")
+            else:
+                hc_line_val = float(sel_hc_opt)
+            
+            c_hch, c_hca = st.columns(2)
+            t3_hc_h = c_hch.number_input("홈 핸디캡 배당", value=0.0, step=0.01, min_value=0.0, key="t3_hc_h")
+            t3_hc_a = c_hca.number_input("원정 핸디캡 배당", value=0.0, step=0.01, min_value=0.0, key="t3_hc_a")
+
+    with ou_col1:
+        with st.container(border=True):
+            st.markdown("**⚡ 언더오버 (기본 2.5)**")
+            sel_ou_opt = st.selectbox("언오버 기준점 선택", ou_options, index=ou_options.index(2.5) if 2.5 in ou_options else 2, key="t3_sel_ou_line")
+            if sel_ou_opt == "직접 입력":
+                ou_line_val = st.number_input("언오버 기준점 직접 입력", value=2.5, step=0.5, key="t3_custom_ou_line")
+            else:
+                ou_line_val = float(sel_ou_opt)
+            
+            c_ouo, c_quu = st.columns(2)
+            t3_ou_over = c_ouo.number_input("오버(Over) 배당", value=0.0, step=0.01, min_value=0.0, key="t3_ou_over")
+            t3_ou_under = c_quu.number_input("언더(Under) 배당", value=0.0, step=0.01, min_value=0.0, key="t3_ou_under")
 
     st.markdown("---")
 
@@ -196,8 +233,8 @@ def render_tab3(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
     st.subheader(f"2️⃣ [{target_league} 동일 리그 전용] 동일 배당 승률 분석표")
     st.dataframe(df_target_league, use_container_width=True, hide_index=True)
 
-    with st.expander("📊 / 📋 네이버 블로그/카페용 배당 인포그래픽 도표 복사 (추천 ⭐)", expanded=True):
-        st.markdown("##### 🌟 [네이버 블로그/카페 전용] 배당 & 승률 인포그래픽 카드")
+    with st.expander("📊 / 📋 네이버 블로그/카페용 핸디캡·언오버 통합 배당 인포그래픽 도표 복사 (추천 ⭐)", expanded=True):
+        st.markdown("##### 🌟 [네이버 블로그/카페 전용] 승무패 + 핸디캡 + 언오버 인포그래픽 카드")
         st.caption("초록색 버튼을 1번만 클릭하면 네이버 블로그 서식으로 복사됩니다. 블로그 글쓰기에서 Ctrl+V를 누르세요!")
 
         compare_options = ["🌟 해외 종합 가중평균 (전체 평균)"] + overseas_bookmakers
@@ -227,12 +264,28 @@ def render_tab3(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
             o_odds_val = odds_inputs_t2.get(sel_compare_target, (0.0, 0.0, 0.0))
             display_name = sel_compare_target
 
-        naver_odds_html = generate_naver_odds_infographic(
+        hc_info_dict = {
+            "line": hc_line_val,
+            "batman_h": t3_hc_h,
+            "batman_a": t3_hc_a,
+            "overseas_h": 0.0,
+            "overseas_a": 0.0
+        }
+        ou_info_dict = {
+            "line": ou_line_val,
+            "batman_over": t3_ou_over,
+            "batman_under": t3_ou_under,
+            "overseas_over": 0.0,
+            "overseas_under": 0.0
+        }
+
+        naver_odds_html = generate_naver_odds_with_handicap_infographic(
             b_odds_val, display_name, o_odds_val, 
-            league_name=target_league, home_team=t2_home_team.strip(), away_team=t2_away_team.strip()
+            league_name=target_league, home_team=t2_home_team.strip(), away_team=t2_away_team.strip(),
+            hc_data=hc_info_dict, ou_data=ou_info_dict
         )
 
-        render_clipboard_component(naver_odds_html, "t2_clip", height=490)
+        render_clipboard_component(naver_odds_html, "t2_clip", height=590)
 
     st.markdown("---")
     st.subheader("📋 매칭된 과거 경기 상세 리스트 (업체별 전체 내역)")
