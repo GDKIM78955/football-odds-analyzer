@@ -20,7 +20,7 @@ def get_gspread_client():
     except Exception:
         return None
 
-# 2. 안전한 시트 데이터 로딩 함수 (캐시 적용)
+# 2. 안전한 시트 데이터 로딩 함수 (공백 제거 및 캐시 적용)
 @st.cache_data(ttl=30, show_spinner=False)
 def load_sheet_data(sheet_name, spreadsheet_id=""):
     client = get_gspread_client()
@@ -32,9 +32,12 @@ def load_sheet_data(sheet_name, spreadsheet_id=""):
             ws = spreadsheet.worksheet(sheet_name)
             data = ws.get_all_values()
             if len(data) > 1:
+                # [핵심 수정] 열 이름(헤더)에 들어간 보이지 않는 공백 자동 제거
                 cols = [str(c).strip() for c in data[0]]
                 df = pd.DataFrame(data[1:], columns=cols)
+                # 빈 행 제거 및 열 이름 앞뒤 공백 스트립
                 df = df.dropna(how='all')
+                df.columns = df.columns.str.strip()
                 return df
             return pd.DataFrame()
         except Exception:
@@ -48,7 +51,6 @@ def save_match_data_to_sheets(spreadsheet_id, bookmakers, stats_sheet_name, matc
     if not client:
         return False, "구글 시트 연동 실패: Secrets 설정을 확인하세요."
     
-    # 필수 기준인 '배트맨' 배당 검증
     if "배트맨" not in odds_dict:
         return False, "🚨 [저장 실패] 배트맨 배당 정보가 누락되었습니다."
     
@@ -65,7 +67,6 @@ def save_match_data_to_sheets(spreadsheet_id, bookmakers, stats_sheet_name, matc
         home_team = match_info["home"]
         away_team = match_info["away"]
         
-        # 핸디캡 / 언오버 기본값 처리
         hc_line = hc_info.get("line", -1.0) if hc_info else -1.0
         ou_line = ou_info.get("line", 2.5) if ou_info else 2.5
         
@@ -96,9 +97,8 @@ def save_match_data_to_sheets(spreadsheet_id, bookmakers, stats_sheet_name, matc
                 continue
             h, d, a = odds_dict[bm_name]
             if h <= 0 or d <= 0 or a <= 0:
-                continue  # 선택되지 않거나 0인 북메이커는 스킵
+                continue 
             
-            # 핸디캡 / 언오버 배당 추출 (0이거나 없으면 빈 칸 "")
             raw_hc_h = hc_info.get(bm_name, {}).get("h", "") if hc_info else ""
             raw_hc_a = hc_info.get(bm_name, {}).get("a", "") if hc_info else ""
             raw_ou_o = ou_info.get(bm_name, {}).get("over", "") if hc_info else ""
