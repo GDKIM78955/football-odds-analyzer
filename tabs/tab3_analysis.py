@@ -123,6 +123,8 @@ def render_tab3(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
 
         for idx, bm in enumerate(bookmakers, 1):
             h, d, a = odds_inputs_t2.get(bm, (0.0, 0.0, 0.0))
+            
+            # 🚀 [최적화 핵심] 배당이 미입력(0 이하)된 업체는 구글 시트를 아예 읽지 않고 패스합니다!
             if h <= 1.0 or d <= 1.0 or a <= 1.0:
                 rows.append({
                     "순번": str(idx), "북메이커": bm.upper(), "입력 배당": "미입력", "환급률": "-",
@@ -135,6 +137,7 @@ def render_tab3(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
             tot_payout += payout
             tot_bm += 1
 
+            # 배당이 입력된 업체만 시트를 불러옵니다 (API 호출 최소화)
             df_bm = load_sheet_data(bm, spreadsheet_id)
             m_count = 0
             h_str, d_str, a_str = "0.0%", "0.0%", "0.0%"
@@ -219,7 +222,7 @@ def render_tab3(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
         return pd.DataFrame(rows), matched_dict
 
     st.markdown("### 🚀 동일 배당 승률 및 통계 분석 실행")
-    st.info("💡 아래 버튼을 누르면 구글 시트 데이터를 안전하게 불러와 분석을 시작합니다.")
+    st.info("💡 아래 버튼을 누르면 입력된 북메이커 시트만 안전하게 불러와 분석을 시작합니다.")
     
     if st.button("🔥 분석 시작하기", type="primary", use_container_width=True):
         with st.spinner("구글 시트에서 과거 배당 데이터를 불러와 매칭 중입니다... 잠시만 기다려주세요!"):
