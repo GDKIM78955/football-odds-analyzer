@@ -20,8 +20,8 @@ def get_gspread_client():
     except Exception:
         return None
 
-# 2. 안전한 시트 데이터 로딩 함수 (공백 제거 및 캐시 적용)
-@st.cache_data(ttl=30, show_spinner=False)
+# 2. 안전한 시트 데이터 로딩 함수 (공백 제거 및 24시간 캐시 적용으로 대용량 로딩 속도 최적화)
+@st.cache_data(ttl=86400, show_spinner=False)
 def load_sheet_data(sheet_name, spreadsheet_id=""):
     client = get_gspread_client()
     if not client or not spreadsheet_id:
@@ -45,7 +45,7 @@ def load_sheet_data(sheet_name, spreadsheet_id=""):
             continue
     return pd.DataFrame()
 
-# 3. 경기 데이터 구글 시트 일괄 저장 함수 (미입력 값은 빈 칸 공백으로 처리)
+# 3. 경기 데이터 구글 시트 일괄 저장 함수 (캐시 무관 실시간 즉시 저장)
 def save_match_data_to_sheets(spreadsheet_id, bookmakers, stats_sheet_name, match_info, odds_dict, stats_dict, hc_info=None, ou_info=None):
     client = get_gspread_client()
     if not client:
