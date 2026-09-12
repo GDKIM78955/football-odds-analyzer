@@ -1,35 +1,52 @@
-import os
-import pandas as pd
 import streamlit as st
+import pandas as pd
+import gspread
+import time
+from oauth2client.service_account import ServiceAccountCredentials
 
-# 엑셀 파일 경로 설정 ('자료' 폴더 안의 '배당초안.xlsx')
-EXCEL_PATH = os.path.join("자료", "배당초안.xlsx")
-
+# 1. 구글 시트 연동 클라이언트
+@st.cache_resource(show_spinner=False)
 def get_gspread_client():
-    """엑셀 전환으로 인해 더 이상 사용하지 않지만 호환성을 위해 유지합니다."""
-    return None
+    try:
+        if "gcp_service_account" in st.secrets:
+            creds_dict = dict(st.secrets["gcp_service_account"])
+            scope = [
+                "https://spreadsheets.google.com/feeds",
+                "https://www.googleapis.com/auth/drive"
+            ]
+            creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+            return gspread.authorize(creds)
+        return None
+    except Exception:
+        return None
 
-# 1. 안전한 엑셀 시트 데이터 로딩 함수 (캐시 적용)
+# 2. 안전한 시트 데이터 로딩 함수 (캐시 적용)
 @st.cache_data(ttl=30, show_spinner=False)
 def load_sheet_data(sheet_name, spreadsheet_id=""):
-    """
-    지정한 시트(엑셀의 탭) 이름을 읽어와서 판다스 데이터프레임으로 반환합니다.
-    """
-    if not os.path.exists(EXCEL_PATH):
+    client = get_gspread_client()
+    if not client or not spreadsheet_id:
         return pd.DataFrame()
-    
-    try:
-        df = pd.read_excel(EXCEL_PATH, sheet_name=sheet_name)
-        df.columns = [str(c).strip() for c in df.columns]
-        df = df.dropna(how='all')
-        return df
-    except Exception:
-        return pd.DataFrame()
+    for attempt in range(4):
+        try:
+            spreadsheet = client.open_by_key(spreadsheet_id)
+            ws = spreadsheet.worksheet(sheet_name)
+            data = ws.get_all_values()
+            if len(data) > 1:
+                cols = [str(c).strip() for c in data[0]]
+                df = pd.DataFrame(data[1:], columns=cols)
+                df = df.dropna(how='all')
+                return df
+            return pd.DataFrame()
+        except Exception:
+            time.sleep(1.0 * (attempt + 1))
+            continue
+    return pd.DataFrame()
 
-# 2. 경기 데이터 엑셀 일괄 저장 함수 (미입력 값은 빈 칸 공백으로 처리)
+# 3. 경기 데이터 구글 시트 일괄 저장 함수 (미입력 값은 빈 칸 공백으로 처리)
 def save_match_data_to_sheets(spreadsheet_id, bookmakers, stats_sheet_name, match_info, odds_dict, stats_dict, hc_info=None, ou_info=None):
-    if not os.path.exists(EXCEL_PATH):
-        return False, f"🚨 [저장 실패] '{EXCEL_PATH}' 엑셀 파일을 찾을 수 없습니다."
+    client = get_gspread_client()
+    if not client:
+        return False, "구글 시트 연동 실패: Secrets 설정을 확인하세요."
     
     # 필수 기준인 '배트맨' 배당 검증
     if "배트맨" not in odds_dict:
@@ -40,11 +57,8 @@ def save_match_data_to_sheets(spreadsheet_id, bookmakers, stats_sheet_name, matc
         return False, "🚨 [저장 실패] 배트맨 배당이 0 또는 유효하지 않은 값으로 입력되었습니다."
 
     try:
-        # 기존 엑셀 파일의 모든 탭 읽기
-        excel_book = pd.ExcelFile(EXCEL_PATH)
-        sheet_names = excel_book.sheet_names
-        dfs = {s: pd.read_excel(EXCEL_PATH, sheet_name=s) for s in sheet_names}
-
+        spreadsheet = client.open_by_key(spreadsheet_id)
+        
         season = match_info["season"]
         league = match_info["league"]
         match_date = match_info["date"]
@@ -77,7 +91,6 @@ def save_match_data_to_sheets(spreadsheet_id, bookmakers, stats_sheet_name, matc
         
         saved_count = 0
         
-        # 각 북메이커 탭별로 데이터 추가
         for bm_name in bookmakers:
             if bm_name not in odds_dict:
                 continue
@@ -85,10 +98,11 @@ def save_match_data_to_sheets(spreadsheet_id, bookmakers, stats_sheet_name, matc
             if h <= 0 or d <= 0 or a <= 0:
                 continue  # 선택되지 않거나 0인 북메이커는 스킵
             
+            # 핸디캡 / 언오버 배당 추출 (0이거나 없으면 빈 칸 "")
             raw_hc_h = hc_info.get(bm_name, {}).get("h", "") if hc_info else ""
             raw_hc_a = hc_info.get(bm_name, {}).get("a", "") if hc_info else ""
-            raw_ou_o = ou_info.get(bm_name, {}).get("over", "") if ou_info else ""
-            raw_ou_u = ou_info.get(bm_name, {}).get("under", "") if ou_info else ""
+            raw_ou_o = ou_info.get(bm_name, {}).get("over", "") if hc_info else ""
+            raw_ou_u = ou_info.get(bm_name, {}).get("under", "") if hc_info else ""
             
             hc_h_val = raw_hc_h if (isinstance(raw_hc_h, (int, float)) and raw_hc_h > 0) else ""
             hc_a_val = raw_hc_a if (isinstance(raw_hc_a, (int, float)) and raw_hc_a > 0) else ""
@@ -102,7 +116,7 @@ def save_match_data_to_sheets(spreadsheet_id, bookmakers, stats_sheet_name, matc
             bm_prob_a = (1/a) / bm_inv
             
             diff_h = round(b_h - h, 2) if b_h > 0 else 0.0
-            diff_d = round(b_d - d, 2) if b_d > 0 else 0.0
+            diff_d = round(b_d - d, 2) if d > 0 else 0.0
             diff_a = round(b_a - a, 2) if b_a > 0 else 0.0
             
             fair_h = round(b_payout / bm_prob_h, 6) if (b_payout > 0 and bm_prob_h > 0) else 0.0
@@ -134,16 +148,14 @@ def save_match_data_to_sheets(spreadsheet_id, bookmakers, stats_sheet_name, matc
                 odd_type, match_res, win_odd
             ]
             
-            if bm_name not in dfs:
-                dfs[bm_name] = pd.DataFrame(columns=[f"col_{i}" for i in range(len(row_data_odds))])
-            
-            df_bm = dfs[bm_name]
-            # 딕셔너리 형태로 행 변환 후 추가
-            row_dict = {df_bm.columns[i]: row_data_odds[i] if i < len(df_bm.columns) else row_data_odds[i] for i in range(len(row_data_odds))}
-            dfs[bm_name] = pd.concat([df_bm, pd.DataFrame([row_dict])], ignore_index=True)
-            saved_count += 1
+            try:
+                ws = spreadsheet.worksheet(bm_name)
+                ws.append_row(row_data_odds, value_input_option="USER_ENTERED")
+                saved_count += 1
+                time.sleep(0.12)
+            except gspread.exceptions.WorksheetNotFound:
+                pass
 
-        # 경기내용(stats) 탭 데이터 추가
         h_1h = stats_dict["home_1h"]
         h_2h = stats_dict["home_2h"]
         a_1h = stats_dict["away_1h"]
@@ -177,19 +189,13 @@ def save_match_data_to_sheets(spreadsheet_id, bookmakers, stats_sheet_name, matc
             stats_dict['home_xg'], stats_dict['away_xg']
         ]
 
-        if stats_sheet_name not in dfs:
-            dfs[stats_sheet_name] = pd.DataFrame(columns=[f"col_{i}" for i in range(len(row_data_stats))])
+        try:
+            ws_stats = spreadsheet.worksheet(stats_sheet_name)
+            ws_stats.append_row(row_data_stats, value_input_option="USER_ENTERED")
+            time.sleep(0.12)
+        except gspread.exceptions.WorksheetNotFound:
+            pass
         
-        df_stats = dfs[stats_sheet_name]
-        stats_dict_row = {df_stats.columns[i]: row_data_stats[i] if i < len(df_stats.columns) else row_data_stats[i] for i in range(len(row_data_stats))}
-        dfs[stats_sheet_name] = pd.concat([df_stats, pd.DataFrame([stats_dict_row])], ignore_index=True)
-
-        # 최종 엑셀 파일로 통째로 저장 (모든 탭 유지)
-        with pd.ExcelWriter(EXCEL_PATH, engine="openpyxl") as writer:
-            for s, d_frame in dfs.items():
-                d_frame.to_excel(writer, sheet_name=s, index=False)
-        
-        st.cache_data.clear()
-        return True, f"배당 {saved_count}개사 탭 & '{stats_sheet_name}' 탭 엑셀 저장 완료"
+        return True, f"배당 {saved_count}개사 탭 & '{stats_sheet_name}' 탭 저장 완료"
     except Exception as e:
         return False, str(e)
