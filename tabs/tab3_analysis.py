@@ -9,7 +9,6 @@ def render_tab3(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
 
     scanner_sheet_name = "라운드스캔"
     
-    # [최적화] 탭 진입 시 전체 시트를 바로 읽지 않고, 필요할 때만 안전하게 읽도록 변경
     df_t3_scan = pd.DataFrame()
     try:
         df_t3_scan = load_sheet_data(scanner_sheet_name, spreadsheet_id)
@@ -85,33 +84,30 @@ def render_tab3(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
                         odds_inputs_t2[bm] = (h_val, d_val, a_val)
 
     # =========================================================
-    # 🎯 핸디캡 및 언오버 기준점 설정 영역
+    # 🎯 핸디캡 및 언오버 기준점 설정 영역 (복수 선택 지원)
     # =========================================================
     st.markdown("---")
     st.markdown("##### 🎯 과거 데이터 기반 핸디캡 & 언오버 확률 분석 기준점 설정")
     
-    hc_options = [-5.0, -4.0, -3.0, -2.5, -2.0, -1.5, -1.0, -0.5, 0.0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 4.0, 5.0, "직접 입력"]
-    ou_options = [1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0, 5.5, 6.0, 6.5, "직접 입력"]
+    hc_options = [-5.0, -4.0, -3.0, -2.5, -2.0, -1.5, -1.0, -0.5, 0.0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 4.0, 5.0]
+    ou_options = [1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0, 5.5, 6.0, 6.5]
 
     hc_col1, ou_col1 = st.columns(2)
     
     with hc_col1:
         with st.container(border=True):
-            st.markdown("**🎯 핸디캡 기준점 (기본 -1.0)**")
-            sel_hc_opt = st.selectbox("핸디캡 기준점 선택", hc_options, index=hc_options.index(-1.0) if -1.0 in hc_options else 6, key="t3_sel_hc_line")
-            if sel_hc_opt == "직접 입력":
-                hc_line_val = st.number_input("핸디캡 기준점 직접 입력", value=-1.0, step=0.5, key="t3_custom_hc_line")
-            else:
-                hc_line_val = float(sel_hc_opt)
+            st.markdown("**🎯 핸디캡 기준점 (2~3개 복수 선택 가능)**")
+            default_hcs = [-1.5, -1.0, -0.5] if all(x in hc_options for x in [-1.5, -1.0, -0.5]) else [-1.0]
+            sel_hc_lines = st.multiselect("핸디캡 기준점 선택 (최대 3개 권장)", hc_options, default=default_hcs, key="t3_sel_hc_lines")
+            hc_lines_val = sorted([float(x) for x in sel_hc_lines])
+            if not hc_lines_val:
+                hc_lines_val = [-1.0]
 
     with ou_col1:
         with st.container(border=True):
             st.markdown("**⚡ 언더오버 기준점 (기본 2.5)**")
             sel_ou_opt = st.selectbox("언오버 기준점 선택", ou_options, index=ou_options.index(2.5) if 2.5 in ou_options else 2, key="t3_sel_ou_line")
-            if sel_ou_opt == "직접 입력":
-                ou_line_val = st.number_input("언오버 기준점 직접 입력", value=2.5, step=0.5, key="t3_custom_ou_line")
-            else:
-                ou_line_val = float(sel_ou_opt)
+            ou_line_val = float(sel_ou_opt)
 
     st.markdown("---")
 
@@ -222,9 +218,6 @@ def render_tab3(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
 
         return pd.DataFrame(rows), matched_dict
 
-    # =========================================================
-    # 🚀 [핵심 최적화] 분석 실행 버튼 도입 (이전의 무한 로딩/멈춤 방지)
-    # =========================================================
     st.markdown("### 🚀 동일 배당 승률 및 통계 분석 실행")
     st.info("💡 아래 버튼을 누르면 구글 시트 데이터를 안전하게 불러와 분석을 시작합니다.")
     
@@ -239,7 +232,6 @@ def render_tab3(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
             st.session_state["t3_df_target"] = df_target_league
             st.session_state["t3_matched_target"] = matched_target
 
-    # 분석이 실행된 경우에만 결과 출력
     if st.session_state.get("t3_analyzed", False):
         df_all_league = st.session_state["t3_df_all"]
         matched_all = st.session_state["t3_matched_all"]
@@ -253,9 +245,6 @@ def render_tab3(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
         st.subheader(f"2️⃣ [{target_league} 동일 리그 전용] 동일 배당 승률 분석표")
         st.dataframe(df_target_league, use_container_width=True, hide_index=True)
 
-        # =========================================================
-        # 🌟 인포그래픽 카드 1: 동일 배당 매칭 스코어 기반 (승무패 통계 + 핸디캡 + 언오버)
-        # =========================================================
         with st.expander("📊 / 📋 [카드 1] 동일 배당 매칭 스코어 기반 (승무패 통계·핸디캡·언오버) 인포그래픽 복사 (추천 ⭐)", expanded=True):
             st.markdown("##### 🌟 [네이버 블로그/카페 전용] 동일 배당 매칭 스코어 기반 종합 분석 카드")
             st.caption("초록색 버튼을 클릭하여 블로그 글쓰기 창에서 Ctrl+V 하세요!")
@@ -287,9 +276,8 @@ def render_tab3(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
                 o_odds_val = odds_inputs_t2.get(sel_compare_target, (0.0, 0.0, 0.0))
                 display_name = sel_compare_target
 
-            # 매칭된 데이터프레임 스코어 분석 및 승무패 통계/핸디캡/언오버 계산
             match_stats_dict = None
-            hc_stats_dict = None
+            hc_stats_list = []
             ou_stats_dict = None
 
             target_matched_df = pd.DataFrame()
@@ -312,18 +300,18 @@ def render_tab3(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
 
                 if h_score_col and a_score_col and res_col:
                     hw_cnt_match, dr_cnt_match, aw_cnt_match = 0, 0, 0
-                    hw_hc_cnt, aw_hc_cnt = 0, 0
                     ov_cnt, un_cnt = 0, 0
                     valid_matches = 0
 
+                    parsed_matches = []
                     for _, mr in target_matched_df.iterrows():
                         try:
                             hs = float(str(mr[h_score_col]).strip())
                             as_sc = float(str(mr[a_score_col]).strip())
                             res_val = str(mr[res_col]).strip()
+                            parsed_matches.append((hs, as_sc, res_val))
                             valid_matches += 1
 
-                            # 승무패 카운팅
                             if res_val == "홈승" or hs > as_sc:
                                 hw_cnt_match += 1
                             elif res_val == "무승부" or hs == as_sc:
@@ -331,13 +319,6 @@ def render_tab3(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
                             else:
                                 aw_cnt_match += 1
 
-                            # 핸디캡 시뮬레이션
-                            if (hs + hc_line_val) > as_sc:
-                                hw_hc_cnt += 1
-                            else:
-                                aw_hc_cnt += 1
-
-                            # 언오버 시뮬레이션
                             if (hs + as_sc) > ou_line_val:
                                 ov_cnt += 1
                             else:
@@ -352,14 +333,25 @@ def render_tab3(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
                             "draw_pct": round((dr_cnt_match / valid_matches) * 100, 1),
                             "away_win_pct": round((aw_cnt_match / valid_matches) * 100, 1)
                         }
-                        hc_stats_dict = {
-                            "line": hc_line_val,
-                            "count": valid_matches,
-                            "home_win_pct": round((hw_hc_cnt / valid_matches) * 100, 1),
-                            "away_win_pct": round((aw_hc_cnt / valid_matches) * 100, 1),
-                            "home_win_cnt": hw_hc_cnt,
-                            "away_win_cnt": aw_hc_cnt
-                        }
+
+                        for hc_val in hc_lines_val:
+                            hw_hc_cnt = 0
+                            aw_hc_cnt = 0
+                            for hs, as_sc, _ in parsed_matches:
+                                if (hs + hc_val) > as_sc:
+                                    hw_hc_cnt += 1
+                                else:
+                                    aw_hc_cnt += 1
+                            
+                            hc_stats_list.append({
+                                "line": hc_val,
+                                "count": valid_matches,
+                                "home_win_pct": round((hw_hc_cnt / valid_matches) * 100, 1),
+                                "away_win_pct": round((aw_hc_cnt / valid_matches) * 100, 1),
+                                "home_win_cnt": hw_hc_cnt,
+                                "away_win_cnt": aw_hc_cnt
+                            })
+
                         ou_stats_dict = {
                             "line": ou_line_val,
                             "count": valid_matches,
@@ -372,14 +364,11 @@ def render_tab3(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
             card1_html = generate_naver_odds_with_handicap_infographic(
                 b_odds_val, display_name, o_odds_val, 
                 league_name=target_league, home_team=t2_home_team.strip(), away_team=t2_away_team.strip(),
-                match_stats=match_stats_dict, hc_stats=hc_stats_dict, ou_stats=ou_stats_dict
+                match_stats=match_stats_dict, hc_stats_list=hc_stats_list, ou_stats=ou_stats_dict
             )
-            render_clipboard_component(card1_html, "t2_clip_card1", height=590)
+            render_clipboard_component(card1_html, "t2_clip_card1", height=650)
 
-        # =========================================================
-        # 🌟 인포그래픽 카드 2: 배당 편차 및 단순 배당 비교 리포트
-        # =========================================================
-        with st.expander("📊 / 📋 [카드 2] 기존 배당 편차 및 단순 배당 비교 인포그래픽 복사", expanded=False):
+        with st.expander("📊 / 📋 [카드 2] 기존 배당 편차 및 단순 배당 비교 인포그래픽", expanded=False):
             st.markdown("##### 🌟 [네이버 블로그/카페 전용] 배당 편차 및 단순 배당 비교 카드")
             st.caption("초록색 버튼을 클릭하여 순수 배당 비교 서식을 복사하세요!")
 
