@@ -12,7 +12,8 @@ def render_tab3(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
     
     def safe_flt(val, default):
         try:
-            return float(str(val).replace("%", "").strip())
+            res = float(str(val).replace("%", "").strip())
+            return res if res > 0 else default
         except:
             return default
 
@@ -120,7 +121,7 @@ def render_tab3(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
 
         for idx, bm in enumerate(bookmakers, 1):
             h, d, a = odds_inputs_t2.get(bm, (0.0, 0.0, 0.0))
-            if h <= 0 or d <= 0 or a <= 0:
+            if h <= 1.0 or d <= 1.0 or a <= 1.0:
                 rows.append({
                     "순번": str(idx), "북메이커": bm.upper(), "입력 배당": "미입력", "환급률": "-",
                     "매칭 경기": "0건", "홈승 확률": "-", "무승부 확률": "-", "원정승 확률": "-"
@@ -311,7 +312,6 @@ def render_tab3(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
 
                         # 언오버 시뮬레이션
                         if (hs + as_sc) > ou_line_val:
-                            ov_count = 1 # 임시
                             ov_cnt += 1
                         else:
                             un_cnt += 1
