@@ -42,7 +42,7 @@ def load_sheet_data(sheet_name, spreadsheet_id=""):
             continue
     return pd.DataFrame()
 
-# 3. 경기 데이터 구글 시트 일괄 저장 함수 (선택된 북메이커만 유연하게 저장)
+# 3. 경기 데이터 구글 시트 일괄 저장 함수 (미입력 값은 빈 칸 공백으로 처리)
 def save_match_data_to_sheets(spreadsheet_id, bookmakers, stats_sheet_name, match_info, odds_dict, stats_dict, hc_info=None, ou_info=None):
     client = get_gspread_client()
     if not client:
@@ -91,20 +91,24 @@ def save_match_data_to_sheets(spreadsheet_id, bookmakers, stats_sheet_name, matc
         
         saved_count = 0
         
-        # 9개 북메이커 중 실제로 배당이 유효하게 입력된(선택된) 업체들만 골라서 저장
         for bm_name in bookmakers:
             if bm_name not in odds_dict:
                 continue
             h, d, a = odds_dict[bm_name]
             if h <= 0 or d <= 0 or a <= 0:
-                continue  # 선택되지 않거나 0인 북메이커는 자연스럽게 스킵
+                continue  # 선택되지 않거나 0인 북메이커는 스킵
             
-            # 핸디캡 / 언오버 배당 추출 (없으면 기본 0.0)
-            hc_h_val = hc_info.get(bm_name, {}).get("h", 0.0) if hc_info else 0.0
-            hc_a_val = hc_info.get(bm_name, {}).get("a", 0.0) if hc_info else 0.0
-            ou_o_val = ou_info.get(bm_name, {}).get("over", 0.0) if ou_info else 0.0
-            ou_u_val = ou_info.get(bm_name, {}).get("under", 0.0) if ou_info else 0.0
+            # 핸디캡 / 언오버 배당 추출 (0이거나 없으면 빈 칸 "")
+            raw_hc_h = hc_info.get(bm_name, {}).get("h", "") if hc_info else ""
+            raw_hc_a = hc_info.get(bm_name, {}).get("a", "") if hc_info else ""
+            raw_ou_o = ou_info.get(bm_name, {}).get("over", "") if ou_info else ""
+            raw_ou_u = ou_info.get(bm_name, {}).get("under", "") if ou_info else ""
             
+            hc_h_val = raw_hc_h if (isinstance(raw_hc_h, (int, float)) and raw_hc_h > 0) else ""
+            hc_a_val = raw_hc_a if (isinstance(raw_hc_a, (int, float)) and raw_hc_a > 0) else ""
+            ou_o_val = raw_ou_o if (isinstance(raw_ou_o, (int, float)) and raw_ou_o > 0) else ""
+            ou_u_val = raw_ou_u if (isinstance(raw_ou_u, (int, float)) and raw_ou_u > 0) else ""
+
             bm_inv = (1/h) + (1/d) + (1/a)
             bm_payout = 1 / bm_inv
             bm_prob_h = (1/h) / bm_inv
