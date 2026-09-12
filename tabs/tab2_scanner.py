@@ -14,7 +14,8 @@ def render_tab2(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
 
     def safe_flt(val, default):
         try:
-            return float(str(val).replace("%", "").strip())
+            res = float(str(val).replace("%", "").strip())
+            return res if res > 0 else default
         except:
             return default
 
