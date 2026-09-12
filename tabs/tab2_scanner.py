@@ -169,7 +169,11 @@ def render_tab2(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
                             ]
                             for obm in overseas_bookmakers:
                                 oh, od, oa = sq_overseas_inputs.get(obm, (0.0, 0.0, 0.0))
-                                new_scan_row.extend([oh, od, oa])
+                                # 0 이하이면 빈 칸("")으로 변환하여 저장
+                                c_oh = oh if oh > 0 else ""
+                                c_od = od if od > 0 else ""
+                                c_oa = oa if oa > 0 else ""
+                                new_scan_row.extend([c_oh, c_od, c_oa])
 
                             all_data = ws_scan.get_all_values()
                             target_row_idx = None
@@ -293,7 +297,11 @@ def render_tab2(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
                                 ]
                                 for obm in overseas_bookmakers:
                                     oh, od, oa = ds_overseas_inputs.get(obm, (0.0, 0.0, 0.0))
-                                    new_scan_row.extend([oh, od, oa])
+                                    # 0 이하이면 빈 칸("")으로 변환하여 저장
+                                    c_oh = oh if oh > 0 else ""
+                                    c_od = od if od > 0 else ""
+                                    c_oa = oa if oa > 0 else ""
+                                    new_scan_row.extend([c_oh, c_od, c_oa])
 
                                 all_data = ws_scan.get_all_values()
                                 target_row_idx = None
