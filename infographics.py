@@ -72,23 +72,14 @@ def render_clipboard_component(html_content, component_id, height=520):
     components.html(wrapper_html, height=height, scrolling=True)
 
 # =========================================================
-# 📊 카드 1: 동일 배당 매칭 스코어 기반 (승무패 통계 + 핸디캡 + 언오버) 인포그래픽
+# 📊 카드 1: 동일 배당 매칭 스코어 기반 (승무패 통계 + 복수 핸디캡 + 언오버) 인포그래픽
 # =========================================================
-def generate_naver_odds_with_handicap_infographic(b_odds, overseas_name, o_odds, league_name="", home_team="", away_team="", match_stats=None, hc_stats=None, ou_stats=None):
+def generate_naver_odds_with_handicap_infographic(b_odds, overseas_name, o_odds, league_name="", home_team="", away_team="", match_stats=None, hc_stats_list=None, ou_stats=None):
     b_h, b_d, b_a = b_odds
     o_h, o_d, o_a = o_odds
 
-    if b_h > 0 and b_d > 0 and b_a > 0:
-        b_inv = (1/b_h) + (1/b_d) + (1/b_a)
-        b_payout = (1 / b_inv) * 100
-    else:
-        b_payout = 0.0
-
-    if o_h > 0 and o_d > 0 and o_a > 0:
-        o_inv = (1/o_h) + (1/o_d) + (1/o_a)
-        o_payout = (1 / o_inv) * 100
-    else:
-        o_payout = 0.0
+    b_payout = (1 / ((1/b_h) + (1/b_d) + (1/b_a))) * 100 if (b_h > 0 and b_d > 0 and b_a > 0) else 0.0
+    o_payout = (1 / ((1/o_h) + (1/o_d) + (1/o_a))) * 100 if (o_h > 0 and o_d > 0 and o_a > 0) else 0.0
 
     match_cnt_total = 0
     if match_stats and match_stats.get("count", 0) > 0:
@@ -135,15 +126,21 @@ def generate_naver_odds_with_handicap_infographic(b_odds, overseas_name, o_odds,
                 </table>
     """
 
-    if hc_stats and hc_stats.get("count", 0) > 0:
-        line = hc_stats.get("line", -1.0)
-        cnt = hc_stats.get("count", 0)
-        hw_p = hc_stats.get("home_win_pct", 0.0)
-        aw_p = hc_stats.get("away_win_pct", 0.0)
-        hw_cnt = hc_stats.get("home_win_cnt", 0)
-        aw_cnt = hc_stats.get("away_win_cnt", 0)
-        html += f"""
-                <div style="font-size: 13px; font-weight: bold; color: #1e293b; margin-top: 12px; margin-bottom: 6px;">🎯 [동일 배당 매칭 스코어 기반 핸디캡 ({line})] 적중 확률 (총 {cnt}건)</div>
+    # 복수 핸디캡 결과 순회 출력
+    if hc_stats_list:
+        for hc_stats in hc_stats_list:
+            if hc_stats.get("count", 0) > 0:
+                line = hc_stats.get("line", -1.0)
+                cnt = hc_stats.get("count", 0)
+                hw_p = hc_stats.get("home_win_pct", 0.0)
+                aw_p = hc_stats.get("away_win_pct", 0.0)
+                hw_cnt = hc_stats.get("home_win_cnt", 0)
+                aw_cnt = hc_stats.get("away_win_cnt", 0)
+                
+                line_str = f"+{line}" if line > 0 else str(line)
+
+                html += f"""
+                <div style="font-size: 13px; font-weight: bold; color: #1e293b; margin-top: 12px; margin-bottom: 6px;">🎯 [동일 배당 매칭 스코어 기반 핸디캡 ({line_str})] 적중 확률 (총 {cnt}건)</div>
                 <table border="1" cellpadding="0" cellspacing="0" style="width: 100%; border-collapse: collapse; font-size: 13px; text-align: center; border: 1px solid #cbd5e1; margin-bottom: 14px;">
                     <tr style="background-color: #f8fafc;">
                         <th style="padding: 8px 4px; border: 1px solid #cbd5e1; color: #dc2626; width: 50%;">🔴 홈 핸디캡 승률</th>
@@ -154,7 +151,7 @@ def generate_naver_odds_with_handicap_infographic(b_odds, overseas_name, o_odds,
                         <td style="padding: 8px 4px; border: 1px solid #e2e8f0; font-weight: bold; color: #2563eb; font-size: 14px;">{aw_p}% ({aw_cnt}회)</td>
                     </tr>
                 </table>
-        """
+                """
 
     if ou_stats and ou_stats.get("count", 0) > 0:
         line = ou_stats.get("line", 2.5)
