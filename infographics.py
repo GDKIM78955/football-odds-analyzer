@@ -116,7 +116,7 @@ def generate_naver_odds_with_handicap_infographic(b_odds, overseas_name, o_odds,
                     <tr style="background-color: #f8fafc;">
                         <th style="padding: 8px; border: 1px solid #cbd5e1; color: #dc2626; width: 33%;">🔴 홈 승 비율</th>
                         <th style="padding: 8px; border: 1px solid #cbd5e1; color: #059669; width: 34%;">🟢 무승부 비율</th>
-                        <th style="padding: 8px; border: 1px solid #cbd5e1; color: #2563eb; width: 33%;">🔵 원정승 비율</th>
+                        <th style="padding: 8px; border: 1px solid #cbd5e1; color: #2563eb; width: 33%;">🔵 원정 승 비율</th>
                     </tr>
                     <tr>
                         <td style="padding: 8px; border: 1px solid #e2e8f0; font-weight: bold; color: #dc2626; font-size: 15px;">{p_hw}</td>
@@ -126,7 +126,7 @@ def generate_naver_odds_with_handicap_infographic(b_odds, overseas_name, o_odds,
                 </table>
     """
 
-    # 🎯 복수 핸디캡 결과 순회 출력 (핸무 포함 3분할 렌더링)
+    # 🎯 복수 핸디캡 결과 순회 출력 (핸무 포함 3분할 렌더링 - 용어 통일 적용)
     if hc_stats_list:
         for hc_stats in hc_stats_list:
             if hc_stats.get("count", 0) > 0:
@@ -147,7 +147,7 @@ def generate_naver_odds_with_handicap_infographic(b_odds, overseas_name, o_odds,
                     <tr style="background-color: #f8fafc;">
                         <th style="padding: 8px 4px; border: 1px solid #cbd5e1; color: #dc2626; width: 33%;">🔴 홈 핸디캡 승</th>
                         <th style="padding: 8px 4px; border: 1px solid #cbd5e1; color: #059669; width: 34%;">🟢 핸디캡 무승부</th>
-                        <th style="padding: 8px 4px; border: 1px solid #cbd5e1; color: #2563eb; width: 33%;">🔵 원정 플러스핸디</th>
+                        <th style="padding: 8px 4px; border: 1px solid #cbd5e1; color: #2563eb; width: 33%;">🔵 원정 핸디캡 승</th>
                     </tr>
                     <tr>
                         <td style="padding: 8px 4px; border: 1px solid #e2e8f0; font-weight: bold; color: #dc2626; font-size: 14px;">{hw_p}% ({hw_cnt}회)</td>
