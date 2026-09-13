@@ -72,7 +72,7 @@ def render_clipboard_component(html_content, component_id, height=520):
     components.html(wrapper_html, height=height, scrolling=True)
 
 # =========================================================
-# 📊 카드 1: 동일 배당 매칭 스코어 기반 (승무패 통계 + 복수 핸디캡 + 언오버) 인포그래픽
+# 📊 카드 1: 동일 배당 매칭 스코어 기반 (승무패 통계 + 복수 핸디캡[핸무포함] + 언오버) 인포그래픽
 # =========================================================
 def generate_naver_odds_with_handicap_infographic(b_odds, overseas_name, o_odds, league_name="", home_team="", away_team="", match_stats=None, hc_stats_list=None, ou_stats=None):
     b_h, b_d, b_a = b_odds
@@ -126,15 +126,17 @@ def generate_naver_odds_with_handicap_infographic(b_odds, overseas_name, o_odds,
                 </table>
     """
 
-    # 복수 핸디캡 결과 순회 출력
+    # 🎯 복수 핸디캡 결과 순회 출력 (핸무 포함 3분할 렌더링)
     if hc_stats_list:
         for hc_stats in hc_stats_list:
             if hc_stats.get("count", 0) > 0:
                 line = hc_stats.get("line", -1.0)
                 cnt = hc_stats.get("count", 0)
                 hw_p = hc_stats.get("home_win_pct", 0.0)
+                hd_p = hc_stats.get("draw_pct", 0.0)
                 aw_p = hc_stats.get("away_win_pct", 0.0)
                 hw_cnt = hc_stats.get("home_win_cnt", 0)
+                hd_cnt = hc_stats.get("draw_cnt", 0)
                 aw_cnt = hc_stats.get("away_win_cnt", 0)
                 
                 line_str = f"+{line}" if line > 0 else str(line)
@@ -143,11 +145,13 @@ def generate_naver_odds_with_handicap_infographic(b_odds, overseas_name, o_odds,
                 <div style="font-size: 13px; font-weight: bold; color: #1e293b; margin-top: 12px; margin-bottom: 6px;">🎯 [동일 배당 매칭 스코어 기반 핸디캡 ({line_str})] 적중 확률 (총 {cnt}건)</div>
                 <table border="1" cellpadding="0" cellspacing="0" style="width: 100%; border-collapse: collapse; font-size: 13px; text-align: center; border: 1px solid #cbd5e1; margin-bottom: 14px;">
                     <tr style="background-color: #f8fafc;">
-                        <th style="padding: 8px 4px; border: 1px solid #cbd5e1; color: #dc2626; width: 50%;">🔴 홈 핸디캡 승률</th>
-                        <th style="padding: 8px 4px; border: 1px solid #cbd5e1; color: #2563eb; width: 50%;">🔵 원정 플러스핸디 승률</th>
+                        <th style="padding: 8px 4px; border: 1px solid #cbd5e1; color: #dc2626; width: 33%;">🔴 홈 핸디캡 승</th>
+                        <th style="padding: 8px 4px; border: 1px solid #cbd5e1; color: #059669; width: 34%;">🟢 핸디캡 무승부</th>
+                        <th style="padding: 8px 4px; border: 1px solid #cbd5e1; color: #2563eb; width: 33%;">🔵 원정 플러스핸디</th>
                     </tr>
                     <tr>
                         <td style="padding: 8px 4px; border: 1px solid #e2e8f0; font-weight: bold; color: #dc2626; font-size: 14px;">{hw_p}% ({hw_cnt}회)</td>
+                        <td style="padding: 8px 4px; border: 1px solid #e2e8f0; font-weight: bold; color: #059669; font-size: 14px;">{hd_p}% ({hd_cnt}회)</td>
                         <td style="padding: 8px 4px; border: 1px solid #e2e8f0; font-weight: bold; color: #2563eb; font-size: 14px;">{aw_p}% ({aw_cnt}회)</td>
                     </tr>
                 </table>
