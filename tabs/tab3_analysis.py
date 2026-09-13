@@ -84,7 +84,7 @@ def render_tab3(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
                         odds_inputs_t2[bm] = (h_val, d_val, a_val)
 
     # =========================================================
-    # 🎯 핸디캡 및 언오버 기준점 설정 영역 (복수 선택 지원)
+    # 🎯 핸디캡 및 언오버 기준점 설정 영역
     # =========================================================
     st.markdown("---")
     st.markdown("##### 🎯 과거 데이터 기반 핸디캡 & 언오버 확률 분석 기준점 설정")
@@ -111,7 +111,8 @@ def render_tab3(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
 
     st.markdown("---")
 
-    def compute_odds_analysis(is_league_filter=False, league_name=""):
+    # 🚀 [방법 A 핵심] 분석 실행 함수: 데이터를 미리 일괄 로드한 뒤 메모리에서 필터링 수행
+    def run_full_analysis(league_filter=""):
         rows = []
         matched_dict = {}
         tot_bm = 0
@@ -121,21 +122,26 @@ def render_tab3(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
         tot_dr = 0
         tot_aw = 0
 
+        is_filtered = bool(league_filter.strip())
+
         for idx, bm in enumerate(bookmakers, 1):
             h, d, a = odds_inputs_t2.get(bm, (0.0, 0.0, 0.0))
-            
             if h <= 1.0 or d <= 1.0 or a <= 1.0:
-                rows.append({
-                    "순번": str(idx), "북메이커": bm.upper(), "입력 배당": "미입력", "환급률": "-",
-                    "매칭 경기": "0건", "홈승 확률": "-", "무승부 확률": "-", "원정승 확률": "-"
-                })
+                if not is_filtered:  # 전체 리그 기준 표에만 미입력 행 추가
+                    rows.append({
+                        "순번": str(idx), "북메이커": bm.upper(), "입력 배당": "미입력", "환급률": "-",
+                        "매칭 경기": "0건", "홈승 확률": "-", "무승부 확률": "-", "원정승 확률": "-"
+                    })
                 continue
 
             raw_inv = (1/h) + (1/d) + (1/a)
             payout = (1 / raw_inv) * 100
-            tot_payout += payout
-            tot_bm += 1
+            
+            if not is_filtered:
+                tot_payout += payout
+                tot_bm += 1
 
+            # 💡 메모리에 캐싱된 시트 데이터를 가져와서 판다스 연산 속도 극대화
             df_bm = load_sheet_data(bm, spreadsheet_id)
             m_count = 0
             h_str, d_str, a_str = "0.0%", "0.0%", "0.0%"
@@ -156,8 +162,8 @@ def render_tab3(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
 
                     if h_col and d_col and a_col and res_col:
                         df_work = df_bm.copy()
-                        if is_league_filter and lg_col and league_name.strip():
-                            df_work = df_work[df_work[lg_col].astype(str).str.upper() == league_name.strip().upper()]
+                        if is_filtered and lg_col:
+                            df_work = df_work[df_work[lg_col].astype(str).str.upper() == league_filter.strip().upper()]
 
                         df_work["H_num"] = pd.to_numeric(df_work[h_col], errors="coerce").fillna(0.0)
                         df_work["D_num"] = pd.to_numeric(df_work[d_col], errors="coerce").fillna(0.0)
@@ -179,10 +185,11 @@ def render_tab3(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
                             dr = res_c.get("무승부", 0)
                             aw = res_c.get("원정승", 0)
 
-                            tot_m += m_count
-                            tot_hw += hw
-                            tot_dr += dr
-                            tot_aw += aw
+                            if not is_filtered:
+                                tot_m += m_count
+                                tot_hw += hw
+                                tot_dr += dr
+                                tot_aw += aw
 
                             h_str = f"{round((hw/m_count)*100, 1)}% ({hw}회)"
                             d_str = f"{round((dr/m_count)*100, 1)}% ({dr}회)"
@@ -198,34 +205,36 @@ def render_tab3(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
                 "홈승 확률": h_str, "무승부 확률": d_str, "원정승 확률": a_str
             })
 
-        avg_p_str = f"{round(tot_payout / tot_bm, 2)}%" if tot_bm > 0 else "-"
-        if tot_m > 0:
-            tot_h_str = f"{round((tot_hw / tot_m) * 100, 1)}% ({tot_hw}회)"
-            tot_d_str = f"{round((tot_dr / tot_m) * 100, 1)}% ({tot_dr}회)"
-            tot_a_str = f"{round((tot_aw / tot_m) * 100, 1)}% ({tot_aw}회)"
-        else:
-            tot_h_str, tot_d_str, tot_a_str = "0.0%", "0.0%", "0.0%"
+        if not is_filtered:
+            avg_p_str = f"{round(tot_payout / tot_bm, 2)}%" if tot_bm > 0 else "-"
+            if tot_m > 0:
+                tot_h_str = f"{round((tot_hw / tot_m) * 100, 1)}% ({tot_hw}회)"
+                tot_d_str = f"{round((tot_dr / tot_m) * 100, 1)}% ({tot_dr}회)"
+                tot_a_str = f"{round((tot_aw / tot_m) * 100, 1)}% ({tot_aw}회)"
+            else:
+                tot_h_str, tot_d_str, tot_a_str = "0.0%", "0.0%", "0.0%"
 
-        rows.append({
-            "순번": "🔥",
-            "북메이커": "종합 가중평균 (누적)",
-            "입력 배당": f"유효 {tot_bm}개사",
-            "환급률": avg_p_str,
-            "매칭 경기": f"총 {tot_m}건",
-            "홈승 확률": tot_h_str,
-            "무승부 확률": tot_d_str,
-            "원정승 확률": tot_a_str
-        })
+            rows.append({
+                "순번": "🔥",
+                "북메이커": "종합 가중평균 (누적)",
+                "입력 배당": f"유효 {tot_bm}개사",
+                "환급률": avg_p_str,
+                "매칭 경기": f"총 {tot_m}건",
+                "홈승 확률": tot_h_str,
+                "무승부 확률": tot_d_str,
+                "원정승 확률": tot_a_str
+            })
 
         return pd.DataFrame(rows), matched_dict
 
     st.markdown("### 🚀 동일 배당 승률 및 통계 분석 실행")
-    st.info("💡 아래 버튼을 누르면 입력된 북메이커 시트만 안전하게 불러와 분석을 시작합니다.")
+    st.info("💡 아래 버튼을 누르면 메모리에 캐싱된 데이터를 활용해 즉시 분석을 수행합니다.")
     
     if st.button("🔥 분석 시작하기", type="primary", use_container_width=True):
-        with st.spinner("구글 시트에서 과거 배당 데이터를 불러와 매칭 중입니다... 잠시만 기다려주세요!"):
-            df_all_league, matched_all = compute_odds_analysis(is_league_filter=False)
-            df_target_league, matched_target = compute_odds_analysis(is_league_filter=True, league_name=target_league)
+        with st.spinner("데이터를 불러와 고속 매칭 분석을 수행 중입니다..."):
+            # 전체 리그 및 동일 리그 분석 동시 수행
+            df_all_league, matched_all = run_full_analysis(league_filter="")
+            df_target_league, matched_target = run_full_analysis(league_filter=target_league)
             
             st.session_state["t3_analyzed"] = True
             st.session_state["t3_df_all"] = df_all_league
@@ -335,7 +344,6 @@ def render_tab3(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
                             "away_win_pct": round((aw_cnt_match / valid_matches) * 100, 1)
                         }
 
-                        # 🎯 핸디캡 승 / 핸디캡 무승부(핸무) / 원정 플러스핸디 3분할 계산 로직
                         for hc_val in hc_lines_val:
                             hw_hc_cnt = 0
                             hd_hc_cnt = 0
