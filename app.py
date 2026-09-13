@@ -4,7 +4,7 @@ from tabs.tab2_scanner import render_tab2
 from tabs.tab3_analysis import render_tab3
 from tabs.tab4_team_stats import render_tab4
 from tabs.tab5_h2h import render_tab5
-from tabs.tab6_injuries import render_tab6
+# 🚑 tab6_injuries는 독립된 전용 앱으로 분리되었으므로 더 이상 여기서 불러오지 않습니다.
 
 # 1. 페이지 기본 설정
 st.set_page_config(
@@ -70,14 +70,13 @@ with st.sidebar:
         st.cache_data.clear()
         st.rerun()
 
-# 6개 탭 구성
-tab_input, tab_scanner, tab_analysis, tab_team_stats, tab_h2h, tab_injuries = st.tabs([
+# 5개 탭 구성 (결장자 탭 제거 완료)
+tab_input, tab_scanner, tab_analysis, tab_team_stats, tab_h2h = st.tabs([
     "📝 경기 데이터 입력 & 저장", 
     "📡 라운드 경기 자동 스캐너 & 추천픽",
     "📊 9개사 동일 배당 분석", 
     "📈 팀별 세부내용 평균계산기",
-    "⚔️ 홈 vs 원정 맞대결 종합분석",
-    "🚑 팀별 부상자/결장자 명단"
+    "⚔️ 홈 vs 원정 맞대결 종합분석"
 ])
 
 with tab_input:
@@ -94,6 +93,3 @@ with tab_team_stats:
 
 with tab_h2h:
     render_tab5(SPREADSHEET_ID)
-
-with tab_injuries:
-    render_tab6(SPREADSHEET_ID)
