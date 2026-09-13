@@ -111,7 +111,6 @@ def render_tab3(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
 
     st.markdown("---")
 
-    # 🚀 [방법 A 핵심] 분석 실행 함수: 데이터를 미리 일괄 로드한 뒤 메모리에서 필터링 수행
     def run_full_analysis(league_filter=""):
         rows = []
         matched_dict = {}
@@ -127,7 +126,7 @@ def render_tab3(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
         for idx, bm in enumerate(bookmakers, 1):
             h, d, a = odds_inputs_t2.get(bm, (0.0, 0.0, 0.0))
             if h <= 1.0 or d <= 1.0 or a <= 1.0:
-                if not is_filtered:  # 전체 리그 기준 표에만 미입력 행 추가
+                if not is_filtered:
                     rows.append({
                         "순번": str(idx), "북메이커": bm.upper(), "입력 배당": "미입력", "환급률": "-",
                         "매칭 경기": "0건", "홈승 확률": "-", "무승부 확률": "-", "원정승 확률": "-"
@@ -141,7 +140,6 @@ def render_tab3(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
                 tot_payout += payout
                 tot_bm += 1
 
-            # 💡 메모리에 캐싱된 시트 데이터를 가져와서 판다스 연산 속도 극대화
             df_bm = load_sheet_data(bm, spreadsheet_id)
             m_count = 0
             h_str, d_str, a_str = "0.0%", "0.0%", "0.0%"
@@ -232,7 +230,6 @@ def render_tab3(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
     
     if st.button("🔥 분석 시작하기", type="primary", use_container_width=True):
         with st.spinner("데이터를 불러와 고속 매칭 분석을 수행 중입니다..."):
-            # 전체 리그 및 동일 리그 분석 동시 수행
             df_all_league, matched_all = run_full_analysis(league_filter="")
             df_target_league, matched_target = run_full_analysis(league_filter=target_league)
             
@@ -290,11 +287,20 @@ def render_tab3(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
             hc_stats_list = []
             ou_stats_dict = None
 
+            # 🚀 [수정 핵심] 사용자가 선택한 비교 대상에 따라 매칭 데이터 구성 (해외 종합이면 모든 해외사 합산, 특정사면 해당사 추출)
             target_matched_df = pd.DataFrame()
-            for bm_key in ["배트맨"] + list(matched_all.keys()):
-                if bm_key in matched_all and not matched_all[bm_key].empty:
-                    target_matched_df = matched_all[bm_key]
-                    break
+            if "종합 가중평균" in sel_compare_target:
+                frames_to_concat = []
+                for obm in overseas_bookmakers:
+                    obm_upper = obm.upper()
+                    if obm_upper in matched_all and not matched_all[obm_upper].empty:
+                        frames_to_concat.append(matched_all[obm_upper])
+                if frames_to_concat:
+                    target_matched_df = pd.concat(frames_to_concat, ignore_index=True)
+            else:
+                sel_upper = sel_compare_target.upper()
+                if sel_upper in matched_all and not matched_all[sel_upper].empty:
+                    target_matched_df = matched_all[sel_upper]
 
             if not target_matched_df.empty:
                 cols = list(target_matched_df.columns)
