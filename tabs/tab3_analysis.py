@@ -124,7 +124,6 @@ def render_tab3(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
         for idx, bm in enumerate(bookmakers, 1):
             h, d, a = odds_inputs_t2.get(bm, (0.0, 0.0, 0.0))
             
-            # 🚀 [최적화 핵심] 배당이 미입력(0 이하)된 업체는 구글 시트를 아예 읽지 않고 패스합니다!
             if h <= 1.0 or d <= 1.0 or a <= 1.0:
                 rows.append({
                     "순번": str(idx), "북메이커": bm.upper(), "입력 배당": "미입력", "환급률": "-",
@@ -137,7 +136,6 @@ def render_tab3(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
             tot_payout += payout
             tot_bm += 1
 
-            # 배당이 입력된 업체만 시트를 불러옵니다 (API 호출 최소화)
             df_bm = load_sheet_data(bm, spreadsheet_id)
             m_count = 0
             h_str, d_str, a_str = "0.0%", "0.0%", "0.0%"
@@ -337,12 +335,18 @@ def render_tab3(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
                             "away_win_pct": round((aw_cnt_match / valid_matches) * 100, 1)
                         }
 
+                        # 🎯 핸디캡 승 / 핸디캡 무승부(핸무) / 원정 플러스핸디 3분할 계산 로직
                         for hc_val in hc_lines_val:
                             hw_hc_cnt = 0
+                            hd_hc_cnt = 0
                             aw_hc_cnt = 0
+                            
                             for hs, as_sc, _ in parsed_matches:
-                                if (hs + hc_val) > as_sc:
+                                adjusted_home_score = hs + hc_val
+                                if adjusted_home_score > as_sc:
                                     hw_hc_cnt += 1
+                                elif adjusted_home_score == as_sc:
+                                    hd_hc_cnt += 1
                                 else:
                                     aw_hc_cnt += 1
                             
@@ -350,8 +354,10 @@ def render_tab3(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
                                 "line": hc_val,
                                 "count": valid_matches,
                                 "home_win_pct": round((hw_hc_cnt / valid_matches) * 100, 1),
+                                "draw_pct": round((hd_hc_cnt / valid_matches) * 100, 1),
                                 "away_win_pct": round((aw_hc_cnt / valid_matches) * 100, 1),
                                 "home_win_cnt": hw_hc_cnt,
+                                "draw_cnt": hd_hc_cnt,
                                 "away_win_cnt": aw_hc_cnt
                             })
 
@@ -369,7 +375,7 @@ def render_tab3(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
                 league_name=target_league, home_team=t2_home_team.strip(), away_team=t2_away_team.strip(),
                 match_stats=match_stats_dict, hc_stats_list=hc_stats_list, ou_stats=ou_stats_dict
             )
-            render_clipboard_component(card1_html, "t2_clip_card1", height=650)
+            render_clipboard_component(card1_html, "t2_clip_card1", height=680)
 
         with st.expander("📊 / 📋 [카드 2] 기존 배당 편차 및 단순 배당 비교 인포그래픽", expanded=False):
             st.markdown("##### 🌟 [네이버 블로그/카페 전용] 배당 편차 및 단순 배당 비교 카드")
