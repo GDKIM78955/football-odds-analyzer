@@ -20,8 +20,8 @@ def get_gspread_client():
     except Exception:
         return None
 
-# 2. 안전한 시트 데이터 로딩 함수 (공백 제거 및 24시간 캐시 적용으로 대용량 로딩 속도 최적화)
-@st.cache_data(ttl=86400, show_spinner=False)
+# 2. 안전한 시트 데이터 로딩 함수 (ttl을 5분으로 최적화하여 렉 및 정합성 문제 해결)
+@st.cache_data(ttl=300, show_spinner=False)
 def load_sheet_data(sheet_name, spreadsheet_id=""):
     client = get_gspread_client()
     if not client or not spreadsheet_id:
@@ -32,7 +32,7 @@ def load_sheet_data(sheet_name, spreadsheet_id=""):
             ws = spreadsheet.worksheet(sheet_name)
             data = ws.get_all_values()
             if len(data) > 1:
-                # [핵심 수정] 열 이름(헤더)에 들어간 보이지 않는 공백 자동 제거
+                # 열 이름(헤더)에 들어간 보이지 않는 공백 자동 제거
                 cols = [str(c).strip() for c in data[0]]
                 df = pd.DataFrame(data[1:], columns=cols)
                 # 빈 행 제거 및 열 이름 앞뒤 공백 스트립
@@ -41,11 +41,15 @@ def load_sheet_data(sheet_name, spreadsheet_id=""):
                 return df
             return pd.DataFrame()
         except Exception:
-            time.sleep(1.0 * (attempt + 1))
+            time.sleep(0.5 * (attempt + 1))
             continue
     return pd.DataFrame()
 
-# 3. 경기 데이터 구글 시트 일괄 저장 함수 (캐시 무관 실시간 즉시 저장)
+# 💡 캐시 강제 초기화 함수 (필요시 최신 데이터 즉시 로딩용)
+def clear_sheet_cache():
+    load_sheet_data.clear()
+
+# 3. 경기 데이터 구글 시트 일괄 저장 함수
 def save_match_data_to_sheets(spreadsheet_id, bookmakers, stats_sheet_name, match_info, odds_dict, stats_dict, hc_info=None, ou_info=None):
     client = get_gspread_client()
     if not client:
@@ -152,7 +156,7 @@ def save_match_data_to_sheets(spreadsheet_id, bookmakers, stats_sheet_name, matc
                 ws = spreadsheet.worksheet(bm_name)
                 ws.append_row(row_data_odds, value_input_option="USER_ENTERED")
                 saved_count += 1
-                time.sleep(0.12)
+                time.sleep(0.05) # 지연 시간 최적화
             except gspread.exceptions.WorksheetNotFound:
                 pass
 
@@ -184,7 +188,8 @@ def save_match_data_to_sheets(spreadsheet_id, bookmakers, stats_sheet_name, matc
             h_shots, a_shots, h_sot, a_sot,
             f"{h_sot_ratio}%", f"{a_sot_ratio}%",
             f"{stats_dict['home_poss']}%", f"{stats_dict['away_poss']}%",
-            f"{stats_dict['home_pass']}%", f"{stats_dict['away_pass']}%",
+            f"{stats_dict['pass_pass']}%" if "pass_pass" in stats_dict else f"{stats_dict.get('home_pass', 0)}%", 
+            f"{stats_dict['away_pass']}%",
             stats_dict['home_yc'], stats_dict['away_yc'], stats_dict['home_rc'], stats_dict['away_rc'],
             stats_dict['home_xg'], stats_dict['away_xg']
         ]
@@ -192,10 +197,13 @@ def save_match_data_to_sheets(spreadsheet_id, bookmakers, stats_sheet_name, matc
         try:
             ws_stats = spreadsheet.worksheet(stats_sheet_name)
             ws_stats.append_row(row_data_stats, value_input_option="USER_ENTERED")
-            time.sleep(0.12)
+            time.sleep(0.05)
         except gspread.exceptions.WorksheetNotFound:
             pass
         
+        # 데이터가 변경되었으므로 캐시 초기화 수행
+        clear_sheet_cache()
+
         return True, f"배당 {saved_count}개사 탭 & '{stats_sheet_name}' 탭 저장 완료"
     except Exception as e:
         return False, str(e)
