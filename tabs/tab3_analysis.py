@@ -111,38 +111,45 @@ def render_tab3(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
 
     st.markdown("---")
 
-    def run_full_analysis(league_filter=""):
-        rows = []
-        matched_dict = {}
+    def run_full_analysis():
+        rows_all = []
+        rows_target = []
+        matched_dict_all = {}
+        matched_dict_target = {}
+        
         tot_bm = 0
         tot_payout = 0.0
         tot_m = 0
-        tot_hw = 0
-        tot_dr = 0
-        tot_aw = 0
+        tot_hw, tot_dr, tot_aw = 0, 0, 0
 
-        is_filtered = bool(league_filter.strip())
+        target_lg_upper = target_league.strip().upper()
 
         for idx, bm in enumerate(bookmakers, 1):
             h, d, a = odds_inputs_t2.get(bm, (0.0, 0.0, 0.0))
             if h <= 1.0 or d <= 1.0 or a <= 1.0:
-                if not is_filtered:
-                    rows.append({
-                        "순번": str(idx), "북메이커": bm.upper(), "입력 배당": "미입력", "환급률": "-",
-                        "매칭 경기": "0건", "홈승 확률": "-", "무승부 확률": "-", "원정승 확률": "-"
-                    })
+                rows_all.append({
+                    "순번": str(idx), "북메이커": bm.upper(), "입력 배당": "미입력", "환급률": "-",
+                    "매칭 경기": "0건", "홈승 확률": "-", "무승부 확률": "-", "원정승 확률": "-"
+                })
+                rows_target.append({
+                    "순번": str(idx), "북메이커": bm.upper(), "입력 배당": "미입력", "환급률": "-",
+                    "매칭 경기": "0건", "홈승 확률": "-", "무승부 확률": "-", "원정승 확률": "-"
+                })
                 continue
 
             raw_inv = (1/h) + (1/d) + (1/a)
             payout = (1 / raw_inv) * 100
             
-            if not is_filtered:
-                tot_payout += payout
-                tot_bm += 1
+            tot_payout += payout
+            tot_bm += 1
 
+            # 🚀 [최적화 핵심] 시트 데이터 로딩을 1회만 수행 후 전체/리그별로 메모리 필터링 분기
             df_bm = load_sheet_data(bm, spreadsheet_id)
-            m_count = 0
+            
             h_str, d_str, a_str = "0.0%", "0.0%", "0.0%"
+            t_h_str, t_d_str, t_a_str = "0.0%", "0.0%", "0.0%"
+            m_count_all = 0
+            m_count_target = 0
 
             if not df_bm.empty:
                 try:
@@ -160,9 +167,6 @@ def render_tab3(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
 
                     if h_col and d_col and a_col and res_col:
                         df_work = df_bm.copy()
-                        if is_filtered and lg_col:
-                            df_work = df_work[df_work[lg_col].astype(str).str.upper() == league_filter.strip().upper()]
-
                         df_work["H_num"] = pd.to_numeric(df_work[h_col], errors="coerce").fillna(0.0)
                         df_work["D_num"] = pd.to_numeric(df_work[d_col], errors="coerce").fillna(0.0)
                         df_work["A_num"] = pd.to_numeric(df_work[a_col], errors="coerce").fillna(0.0)
@@ -173,65 +177,99 @@ def render_tab3(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
                             (df_work["D_num"] >= d - tol) & (df_work["D_num"] <= d + tol) &
                             (df_work["A_num"] >= a - tol) & (df_work["A_num"] <= a + tol)
                         )
-                        matched = df_work[cond]
-                        m_count = len(matched)
+                        matched_all_df = df_work[cond]
+                        m_count_all = len(matched_all_df)
 
-                        if m_count > 0:
-                            matched_dict[bm.upper()] = matched
-                            res_c = matched[res_col].value_counts()
+                        if m_count_all > 0:
+                            bm_upper = bm.upper()
+                            matched_dict_all[bm_upper] = matched_all_df
+                            res_c = matched_all_df[res_col].value_counts()
                             hw = res_c.get("홈승", 0)
                             dr = res_c.get("무승부", 0)
                             aw = res_c.get("원정승", 0)
 
-                            if not is_filtered:
-                                tot_m += m_count
-                                tot_hw += hw
-                                tot_dr += dr
-                                tot_aw += aw
+                            tot_m += m_count_all
+                            tot_hw += hw
+                            tot_dr += dr
+                            tot_aw += aw
 
-                            h_str = f"{round((hw/m_count)*100, 1)}% ({hw}회)"
-                            d_str = f"{round((dr/m_count)*100, 1)}% ({dr}회)"
-                            a_str = f"{round((aw/m_count)*100, 1)}% ({aw}회)"
+                            h_str = f"{round((hw/m_count_all)*100, 1)}% ({hw}회)"
+                            d_str = f"{round((dr/m_count_all)*100, 1)}% ({dr}회)"
+                            a_str = f"{round((aw/m_count_all)*100, 1)}% ({aw}회)"
+
+                            # 동일 리그 필터링
+                            if lg_col:
+                                matched_target_df = matched_all_df[matched_all_df[lg_col].astype(str).str.upper() == target_lg_upper]
+                                m_count_target = len(matched_target_df)
+                                if m_count_target > 0:
+                                    matched_dict_target[bm_upper] = matched_target_df
+                                    t_res_c = matched_target_df[res_col].value_counts()
+                                    thw = t_res_c.get("홈승", 0)
+                                    tdr = t_res_c.get("무승부", 0)
+                                    taw = t_res_c.get("원정승", 0)
+
+                                    t_h_str = f"{round((thw/m_count_target)*100, 1)}% ({thw}회)"
+                                    t_d_str = f"{round((tdr/m_count_target)*100, 1)}% ({tdr}회)"
+                                    t_a_str = f"{round((taw/m_count_target)*100, 1)}% ({taw}회)"
                 except Exception:
                     pass
 
-            rows.append({
+            rows_all.append({
                 "순번": str(idx), "북메이커": bm.upper(),
                 "입력 배당": f"{h} / {d} / {a}",
                 "환급률": f"{round(payout, 2)}%",
-                "매칭 경기": f"{m_count}건",
+                "매칭 경기": f"{m_count_all}건",
                 "홈승 확률": h_str, "무승부 확률": d_str, "원정승 확률": a_str
             })
 
-        if not is_filtered:
-            avg_p_str = f"{round(tot_payout / tot_bm, 2)}%" if tot_bm > 0 else "-"
-            if tot_m > 0:
-                tot_h_str = f"{round((tot_hw / tot_m) * 100, 1)}% ({tot_hw}회)"
-                tot_d_str = f"{round((tot_dr / tot_m) * 100, 1)}% ({tot_dr}회)"
-                tot_a_str = f"{round((tot_aw / tot_m) * 100, 1)}% ({tot_aw}회)"
-            else:
-                tot_h_str, tot_d_str, tot_a_str = "0.0%", "0.0%", "0.0%"
-
-            rows.append({
-                "순번": "🔥",
-                "북메이커": "종합 가중평균 (누적)",
-                "입력 배당": f"유효 {tot_bm}개사",
-                "환급률": avg_p_str,
-                "매칭 경기": f"총 {tot_m}건",
-                "홈승 확률": tot_h_str,
-                "무승부 확률": tot_d_str,
-                "원정승 확률": tot_a_str
+            rows_target.append({
+                "순번": str(idx), "북메이커": bm.upper(),
+                "입력 배당": f"{h} / {d} / {a}",
+                "환급률": f"{round(payout, 2)}%",
+                "매칭 경기": f"{m_count_target}건",
+                "홈승 확률": t_h_str, "무승부 확률": t_d_str, "원정승 확률": t_a_str
             })
 
-        return pd.DataFrame(rows), matched_dict
+        avg_p_str = f"{round(tot_payout / tot_bm, 2)}%" if tot_bm > 0 else "-"
+        if tot_m > 0:
+            tot_h_str = f"{round((tot_hw / tot_m) * 100, 1)}% ({tot_hw}회)"
+            tot_d_str = f"{round((tot_dr / tot_m) * 100, 1)}% ({tot_dr}회)"
+            tot_a_str = f"{round((tot_aw / tot_m) * 100, 1)}% ({tot_aw}회)"
+        else:
+            tot_h_str, tot_d_str, tot_a_str = "0.0%", "0.0%", "0.0%"
+
+        rows_all.append({
+            "순번": "🔥",
+            "북메이커": "종합 가중평균 (누적)",
+            "입력 배당": f"유효 {tot_bm}개사",
+            "환급률": avg_p_str,
+            "매칭 경기": f"총 {tot_m}건",
+            "홈승 확률": tot_h_str,
+            "무승부 확률": tot_d_str,
+            "원정승 확률": tot_a_str
+        })
+
+        # 동일 리그 종합 행 추가 (선택사항이나 형식 유지용)
+        rows_target.append({
+            "순번": "🔥",
+            "북메이커": "종합 가중평균 (누적)",
+            "입력 배당": f"유효 {tot_bm}개사",
+            "환급률": avg_p_str,
+            "매칭 경기": "동일 리그",
+            "홈승 확률": "-", "무승부 확률": "-", "원정승 확률": "-"
+        })
+
+        return (
+            pd.DataFrame(rows_all), matched_dict_all,
+            pd.DataFrame(rows_target), matched_dict_target
+        )
 
     st.markdown("### 🚀 동일 배당 승률 및 통계 분석 실행")
-    st.info("💡 아래 버튼을 누르면 메모리에 캐싱된 데이터를 활용해 즉시 분석을 수행합니다.")
+    st.info("💡 아래 버튼을 누르면 캐싱된 데이터를 활용해 즉시 분석을 수행합니다.")
     
     if st.button("🔥 분석 시작하기", type="primary", use_container_width=True):
-        with st.spinner("데이터를 불러와 고속 매칭 분석을 수행 중입니다..."):
-            df_all_league, matched_all = run_full_analysis(league_filter="")
-            df_target_league, matched_target = run_full_analysis(league_filter=target_league)
+        with st.spinner("고속 매칭 분석을 수행 중입니다..."):
+            df_all_league, matched_all, df_target_league, matched_target = run_full_analysis()
             
             st.session_state["t3_analyzed"] = True
             st.session_state["t3_df_all"] = df_all_league
@@ -287,7 +325,6 @@ def render_tab3(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
             hc_stats_list = []
             ou_stats_dict = None
 
-            # 🚀 [수정 핵심] 사용자가 선택한 비교 대상에 따라 매칭 데이터 구성 (해외 종합이면 모든 해외사 합산, 특정사면 해당사 추출)
             target_matched_df = pd.DataFrame()
             if "종합 가중평균" in sel_compare_target:
                 frames_to_concat = []
