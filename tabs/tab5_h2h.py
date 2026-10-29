@@ -158,7 +158,7 @@ def render_tab5(spreadsheet_id):
                     h_1h_list.append(to_num(pd.Series([r.get("전반득점_원", 0)])).iloc[0] + 0)
                     h_2h_list.append(to_num(pd.Series([r.get("후반득점_원", 0)])).iloc[0] + 0)
                     a_1h_list.append(to_num(pd.Series([r.get("전반득점_홈", 0)])).iloc[0] + 0)
-                    a_2h_list.append(to_num(pd.Series([r.get("후반득점_원", 0)])).iloc[0] + 0)
+                    a_2h_list.append(to_num(pd.Series([r.get("후반득점_홈", 0)])).iloc[0] + 0)
 
             sum_h_1h, sum_h_2h = sum(h_1h_list), sum(h_2h_list)
             sum_a_1h, sum_a_2h = sum(a_1h_list), sum(a_2h_list)
