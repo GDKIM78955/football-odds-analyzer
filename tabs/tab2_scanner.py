@@ -190,7 +190,7 @@ def render_tab2(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
                             if target_row_idx:
                                 ws_scan.update(f"A{target_row_idx}:AF{target_row_idx}", [new_scan_row], value_input_option="USER_ENTERED")
                             else:
-                                ws_scan.append_row(new_scan_row, value_input_option="USER_ENTERED")
+                                ws_scan.append_row(new_scan_row, value_input_option="USER_ENTERED", table_range="A1")
                             
                             st.session_state.current_scan_queue_idx += 1
                             st.cache_data.clear()
@@ -322,7 +322,7 @@ def render_tab2(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
                                     st.cache_data.clear()
                                     st.success(f"🔄 [{ds_home} vs {ds_away}] 기존 경기의 배당이 최신 데이터로 성공적으로 덮어쓰기(수정)되었습니다!")
                                 else:
-                                    ws_scan.append_row(new_scan_row, value_input_option="USER_ENTERED")
+                                    ws_scan.append_row(new_scan_row, value_input_option="USER_ENTERED", table_range="A1")
                                     import time
                                     time.sleep(0.3)
                                     st.cache_data.clear()
@@ -381,7 +381,7 @@ def render_tab2(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
                 if not h_col and len(cols) > 14:
                     h_col, d_col, a_col = cols[12], cols[13], cols[14]
                 if not res_col:
-                    res_col = cols[32] if len(cols) > 32 else cols[-1]
+                    res_col = cols[34] if len(cols) > 34 else (cols[32] if len(cols) > 32 else cols[-1])
 
                 if not h_col or not d_col or not a_col:
                     return 0, 0, 0, 0
@@ -422,7 +422,7 @@ def render_tab2(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
                 if not h_col and len(cols) > 14:
                     h_col, d_col, a_col = cols[12], cols[13], cols[14]
                 if not res_col:
-                    res_col = cols[32] if len(cols) > 32 else cols[-1]
+                    res_col = cols[34] if len(cols) > 34 else (cols[32] if len(cols) > 32 else cols[-1])
 
                 if not h_col or not d_col or not a_col:
                     return []
