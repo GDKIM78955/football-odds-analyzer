@@ -3,6 +3,74 @@ import pandas as pd
 import numpy as np
 from database import load_sheet_data
 
+
+@st.cache_data(ttl=300, show_spinner=False)
+def get_preprocessed_bm_db(bm_name, spreadsheet_id):
+    df_db = load_sheet_data(bm_name, spreadsheet_id)
+    if df_db.empty:
+        return None
+    try:
+        cols = list(df_db.columns)
+        h_col = next((c for c in cols if any(k in c for k in ["해당_홈", "배당_홈", "홈배당", "홈_승", "H_ODDS"])), None)
+        d_col = next((c for c in cols if any(k in c for k in ["해당_무", "배당_무", "무배당", "무승부", "D_ODDS"])), None)
+        a_col = next((c for c in cols if any(k in c for k in ["해당_원", "배당_원", "원정배당", "원정_승", "A_ODDS"])), None)
+        res_col = next((c for c in cols if any(k in c for k in ["경기결과", "결과", "Result"])), None)
+        date_col = next((c for c in cols if any(k in c for k in ["날짜", "경기날짜", "Date"])), None)
+        home_col = next((c for c in cols if any(k in c for k in ["홈팀", "Home"])), None)
+        away_col = next((c for c in cols if any(k in c for k in ["원정팀", "Away"])), None)
+
+        if not h_col and len(cols) > 14:
+            h_col, d_col, a_col = cols[12], cols[13], cols[14]
+        if not res_col:
+            res_col = cols[34] if len(cols) > 34 else (cols[32] if len(cols) > 32 else cols[-1])
+
+        if not h_col or not d_col or not a_col:
+            return None
+
+        df_w = df_db.copy()
+        df_w["H_num"] = pd.to_numeric(df_w[h_col], errors="coerce").fillna(0.0)
+        df_w["D_num"] = pd.to_numeric(df_w[d_col], errors="coerce").fillna(0.0)
+        df_w["A_num"] = pd.to_numeric(df_w[a_col], errors="coerce").fillna(0.0)
+
+        valid_mask = (df_w["H_num"] >= 1.01) & (df_w["D_num"] >= 1.01) & (df_w["A_num"] >= 1.01)
+        df_valid = df_w[valid_mask].reset_index(drop=True)
+        if df_valid.empty:
+            return None
+
+        return {
+            "df": df_valid,
+            "h_arr": df_valid["H_num"].to_numpy(dtype=float),
+            "d_arr": df_valid["D_num"].to_numpy(dtype=float),
+            "a_arr": df_valid["A_num"].to_numpy(dtype=float),
+            "res_arr": df_valid[res_col].astype(str).str.strip().to_numpy() if res_col and res_col in df_valid.columns else np.array(["-"] * len(df_valid)),
+            "date_arr": df_valid[date_col].astype(str).to_numpy() if date_col and date_col in df_valid.columns else np.array(["-"] * len(df_valid)),
+            "home_arr": df_valid[home_col].astype(str).to_numpy() if home_col and home_col in df_valid.columns else np.array(["-"] * len(df_valid)),
+            "away_arr": df_valid[away_col].astype(str).to_numpy() if away_col and away_col in df_valid.columns else np.array(["-"] * len(df_valid))
+        }
+    except Exception:
+        return None
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def get_preprocessed_h2h_db(stats_sheet_name, spreadsheet_id):
+    df_h2h = load_sheet_data(stats_sheet_name, spreadsheet_id)
+    if df_h2h.empty or "홈팀" not in df_h2h.columns or "원정팀" not in df_h2h.columns:
+        return pd.DataFrame()
+    try:
+        df_w = df_h2h.copy()
+        df_w["홈팀_clean"] = df_w["홈팀"].astype(str).str.strip()
+        df_w["원정팀_clean"] = df_w["원정팀"].astype(str).str.strip()
+        h1 = pd.to_numeric(df_w["전반득점_홈"].astype(str).str.replace("%", "").str.strip(), errors="coerce").fillna(0.0) if "전반득점_홈" in df_w.columns else 0.0
+        h2 = pd.to_numeric(df_w["후반득점_홈"].astype(str).str.replace("%", "").str.strip(), errors="coerce").fillna(0.0) if "후반득점_홈" in df_w.columns else 0.0
+        a1 = pd.to_numeric(df_w["전반득점_원"].astype(str).str.replace("%", "").str.strip(), errors="coerce").fillna(0.0) if "전반득점_원" in df_w.columns else 0.0
+        a2 = pd.to_numeric(df_w["후반득점_원"].astype(str).str.replace("%", "").str.strip(), errors="coerce").fillna(0.0) if "후반득점_원" in df_w.columns else 0.0
+        df_w["_hg"] = h1 + h2
+        df_w["_ag"] = a1 + a2
+        return df_w
+    except Exception:
+        return pd.DataFrame()
+
+
 def render_tab2(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
     st.subheader("📡 라운드 경기 배당 자동 스캐너 & 추천픽 레이더")
     st.caption("와이즈토토로 배트맨 경기를 연속으로 담아두고 해외 배당을 차례대로 채워 '라운드스캔' 시트에 저장 및 분석합니다.")
@@ -357,7 +425,7 @@ def render_tab2(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
 
     st.markdown("---")
 
-    df_h2h_all_db = load_sheet_data(stats_sheet_name, spreadsheet_id)
+    df_h2h_all_db = get_preprocessed_h2h_db(stats_sheet_name, spreadsheet_id)
 
     if df_scan_raw.empty:
         st.warning(f"⚠️ `{scanner_sheet_name}` 시트에 스캔할 경기 데이터가 없습니다. 위의 [2단계 분할 입력] 또는 [1경기 직접 등록]을 통해 경기를 등록해 주세요.")
@@ -366,90 +434,62 @@ def render_tab2(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
         
         cached_dbs = {}
         for bm in bookmakers:
-            cached_dbs[bm] = load_sheet_data(bm, spreadsheet_id)
+            cached_dbs[bm] = get_preprocessed_bm_db(bm, spreadsheet_id)
 
-        def count_matched_in_db(df_db, h_val, d_val, a_val):
-            if df_db.empty or h_val < 1.01 or d_val < 1.01 or a_val < 1.01:
+        def count_matched_in_db(prep_db, h_val, d_val, a_val):
+            if not prep_db or h_val < 1.01 or d_val < 1.01 or a_val < 1.01:
                 return 0, 0, 0, 0
             try:
-                cols = list(df_db.columns)
-                h_col = next((c for c in cols if any(k in c for k in ["해당_홈", "배당_홈", "홈배당", "홈_승", "H_ODDS"])), None)
-                d_col = next((c for c in cols if any(k in c for k in ["해당_무", "배당_무", "무배당", "무승부", "D_ODDS"])), None)
-                a_col = next((c for c in cols if any(k in c for k in ["해당_원", "배당_원", "원정배당", "원정_승", "A_ODDS"])), None)
-                res_col = next((c for c in cols if any(k in c for k in ["경기결과", "결과", "Result"])), None)
-
-                if not h_col and len(cols) > 14:
-                    h_col, d_col, a_col = cols[12], cols[13], cols[14]
-                if not res_col:
-                    res_col = cols[34] if len(cols) > 34 else (cols[32] if len(cols) > 32 else cols[-1])
-
-                if not h_col or not d_col or not a_col:
-                    return 0, 0, 0, 0
-
-                df_w = df_db.copy()
-                df_w["H_num"] = pd.to_numeric(df_w[h_col], errors="coerce").fillna(0.0)
-                df_w["D_num"] = pd.to_numeric(df_w[d_col], errors="coerce").fillna(0.0)
-                df_w["A_num"] = pd.to_numeric(df_w[a_col], errors="coerce").fillna(0.0)
+                h_arr = prep_db["h_arr"]
+                d_arr = prep_db["d_arr"]
+                a_arr = prep_db["a_arr"]
+                res_arr = prep_db["res_arr"]
 
                 cond = (
-                    (df_w["H_num"] >= 1.01) & (df_w["D_num"] >= 1.01) & (df_w["A_num"] >= 1.01) &
-                    (df_w["H_num"] >= h_val - tol) & (df_w["H_num"] <= h_val + tol) &
-                    (df_w["D_num"] >= d_val - tol) & (df_w["D_num"] <= d_val + tol) &
-                    (df_w["A_num"] >= a_val - tol) & (df_w["A_num"] <= a_val + tol)
+                    (h_arr >= h_val - tol) & (h_arr <= h_val + tol) &
+                    (d_arr >= d_val - tol) & (d_arr <= d_val + tol) &
+                    (a_arr >= a_val - tol) & (a_arr <= a_val + tol)
                 )
-                matched = df_w[cond]
-                cnt = len(matched)
-                if cnt > 0 and res_col in matched.columns:
-                    vc = matched[res_col].value_counts()
-                    return cnt, vc.get("홈승", 0), vc.get("무승부", 0), vc.get("원정승", 0)
+                cnt = int(np.sum(cond))
+                if cnt > 0:
+                    m_res = res_arr[cond]
+                    hw = int(np.sum(m_res == "홈승"))
+                    dr = int(np.sum(m_res == "무승부"))
+                    aw = int(np.sum(m_res == "원정승"))
+                    return cnt, hw, dr, aw
             except Exception:
                 pass
             return 0, 0, 0, 0
 
-        def get_matched_details_in_db(df_db, h_val, d_val, a_val):
-            if df_db.empty or h_val < 1.01 or d_val < 1.01 or a_val < 1.01:
+        def get_matched_details_in_db(prep_db, h_val, d_val, a_val):
+            if not prep_db or h_val < 1.01 or d_val < 1.01 or a_val < 1.01:
                 return []
             try:
-                cols = list(df_db.columns)
-                h_col = next((c for c in cols if any(k in c for k in ["해당_홈", "배당_홈", "홈배당", "홈_승", "H_ODDS"])), None)
-                d_col = next((c for c in cols if any(k in c for k in ["해당_무", "배당_무", "무배당", "무승부", "D_ODDS"])), None)
-                a_col = next((c for c in cols if any(k in c for k in ["해당_원", "배당_원", "원정배당", "원정_승", "A_ODDS"])), None)
-                res_col = next((c for c in cols if any(k in c for k in ["경기결과", "결과", "Result"])), None)
-                date_col = next((c for c in cols if any(k in c for k in ["날짜", "경기날짜", "Date"])), None)
-                home_col = next((c for c in cols if any(k in c for k in ["홈팀", "Home"])), None)
-                away_col = next((c for c in cols if any(k in c for k in ["원정팀", "Away"])), None)
-
-                if not h_col and len(cols) > 14:
-                    h_col, d_col, a_col = cols[12], cols[13], cols[14]
-                if not res_col:
-                    res_col = cols[34] if len(cols) > 34 else (cols[32] if len(cols) > 32 else cols[-1])
-
-                if not h_col or not d_col or not a_col:
-                    return []
-
-                df_w = df_db.copy()
-                df_w["H_num"] = pd.to_numeric(df_w[h_col], errors="coerce").fillna(0.0)
-                df_w["D_num"] = pd.to_numeric(df_w[d_col], errors="coerce").fillna(0.0)
-                df_w["A_num"] = pd.to_numeric(df_w[a_col], errors="coerce").fillna(0.0)
+                h_arr = prep_db["h_arr"]
+                d_arr = prep_db["d_arr"]
+                a_arr = prep_db["a_arr"]
 
                 cond = (
-                    (df_w["H_num"] >= 1.01) & (df_w["D_num"] >= 1.01) & (df_w["A_num"] >= 1.01) &
-                    (df_w["H_num"] >= h_val - tol) & (df_w["H_num"] <= h_val + tol) &
-                    (df_w["D_num"] >= d_val - tol) & (df_w["D_num"] <= d_val + tol) &
-                    (df_w["A_num"] >= a_val - tol) & (df_w["A_num"] <= a_val + tol)
+                    (h_arr >= h_val - tol) & (h_arr <= h_val + tol) &
+                    (d_arr >= d_val - tol) & (d_arr <= d_val + tol) &
+                    (a_arr >= a_val - tol) & (a_arr <= a_val + tol)
                 )
-                matched = df_w[cond]
-                
+                idxs = np.where(cond)[0]
+                if len(idxs) == 0:
+                    return []
+
+                date_arr = prep_db["date_arr"]
+                home_arr = prep_db["home_arr"]
+                away_arr = prep_db["away_arr"]
+                res_arr = prep_db["res_arr"]
+
                 details = []
-                for _, mr in matched.iterrows():
-                    m_date = str(mr[date_col]) if date_col and date_col in mr else "-"
-                    m_home = str(mr[home_col]) if home_col and home_col in mr else "-"
-                    m_away = str(mr[away_col]) if away_col and away_col in mr else "-"
-                    m_res = str(mr[res_col]) if res_col and res_col in mr else "-"
-                    m_odds = f"{mr['H_num']} / {mr['D_num']} / {mr['A_num']}"
+                for i in idxs:
                     details.append({
-                        "날짜": m_date, "매치업": f"{m_home} vs {m_away}",
-                        "당시배당(홈/무/원)": m_odds, "경기결과": m_res
+                        "날짜": date_arr[i],
+                        "매치업": f"{home_arr[i]} vs {away_arr[i]}",
+                        "당시배당(홈/무/원)": f"{h_arr[i]} / {d_arr[i]} / {a_arr[i]}",
+                        "경기결과": res_arr[i]
                     })
                 return details
             except Exception:
@@ -468,7 +508,7 @@ def render_tab2(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
             bd = safe_flt(r.get("배트맨_무"), 0.0)
             ba = safe_flt(r.get("배트맨_원"), 0.0)
             if bh >= 1.01 and bd >= 1.01 and ba >= 1.01:
-                dets = get_matched_details_in_db(cached_dbs.get("배트맨", pd.DataFrame()), bh, bd, ba)
+                dets = get_matched_details_in_db(cached_dbs.get("배트맨"), bh, bd, ba)
                 if dets:
                     matching_counts_summary["배트맨"] += len(dets)
                     for d in dets:
@@ -484,7 +524,7 @@ def render_tab2(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
                     valid_oh.append(oh)
                     valid_od.append(od)
                     valid_oa.append(oa)
-                    dets = get_matched_details_in_db(cached_dbs.get(obm, pd.DataFrame()), oh, od, oa)
+                    dets = get_matched_details_in_db(cached_dbs.get(obm), oh, od, oa)
                     if dets:
                         matching_counts_summary[obm] += len(dets)
                         for d in dets:
@@ -497,7 +537,7 @@ def render_tab2(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
                 avg_oa = round(float(np.mean(valid_oa)), 2)
                 if avg_oh >= 1.01 and avg_od >= 1.01 and avg_oa >= 1.01:
                     for obm in overseas_bookmakers:
-                        dets = get_matched_details_in_db(cached_dbs.get(obm, pd.DataFrame()), avg_oh, avg_od, avg_oa)
+                        dets = get_matched_details_in_db(cached_dbs.get(obm), avg_oh, avg_od, avg_oa)
                         if dets:
                             matching_counts_summary["🌟 해외 8개사 종합평균"] += len(dets)
                             for d in dets:
@@ -551,6 +591,12 @@ def render_tab2(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
 
         def run_round_scan(criteria_name):
             scanned_list = []
+            has_h2h = not df_h2h_all_db.empty
+            if has_h2h:
+                h2h_home_arr = df_h2h_all_db["홈팀_clean"].to_numpy()
+                h2h_away_arr = df_h2h_all_db["원정팀_clean"].to_numpy()
+                h2h_hg_arr = df_h2h_all_db["_hg"].to_numpy()
+                h2h_ag_arr = df_h2h_all_db["_ag"].to_numpy()
             
             for idx, r in df_scan_raw.iterrows():
                 season = str(r.get("시즌", "25-26"))
@@ -589,7 +635,7 @@ def render_tab2(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
                 if criteria_name == "배트맨":
                     crit_h, crit_d, crit_a = bh, bd, ba
                     if bh >= 1.01 and bd >= 1.01 and ba >= 1.01:
-                        match_cnt, hw, dr, aw = count_matched_in_db(cached_dbs.get("배트맨", pd.DataFrame()), bh, bd, ba)
+                        match_cnt, hw, dr, aw = count_matched_in_db(cached_dbs.get("배트맨"), bh, bd, ba)
                         if match_cnt > 0:
                             win_prob = round((hw / match_cnt) * 100, 1)
                             draw_prob = round((dr / match_cnt) * 100, 1)
@@ -597,7 +643,7 @@ def render_tab2(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
                 elif criteria_name in overseas_bookmakers:
                     crit_h, crit_d, crit_a = all_bms_odds.get(criteria_name, (0.0, 0.0, 0.0))
                     if crit_h >= 1.01 and crit_d >= 1.01 and crit_a >= 1.01:
-                        match_cnt, hw, dr, aw = count_matched_in_db(cached_dbs.get(criteria_name, pd.DataFrame()), crit_h, crit_d, crit_a)
+                        match_cnt, hw, dr, aw = count_matched_in_db(cached_dbs.get(criteria_name), crit_h, crit_d, crit_a)
                         if match_cnt > 0:
                             win_prob = round((hw / match_cnt) * 100, 1)
                             draw_prob = round((dr / match_cnt) * 100, 1)
@@ -607,7 +653,7 @@ def render_tab2(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
                     if avg_oh >= 1.01 and avg_od >= 1.01 and avg_oa >= 1.01:
                         tot_m, tot_hw, tot_dr, tot_aw = 0, 0, 0, 0
                         for obm in overseas_bookmakers:
-                            c_m, c_hw, c_dr, c_aw = count_matched_in_db(cached_dbs.get(obm, pd.DataFrame()), avg_oh, avg_od, avg_oa)
+                            c_m, c_hw, c_dr, c_aw = count_matched_in_db(cached_dbs.get(obm), avg_oh, avg_od, avg_oa)
                             tot_m += c_m
                             tot_hw += c_hw
                             tot_dr += c_dr
@@ -619,22 +665,20 @@ def render_tab2(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
                             lose_prob = round((tot_aw / match_cnt) * 100, 1)
 
                 h2h_cnt, h2h_hw, h2h_dr, h2h_aw = 0, 0, 0, 0
-                if not df_h2h_all_db.empty and "홈팀" in df_h2h_all_db.columns:
-                    cond_h2h = ((df_h2h_all_db["홈팀"] == home) & (df_h2h_all_db["원정팀"] == away)) | \
-                               ((df_h2h_all_db["홈팀"] == away) & (df_h2h_all_db["원정팀"] == home))
-                    m_h2h = df_h2h_all_db[cond_h2h]
-                    h2h_cnt = len(m_h2h)
-                    for _, hr in m_h2h.iterrows():
-                        hg = safe_flt(hr.get("전반득점_홈"), 0.0) + safe_flt(hr.get("후반득점_홈"), 0.0)
-                        ag = safe_flt(hr.get("전반득점_원"), 0.0) + safe_flt(hr.get("후반득점_원", 0.0), 0.0)
-                        if hr["홈팀"] == home:
-                            if hg > ag: h2h_hw += 1
-                            elif hg == ag: h2h_dr += 1
-                            else: h2h_aw += 1
-                        else:
-                            if ag > hg: h2h_hw += 1
-                            elif ag == hg: h2h_dr += 1
-                            else: h2h_aw += 1
+                if has_h2h:
+                    mask_same = (h2h_home_arr == home) & (h2h_away_arr == away)
+                    mask_rev = (h2h_home_arr == away) & (h2h_away_arr == home)
+                    if np.any(mask_same):
+                        hg_s, ag_s = h2h_hg_arr[mask_same], h2h_ag_arr[mask_same]
+                        h2h_hw += int(np.sum(hg_s > ag_s))
+                        h2h_dr += int(np.sum(hg_s == ag_s))
+                        h2h_aw += int(np.sum(hg_s < ag_s))
+                    if np.any(mask_rev):
+                        hg_r, ag_r = h2h_hg_arr[mask_rev], h2h_ag_arr[mask_rev]
+                        h2h_hw += int(np.sum(ag_r > hg_r))
+                        h2h_dr += int(np.sum(ag_r == hg_r))
+                        h2h_aw += int(np.sum(ag_r < hg_r))
+                    h2h_cnt = h2h_hw + h2h_dr + h2h_aw
 
                 diff_h = round(bh - avg_oh, 2) if (bh > 0 and avg_oh > 0) else 0.0
                 tags = []
@@ -824,4 +868,3 @@ def render_tab2(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
                         st.session_state.sel_h2h_away = target_item["away"]
                         st.session_state.inj_filter_team = target_item["home"]
                         st.success(f"🎯 [{target_item['home']} vs {target_item['away']}] 경기가 분석 탭으로 전송되었습니다! (상단 탭 3, 5, 6 확인)")
-                        st.rerun()
