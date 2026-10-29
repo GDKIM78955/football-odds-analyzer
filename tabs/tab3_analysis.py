@@ -4,6 +4,49 @@ import numpy as np
 from database import load_sheet_data
 from infographics import generate_naver_odds_with_handicap_infographic, generate_naver_odds_infographic, render_clipboard_component
 
+
+@st.cache_data(ttl=300, show_spinner=False)
+def get_t3_preprocessed_bm(bm_name, spreadsheet_id):
+    df_bm = load_sheet_data(bm_name, spreadsheet_id)
+    if df_bm.empty:
+        return None
+    try:
+        cols = list(df_bm.columns)
+        h_col = next((c for c in cols if any(k in c for k in ["해당_홈", "배당_홈", "홈배당", "홈_승", "H_ODDS"])), None)
+        d_col = next((c for c in cols if any(k in c for k in ["해당_무", "배당_무", "무배당", "무승부", "D_ODDS"])), None)
+        a_col = next((c for c in cols if any(k in c for k in ["해당_원", "배당_원", "원정배당", "원정_승", "A_ODDS"])), None)
+        res_col = next((c for c in cols if any(k in c for k in ["경기결과", "결과", "Result"])), None)
+        lg_col = next((c for c in cols if any(k in c for k in ["리그명", "리그", "League"])), None)
+
+        if not h_col and len(cols) > 14:
+            h_col, d_col, a_col = cols[12], cols[13], cols[14]
+        if not res_col:
+            res_col = cols[34] if len(cols) > 34 else (cols[32] if len(cols) > 32 else cols[-1])
+
+        if not (h_col and d_col and a_col and res_col):
+            return None
+
+        df_work = df_bm.copy()
+        df_work["H_num"] = pd.to_numeric(df_work[h_col], errors="coerce").fillna(0.0)
+        df_work["D_num"] = pd.to_numeric(df_work[d_col], errors="coerce").fillna(0.0)
+        df_work["A_num"] = pd.to_numeric(df_work[a_col], errors="coerce").fillna(0.0)
+        if lg_col and lg_col in df_work.columns:
+            df_work["_lg_upper"] = df_work[lg_col].astype(str).str.strip().str.upper()
+
+        valid_mask = (df_work["H_num"] >= 1.01) & (df_work["D_num"] >= 1.01) & (df_work["A_num"] >= 1.01)
+        df_valid = df_work[valid_mask].reset_index(drop=True)
+        if df_valid.empty:
+            return None
+
+        return {
+            "df": df_valid,
+            "res_col": res_col,
+            "lg_col": lg_col
+        }
+    except Exception:
+        return None
+
+
 def render_tab3(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
     st.subheader("🔬 3번 탭: 9대 북메이커 배당 입력 및 승률·핸디캡·언오버 자동 분석")
 
@@ -143,74 +186,59 @@ def render_tab3(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
             tot_payout += payout
             tot_bm += 1
 
-            # 🚀 [최적화 핵심] 시트 데이터 로딩을 1회만 수행 후 전체/리그별로 메모리 필터링 분기
-            df_bm = load_sheet_data(bm, spreadsheet_id)
+            # 🚀 [최적화 핵심] 사전 숫자 변환이 캐싱된 데이터를 불러와 즉시 메모리 필터링
+            prep = get_t3_preprocessed_bm(bm, spreadsheet_id)
             
             h_str, d_str, a_str = "0.0%", "0.0%", "0.0%"
             t_h_str, t_d_str, t_a_str = "0.0%", "0.0%", "0.0%"
             m_count_all = 0
             m_count_target = 0
 
-            if not df_bm.empty:
+            if prep is not None:
                 try:
-                    cols = list(df_bm.columns)
-                    h_col = next((c for c in cols if any(k in c for k in ["해당_홈", "배당_홈", "홈배당", "홈_승", "H_ODDS"])), None)
-                    d_col = next((c for c in cols if any(k in c for k in ["해당_무", "배당_무", "무배당", "무승부", "D_ODDS"])), None)
-                    a_col = next((c for c in cols if any(k in c for k in ["해당_원", "배당_원", "원정배당", "원정_승", "A_ODDS"])), None)
-                    res_col = next((c for c in cols if any(k in c for k in ["경기결과", "결과", "Result"])), None)
-                    lg_col = next((c for c in cols if any(k in c for k in ["리그명", "리그", "League"])), None)
+                    df_work = prep["df"]
+                    res_col = prep["res_col"]
+                    lg_col = prep["lg_col"]
 
-                    if not h_col and len(cols) > 14:
-                        h_col, d_col, a_col = cols[12], cols[13], cols[14]
-                    if not res_col:
-                        res_col = cols[32] if len(cols) > 32 else cols[-1]
+                    cond = (
+                        (df_work["H_num"] >= h - tol) & (df_work["H_num"] <= h + tol) &
+                        (df_work["D_num"] >= d - tol) & (df_work["D_num"] <= d + tol) &
+                        (df_work["A_num"] >= a - tol) & (df_work["A_num"] <= a + tol)
+                    )
+                    matched_all_df = df_work[cond]
+                    m_count_all = len(matched_all_df)
 
-                    if h_col and d_col and a_col and res_col:
-                        df_work = df_bm.copy()
-                        df_work["H_num"] = pd.to_numeric(df_work[h_col], errors="coerce").fillna(0.0)
-                        df_work["D_num"] = pd.to_numeric(df_work[d_col], errors="coerce").fillna(0.0)
-                        df_work["A_num"] = pd.to_numeric(df_work[a_col], errors="coerce").fillna(0.0)
+                    if m_count_all > 0:
+                        bm_upper = bm.upper()
+                        matched_dict_all[bm_upper] = matched_all_df
+                        res_c = matched_all_df[res_col].value_counts()
+                        hw = res_c.get("홈승", 0)
+                        dr = res_c.get("무승부", 0)
+                        aw = res_c.get("원정승", 0)
 
-                        cond = (
-                            (df_work["H_num"] >= 1.01) & (df_work["D_num"] >= 1.01) & (df_work["A_num"] >= 1.01) &
-                            (df_work["H_num"] >= h - tol) & (df_work["H_num"] <= h + tol) &
-                            (df_work["D_num"] >= d - tol) & (df_work["D_num"] <= d + tol) &
-                            (df_work["A_num"] >= a - tol) & (df_work["A_num"] <= a + tol)
-                        )
-                        matched_all_df = df_work[cond]
-                        m_count_all = len(matched_all_df)
+                        tot_m += m_count_all
+                        tot_hw += hw
+                        tot_dr += dr
+                        tot_aw += aw
 
-                        if m_count_all > 0:
-                            bm_upper = bm.upper()
-                            matched_dict_all[bm_upper] = matched_all_df
-                            res_c = matched_all_df[res_col].value_counts()
-                            hw = res_c.get("홈승", 0)
-                            dr = res_c.get("무승부", 0)
-                            aw = res_c.get("원정승", 0)
+                        h_str = f"{round((hw/m_count_all)*100, 1)}% ({hw}회)"
+                        d_str = f"{round((dr/m_count_all)*100, 1)}% ({dr}회)"
+                        a_str = f"{round((aw/m_count_all)*100, 1)}% ({aw}회)"
 
-                            tot_m += m_count_all
-                            tot_hw += hw
-                            tot_dr += dr
-                            tot_aw += aw
+                        # 동일 리그 필터링
+                        if lg_col and "_lg_upper" in matched_all_df.columns:
+                            matched_target_df = matched_all_df[matched_all_df["_lg_upper"] == target_lg_upper]
+                            m_count_target = len(matched_target_df)
+                            if m_count_target > 0:
+                                matched_dict_target[bm_upper] = matched_target_df
+                                t_res_c = matched_target_df[res_col].value_counts()
+                                thw = t_res_c.get("홈승", 0)
+                                tdr = t_res_c.get("무승부", 0)
+                                taw = t_res_c.get("원정승", 0)
 
-                            h_str = f"{round((hw/m_count_all)*100, 1)}% ({hw}회)"
-                            d_str = f"{round((dr/m_count_all)*100, 1)}% ({dr}회)"
-                            a_str = f"{round((aw/m_count_all)*100, 1)}% ({aw}회)"
-
-                            # 동일 리그 필터링
-                            if lg_col:
-                                matched_target_df = matched_all_df[matched_all_df[lg_col].astype(str).str.upper() == target_lg_upper]
-                                m_count_target = len(matched_target_df)
-                                if m_count_target > 0:
-                                    matched_dict_target[bm_upper] = matched_target_df
-                                    t_res_c = matched_target_df[res_col].value_counts()
-                                    thw = t_res_c.get("홈승", 0)
-                                    tdr = t_res_c.get("무승부", 0)
-                                    taw = t_res_c.get("원정승", 0)
-
-                                    t_h_str = f"{round((thw/m_count_target)*100, 1)}% ({thw}회)"
-                                    t_d_str = f"{round((tdr/m_count_target)*100, 1)}% ({tdr}회)"
-                                    t_a_str = f"{round((taw/m_count_target)*100, 1)}% ({taw}회)"
+                                t_h_str = f"{round((thw/m_count_target)*100, 1)}% ({thw}회)"
+                                t_d_str = f"{round((tdr/m_count_target)*100, 1)}% ({tdr}회)"
+                                t_a_str = f"{round((taw/m_count_target)*100, 1)}% ({taw}회)"
                 except Exception:
                     pass
 
@@ -349,7 +377,7 @@ def render_tab3(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
                     if len(cols) > 29:
                         h_score_col, a_score_col = cols[28], cols[29]
                 if not res_col and len(cols) > 32:
-                    res_col = cols[32]
+                    res_col = cols[34] if len(cols) > 34 else cols[32]
 
                 if h_score_col and a_score_col and res_col:
                     hw_cnt_match, dr_cnt_match, aw_cnt_match = 0, 0, 0
