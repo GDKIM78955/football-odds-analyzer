@@ -5,27 +5,52 @@ from database import load_sheet_data
 from infographics import generate_naver_odds_with_handicap_infographic, generate_naver_odds_infographic, render_clipboard_component
 
 
+def normalize_bm_dataframe(df_bm):
+    if df_bm.empty:
+        return df_bm
+    arr = df_bm.to_numpy(dtype=object).copy()
+    n_rows, n_cols = arr.shape
+    if n_cols >= 35:
+        for r_i in range(n_rows):
+            res_idx = None
+            for c_i in range(n_cols - 1, 27, -1):
+                val = str(arr[r_i, c_i]).strip()
+                if val in ("홈승", "무승부", "원정승"):
+                    res_idx = c_i
+                    break
+            if res_idx is not None and res_idx != 34 and res_idx >= 34:
+                block = []
+                for offset in range(-6, 2):
+                    src_c = res_idx + offset
+                    block.append(arr[r_i, src_c] if 0 <= src_c < n_cols else "")
+                for idx_b, val_b in enumerate(block):
+                    dst_c = 28 + idx_b
+                    if dst_c < n_cols:
+                        arr[r_i, dst_c] = val_b
+
+    new_cols = []
+    seen = {}
+    for i, c in enumerate(df_bm.columns):
+        c_str = str(c).strip()
+        if not c_str:
+            c_str = "적중배당" if i == 35 else f"_extra_{i}"
+        if c_str in seen:
+            seen[c_str] += 1
+            c_str = f"{c_str}_{seen[c_str]}"
+        else:
+            seen[c_str] = 1
+        new_cols.append(c_str)
+    return pd.DataFrame(arr, columns=new_cols)
+
+
 @st.cache_data(ttl=300, show_spinner=False)
-def get_t3_preprocessed_bm(bm_name, spreadsheet_id):
+def get_t3_preprocessed_bm_v2(bm_name, spreadsheet_id):
     df_bm = load_sheet_data(bm_name, spreadsheet_id)
     if df_bm.empty:
         return None
     try:
-        df_work = df_bm.copy()
+        df_work = normalize_bm_dataframe(df_bm)
         cols = list(df_work.columns)
-
-        # 시트에 아직 6칸 밀린 행(-1, 2.5 끼어든 행)이 남아있을 경우 자동으로 제자리(28~35열)로 보정
-        if len(cols) >= 41:
-            c28 = cols[28]
-            c40 = cols[40]
-            shifted_mask = (
-                df_work[c28].astype(str).str.strip().isin(["-1", "-1.0"]) |
-                df_work[c40].astype(str).str.strip().isin(["홈승", "무승부", "원정승"])
-            )
-            if shifted_mask.any():
-                max_offset = min(8, len(cols) - 34)
-                for offset in range(max_offset):
-                    df_work.loc[shifted_mask, cols[28 + offset]] = df_work.loc[shifted_mask, cols[34 + offset]].values
 
         h_col = next((c for c in cols if any(k in c for k in ["해당_홈", "배당_홈", "홈배당", "홈_승", "H_ODDS"])), None)
         d_col = next((c for c in cols if any(k in c for k in ["해당_무", "배당_무", "무배당", "무승부", "D_ODDS"])), None)
@@ -200,8 +225,7 @@ def render_tab3(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
             tot_payout += payout
             tot_bm += 1
 
-            # 🚀 [최적화 핵심] 사전 숫자 변환이 캐싱된 데이터를 불러와 즉시 메모리 필터링
-            prep = get_t3_preprocessed_bm(bm, spreadsheet_id)
+            prep = get_t3_preprocessed_bm_v2(bm, spreadsheet_id)
             
             h_str, d_str, a_str = "0.0%", "0.0%", "0.0%"
             t_h_str, t_d_str, t_a_str = "0.0%", "0.0%", "0.0%"
@@ -291,7 +315,6 @@ def render_tab3(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
             "원정승 확률": tot_a_str
         })
 
-        # 동일 리그 종합 행 추가 (선택사항이나 형식 유지용)
         rows_target.append({
             "순번": "🔥",
             "북메이커": "종합 가중평균 (누적)",
@@ -337,14 +360,14 @@ def render_tab3(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
             st.caption("초록색 버튼을 클릭하여 블로그 글쓰기 창에서 Ctrl+V 하세요!")
 
             compare_options = [
-                "🌟 전체 종합 가중평균 (배트맨+해외 전체 매칭 합산)",
-                "🌐 해외 종합 가중평균 (해외 8개사 매칭만 합산)"
+                "🌟 해외 종합 가중평균 (전체 평균)",
+                "🌐 해외 8개사 전용 평균 (배트맨 매칭 제외)"
             ] + bookmakers
-            sel_compare_target = st.selectbox("비교할 대상 선택 (카드 1)", compare_options, index=0, key="sel_compare_bm_t2_card1")
+            sel_compare_target = st.selectbox("비교할 대상 선택 (카드 1)", compare_options, index=0, key="sel_compare_bm_t2_card1_v2")
 
             b_odds_val = odds_inputs_t2.get("배트맨", (0.0, 0.0, 0.0))
 
-            if "종합 가중평균" in sel_compare_target:
+            if "종합" in sel_compare_target or "평균" in sel_compare_target:
                 valid_h, valid_d, valid_a = [], [], []
                 for obm in overseas_bookmakers:
                     oh, od, oa = odds_inputs_t2.get(obm, (0.0, 0.0, 0.0))
@@ -361,11 +384,7 @@ def render_tab3(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
                 else:
                     o_odds_val = (0.0, 0.0, 0.0)
                 
-                if "전체 종합" in sel_compare_target:
-                    valid_all_cnt = sum(1 for bm in bookmakers if all(x >= 1.01 for x in odds_inputs_t2.get(bm, (0.0, 0.0, 0.0))))
-                    display_name = f"종합 가중평균 (유효 {valid_all_cnt}개사)"
-                else:
-                    display_name = f"해외 종합평균 (유효 {len(valid_h)}개사)"
+                display_name = f"해외 종합평균 (유효 {len(valid_h)}개사)"
             else:
                 o_odds_val = odds_inputs_t2.get(sel_compare_target, (0.0, 0.0, 0.0))
                 display_name = sel_compare_target
@@ -375,131 +394,120 @@ def render_tab3(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
             ou_stats_dict = None
 
             target_matched_df = pd.DataFrame()
-            if "전체 종합" in sel_compare_target:
-                frames_to_concat = []
-                for bm in bookmakers:
-                    bm_upper = bm.upper()
-                    if bm_upper in matched_all and not matched_all[bm_upper].empty:
-                        frames_to_concat.append(matched_all[bm_upper])
-                if frames_to_concat:
-                    target_matched_df = pd.concat(frames_to_concat, ignore_index=True)
-            elif "해외 종합" in sel_compare_target:
+            if "배트맨 매칭 제외" in sel_compare_target:
                 frames_to_concat = []
                 for obm in overseas_bookmakers:
                     obm_upper = obm.upper()
                     if obm_upper in matched_all and not matched_all[obm_upper].empty:
-                        frames_to_concat.append(matched_all[obm_upper])
+                        frames_to_concat.append(normalize_bm_dataframe(matched_all[obm_upper]))
+                if frames_to_concat:
+                    target_matched_df = pd.concat(frames_to_concat, ignore_index=True)
+            elif "종합" in sel_compare_target or "평균" in sel_compare_target:
+                frames_to_concat = []
+                for bm in bookmakers:
+                    bm_upper = bm.upper()
+                    if bm_upper in matched_all and not matched_all[bm_upper].empty:
+                        frames_to_concat.append(normalize_bm_dataframe(matched_all[bm_upper]))
                 if frames_to_concat:
                     target_matched_df = pd.concat(frames_to_concat, ignore_index=True)
             else:
                 sel_upper = sel_compare_target.upper()
                 if sel_upper in matched_all and not matched_all[sel_upper].empty:
-                    target_matched_df = matched_all[sel_upper]
+                    target_matched_df = normalize_bm_dataframe(matched_all[sel_upper])
 
             if not target_matched_df.empty:
-                cols = list(target_matched_df.columns)
-                h_score_col = next((c for c in cols if any(k in str(c) for k in ["홈스코어", "홈_스코어", "Home_Score", "홈득점"])), None)
-                a_score_col = next((c for c in cols if any(k in str(c) for k in ["원정스코어", "원정_스코어", "Away_Score", "원정득점"])), None)
-                res_col = next((c for c in cols if any(k in str(c) for k in ["경기결과", "결과", "Result"])), None)
+                arr_m = target_matched_df.to_numpy(dtype=object)
+                n_r, n_c = arr_m.shape
 
-                if not h_score_col or not a_score_col:
-                    if len(cols) > 29:
-                        h_score_col, a_score_col = cols[28], cols[29]
-                if not res_col and len(cols) > 32:
-                    res_col = cols[34] if len(cols) > 34 else cols[32]
+                hw_cnt_match, dr_cnt_match, aw_cnt_match = 0, 0, 0
+                ov_cnt, un_cnt = 0, 0
+                valid_matches = 0
+                parsed_matches = []
 
-                if res_col:
-                    hw_cnt_match, dr_cnt_match, aw_cnt_match = 0, 0, 0
-                    ov_cnt, un_cnt = 0, 0
-                    total_matched_cnt = 0
-                    score_valid_cnt = 0
+                for r_i in range(n_r):
+                    # 각 행에서 '홈승/무승부/원정승' 위치를 찾아 그 앞 6칸(홈스코어), 5칸(원정스코어)을 정확히 추출
+                    res_idx = None
+                    for c_i in range(n_c - 1, 27, -1):
+                        v_str = str(arr_m[r_i, c_i]).strip()
+                        if v_str in ("홈승", "무승부", "원정승"):
+                            res_idx = c_i
+                            break
 
-                    parsed_scores = []
-                    for _, mr in target_matched_df.iterrows():
-                        res_val = str(mr[res_col]).strip() if res_col in mr else ""
-                        hs, as_sc = None, None
-                        if h_score_col and a_score_col:
-                            try:
-                                hs_raw = float(str(mr[h_score_col]).strip())
-                                as_raw = float(str(mr[a_score_col]).strip())
-                                if hs_raw >= 0 and as_raw >= 0:
-                                    hs, as_sc = hs_raw, as_raw
-                            except:
-                                pass
+                    hs, as_sc = None, None
+                    res_val = str(arr_m[r_i, res_idx]).strip() if res_idx is not None else ""
 
-                        # 만약 해당 행이 시트에서 6칸 밀려있어 기본 스코어 열이 음수(-1)이거나 비어있다면 34, 35, 40번째 열에서 복구 시도
-                        if (hs is None or as_sc is None) and len(cols) >= 36:
-                            try:
-                                hs_alt = float(str(mr[cols[34]]).strip())
-                                as_alt = float(str(mr[cols[35]]).strip())
-                                if hs_alt >= 0 and as_alt >= 0:
-                                    hs, as_sc = hs_alt, as_alt
-                            except:
-                                pass
-                        if res_val not in ["홈승", "무승부", "원정승"] and len(cols) >= 41:
-                            alt_res = str(mr[cols[40]]).strip()
-                            if alt_res in ["홈승", "무승부", "원정승"]:
-                                res_val = alt_res
+                    if res_idx is not None and res_idx >= 6:
+                        try:
+                            hs = float(str(arr_m[r_i, res_idx - 6]).strip())
+                            as_sc = float(str(arr_m[r_i, res_idx - 5]).strip())
+                        except:
+                            hs, as_sc = None, None
 
-                        if res_val in ["홈승", "무승부", "원정승"] or (hs is not None and as_sc is not None):
-                            total_matched_cnt += 1
-                            if res_val == "홈승" or (res_val not in ["홈승", "무승부", "원정승"] and hs > as_sc):
-                                hw_cnt_match += 1
-                            elif res_val == "무승부" or (res_val not in ["홈승", "무승부", "원정승"] and hs == as_sc):
-                                dr_cnt_match += 1
+                    if (hs is None or as_sc is None) and n_c > 29:
+                        try:
+                            hs_0 = float(str(arr_m[r_i, 28]).strip())
+                            as_0 = float(str(arr_m[r_i, 29]).strip())
+                            if hs_0 >= 0 and as_0 >= 0:
+                                hs, as_sc = hs_0, as_0
+                        except:
+                            pass
+
+                    if hs is not None and as_sc is not None:
+                        parsed_matches.append((hs, as_sc, res_val))
+                        valid_matches += 1
+                        if res_val == "홈승" or hs > as_sc:
+                            hw_cnt_match += 1
+                        elif res_val == "무승부" or hs == as_sc:
+                            dr_cnt_match += 1
+                        else:
+                            aw_cnt_match += 1
+
+                        if (hs + as_sc) > ou_line_val:
+                            ov_cnt += 1
+                        else:
+                            un_cnt += 1
+
+                if valid_matches > 0:
+                    match_stats_dict = {
+                        "count": valid_matches,
+                        "home_win_pct": round((hw_cnt_match / valid_matches) * 100, 1),
+                        "draw_pct": round((dr_cnt_match / valid_matches) * 100, 1),
+                        "away_win_pct": round((aw_cnt_match / valid_matches) * 100, 1)
+                    }
+
+                    for hc_val in hc_lines_val:
+                        hw_hc_cnt = 0
+                        hd_hc_cnt = 0
+                        aw_hc_cnt = 0
+                        
+                        for hs, as_sc, _ in parsed_matches:
+                            adjusted_home_score = hs + hc_val
+                            if adjusted_home_score > as_sc:
+                                hw_hc_cnt += 1
+                            elif adjusted_home_score == as_sc:
+                                hd_hc_cnt += 1
                             else:
-                                aw_cnt_match += 1
+                                aw_hc_cnt += 1
+                        
+                        hc_stats_list.append({
+                            "line": hc_val,
+                            "count": valid_matches,
+                            "home_win_pct": round((hw_hc_cnt / valid_matches) * 100, 1),
+                            "draw_pct": round((hd_hc_cnt / valid_matches) * 100, 1),
+                            "away_win_pct": round((aw_hc_cnt / valid_matches) * 100, 1),
+                            "home_win_cnt": hw_hc_cnt,
+                            "draw_cnt": hd_hc_cnt,
+                            "away_win_cnt": aw_hc_cnt
+                        })
 
-                        if hs is not None and as_sc is not None:
-                            parsed_scores.append((hs, as_sc))
-                            score_valid_cnt += 1
-                            if (hs + as_sc) > ou_line_val:
-                                ov_cnt += 1
-                            else:
-                                un_cnt += 1
-
-                    if total_matched_cnt > 0:
-                        match_stats_dict = {
-                            "count": total_matched_cnt,
-                            "home_win_pct": round((hw_cnt_match / total_matched_cnt) * 100, 1),
-                            "draw_pct": round((dr_cnt_match / total_matched_cnt) * 100, 1),
-                            "away_win_pct": round((aw_cnt_match / total_matched_cnt) * 100, 1)
-                        }
-
-                    if score_valid_cnt > 0:
-                        for hc_val in hc_lines_val:
-                            hw_hc_cnt = 0
-                            hd_hc_cnt = 0
-                            aw_hc_cnt = 0
-                            
-                            for hs, as_sc in parsed_scores:
-                                adjusted_home_score = hs + hc_val
-                                if adjusted_home_score > as_sc:
-                                    hw_hc_cnt += 1
-                                elif adjusted_home_score == as_sc:
-                                    hd_hc_cnt += 1
-                                else:
-                                    aw_hc_cnt += 1
-                            
-                            hc_stats_list.append({
-                                "line": hc_val,
-                                "count": score_valid_cnt,
-                                "home_win_pct": round((hw_hc_cnt / score_valid_cnt) * 100, 1),
-                                "draw_pct": round((hd_hc_cnt / score_valid_cnt) * 100, 1),
-                                "away_win_pct": round((aw_hc_cnt / score_valid_cnt) * 100, 1),
-                                "home_win_cnt": hw_hc_cnt,
-                                "draw_cnt": hd_hc_cnt,
-                                "away_win_cnt": aw_hc_cnt
-                            })
-
-                        ou_stats_dict = {
-                            "line": ou_line_val,
-                            "count": score_valid_cnt,
-                            "over_pct": round((ov_cnt / score_valid_cnt) * 100, 1),
-                            "under_pct": round((un_cnt / score_valid_cnt) * 100, 1),
-                            "over_cnt": ov_cnt,
-                            "under_cnt": un_cnt
-                        }
+                    ou_stats_dict = {
+                        "line": ou_line_val,
+                        "count": valid_matches,
+                        "over_pct": round((ov_cnt / valid_matches) * 100, 1),
+                        "under_pct": round((un_cnt / valid_matches) * 100, 1),
+                        "over_cnt": ov_cnt,
+                        "under_cnt": un_cnt
+                    }
 
             card1_html = generate_naver_odds_with_handicap_infographic(
                 b_odds_val, display_name, o_odds_val, 
@@ -527,8 +535,9 @@ def render_tab3(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
         if active_matched:
             for name, m_df in active_matched.items():
                 with st.expander(f"📌 [{name}] 매칭 내역 총 {len(m_df)}건 확인하기", expanded=False):
+                    m_df_norm = normalize_bm_dataframe(m_df)
                     pref_cols = ["시즌", "리그명", "날짜", "홈팀", "원정팀", "해당_홈", "해당_무", "해당_원", "홈스코어", "원정스코어", "경기결과", "정/중/역", "적중배당"]
-                    show_cols = [c for c in pref_cols if c in m_df.columns]
-                    st.dataframe(m_df[show_cols] if show_cols else m_df, use_container_width=True, hide_index=True)
+                    show_cols = [c for c in pref_cols if c in m_df_norm.columns]
+                    st.dataframe(m_df_norm[show_cols] if show_cols else m_df_norm, use_container_width=True, hide_index=True)
         else:
             st.info(f"💡 현재 선택된 조건에 일치(오차 범위 ±{tol})하는 과거 경기 데이터가 없습니다.")
