@@ -1,10 +1,31 @@
+import os
+import importlib
 import streamlit as st
-from tabs.tab1_input import render_tab1
-from tabs.tab2_scanner import render_tab2
-from tabs.tab3_analysis import render_tab3
-from tabs.tab4_team_stats import render_tab4
-from tabs.tab5_h2h import render_tab5
-# 🚑 tab6_injuries는 독립된 전용 앱으로 분리되었으므로 더 이상 여기서 불러오지 않습니다.
+import tabs.tab1_input as t1
+import tabs.tab2_scanner as t2
+import tabs.tab3_analysis as t3
+import tabs.tab4_team_stats as t4
+import tabs.tab5_h2h as t5
+
+# 하위 폴더(tabs/) 파일이 수정되었을 때 서버 재부팅 없이 즉시 자동 반영되도록 감지
+_TAB_MODULES = [
+    ("tabs/tab1_input.py", t1),
+    ("tabs/tab2_scanner.py", t2),
+    ("tabs/tab3_analysis.py", t3),
+    ("tabs/tab4_team_stats.py", t4),
+    ("tabs/tab5_h2h.py", t5),
+]
+if "_tab_mtimes" not in st.session_state:
+    st.session_state._tab_mtimes = {}
+
+for _path, _mod in _TAB_MODULES:
+    try:
+        _mtime = os.path.getmtime(_path)
+        if st.session_state._tab_mtimes.get(_path) != _mtime:
+            importlib.reload(_mod)
+            st.session_state._tab_mtimes[_path] = _mtime
+    except Exception:
+        pass
 
 # 1. 페이지 기본 설정
 st.set_page_config(
@@ -14,11 +35,11 @@ st.set_page_config(
 )
 
 BOOKMAKERS = [
-    "배트맨", "10x10", "1xbet", "betway", 
+    "배트맨", "10x10", "1xbet", "betway",
     "bwin", "william hill", "bet365", "pinnacle", "stake"
 ]
 OVERSEAS_BOOKMAKERS = [
-    "10x10", "1xbet", "betway", 
+    "10x10", "1xbet", "betway",
     "bwin", "william hill", "bet365", "pinnacle", "stake"
 ]
 SPREADSHEET_ID = "1-b-QusmoSnsvMhToNFe1B1IK7dJUKjjANs89y5ZekAQ"
@@ -67,29 +88,34 @@ with st.sidebar:
     st.caption(f"연동 시트 ID: `{SPREADSHEET_ID}`")
     tol = st.number_input("배당 오차 허용치 (±)", value=0.03, step=0.01)
     if st.button("🔄 전체 시트 데이터 새로고침"):
+        for _, _mod in _TAB_MODULES:
+            try:
+                importlib.reload(_mod)
+            except Exception:
+                pass
         st.cache_data.clear()
         st.rerun()
 
 # 5개 탭 구성 (결장자 탭 제거 완료)
 tab_input, tab_scanner, tab_analysis, tab_team_stats, tab_h2h = st.tabs([
-    "📝 경기 데이터 입력 & 저장", 
+    "📝 경기 데이터 입력 & 저장",
     "📡 라운드 경기 자동 스캐너 & 추천픽",
-    "📊 9개사 동일 배당 분석", 
+    "📊 9개사 동일 배당 분석",
     "📈 팀별 세부내용 평균계산기",
     "⚔️ 홈 vs 원정 맞대결 종합분석"
 ])
 
 with tab_input:
-    render_tab1(SPREADSHEET_ID, BOOKMAKERS)
+    t1.render_tab1(SPREADSHEET_ID, BOOKMAKERS)
 
 with tab_scanner:
-    render_tab2(SPREADSHEET_ID, BOOKMAKERS, OVERSEAS_BOOKMAKERS, tol)
+    t2.render_tab2(SPREADSHEET_ID, BOOKMAKERS, OVERSEAS_BOOKMAKERS, tol)
 
 with tab_analysis:
-    render_tab3(SPREADSHEET_ID, BOOKMAKERS, OVERSEAS_BOOKMAKERS, tol)
+    t3.render_tab3(SPREADSHEET_ID, BOOKMAKERS, OVERSEAS_BOOKMAKERS, tol)
 
 with tab_team_stats:
-    render_tab4(SPREADSHEET_ID)
+    t4.render_tab4(SPREADSHEET_ID)
 
 with tab_h2h:
-    render_tab5(SPREADSHEET_ID)
+    t5.render_tab5(SPREADSHEET_ID)
