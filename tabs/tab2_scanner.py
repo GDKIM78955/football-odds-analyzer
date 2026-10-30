@@ -5,12 +5,49 @@ from database import load_sheet_data
 
 
 @st.cache_data(ttl=300, show_spinner=False)
-def get_preprocessed_bm_db(bm_name, spreadsheet_id):
+def get_preprocessed_bm_db_v2(bm_name, spreadsheet_id):
     df_db = load_sheet_data(bm_name, spreadsheet_id)
     if df_db.empty:
         return None
     try:
-        cols = list(df_db.columns)
+        arr_raw = df_db.to_numpy(dtype=object).copy()
+        n_rows, n_cols = arr_raw.shape
+
+        # 시트에서 열이 밀린 행이 있더라도 '홈승/무승부/원정승' 위치를 찾아 스코어와 결과를 정확히 추출
+        if n_cols >= 35:
+            for r_i in range(n_rows):
+                res_idx = None
+                for c_i in range(n_cols - 1, 27, -1):
+                    val = str(arr_raw[r_i, c_i]).strip()
+                    if val in ("홈승", "무승부", "원정승"):
+                        res_idx = c_i
+                        break
+                if res_idx is not None and res_idx != 34 and res_idx >= 34:
+                    block = []
+                    for offset in range(-6, 2):
+                        src_c = res_idx + offset
+                        block.append(arr_raw[r_i, src_c] if 0 <= src_c < n_cols else "")
+                    for idx_b, val_b in enumerate(block):
+                        dst_c = 28 + idx_b
+                        if dst_c < n_cols:
+                            arr_raw[r_i, dst_c] = val_b
+
+        new_cols = []
+        seen = {}
+        for i, c in enumerate(df_db.columns):
+            c_str = str(c).strip()
+            if not c_str:
+                c_str = "적중배당" if i == 35 else f"_extra_{i}"
+            if c_str in seen:
+                seen[c_str] += 1
+                c_str = f"{c_str}_{seen[c_str]}"
+            else:
+                seen[c_str] = 1
+            new_cols.append(c_str)
+
+        df_w = pd.DataFrame(arr_raw, columns=new_cols)
+        cols = list(df_w.columns)
+
         h_col = next((c for c in cols if any(k in c for k in ["해당_홈", "배당_홈", "홈배당", "홈_승", "H_ODDS"])), None)
         d_col = next((c for c in cols if any(k in c for k in ["해당_무", "배당_무", "무배당", "무승부", "D_ODDS"])), None)
         a_col = next((c for c in cols if any(k in c for k in ["해당_원", "배당_원", "원정배당", "원정_승", "A_ODDS"])), None)
@@ -18,19 +55,30 @@ def get_preprocessed_bm_db(bm_name, spreadsheet_id):
         date_col = next((c for c in cols if any(k in c for k in ["날짜", "경기날짜", "Date"])), None)
         home_col = next((c for c in cols if any(k in c for k in ["홈팀", "Home"])), None)
         away_col = next((c for c in cols if any(k in c for k in ["원정팀", "Away"])), None)
+        h_score_col = next((c for c in cols if any(k in str(c) for k in ["홈스코어", "홈_스코어", "Home_Score", "홈득점"])), None)
+        a_score_col = next((c for c in cols if any(k in str(c) for k in ["원정스코어", "원정_스코어", "Away_Score", "원정득점"])), None)
 
         if not h_col and len(cols) > 14:
             h_col, d_col, a_col = cols[12], cols[13], cols[14]
+        if not h_score_col and len(cols) > 29:
+            h_score_col, a_score_col = cols[28], cols[29]
         if not res_col:
             res_col = cols[34] if len(cols) > 34 else (cols[32] if len(cols) > 32 else cols[-1])
 
         if not h_col or not d_col or not a_col:
             return None
 
-        df_w = df_db.copy()
         df_w["H_num"] = pd.to_numeric(df_w[h_col], errors="coerce").fillna(0.0)
         df_w["D_num"] = pd.to_numeric(df_w[d_col], errors="coerce").fillna(0.0)
         df_w["A_num"] = pd.to_numeric(df_w[a_col], errors="coerce").fillna(0.0)
+
+        if h_score_col and a_score_col:
+            hs_num = pd.to_numeric(df_w[h_score_col].astype(str).str.strip(), errors="coerce")
+            as_num = pd.to_numeric(df_w[a_score_col].astype(str).str.strip(), errors="coerce")
+            valid_sc = hs_num.notna() & as_num.notna() & (hs_num >= 0) & (as_num >= 0)
+            df_w["_tot_goals"] = np.where(valid_sc, hs_num + as_num, -1.0)
+        else:
+            df_w["_tot_goals"] = -1.0
 
         valid_mask = (df_w["H_num"] >= 1.01) & (df_w["D_num"] >= 1.01) & (df_w["A_num"] >= 1.01)
         df_valid = df_w[valid_mask].reset_index(drop=True)
@@ -42,6 +90,7 @@ def get_preprocessed_bm_db(bm_name, spreadsheet_id):
             "h_arr": df_valid["H_num"].to_numpy(dtype=float),
             "d_arr": df_valid["D_num"].to_numpy(dtype=float),
             "a_arr": df_valid["A_num"].to_numpy(dtype=float),
+            "tot_goals_arr": df_valid["_tot_goals"].to_numpy(dtype=float),
             "res_arr": df_valid[res_col].astype(str).str.strip().to_numpy() if res_col and res_col in df_valid.columns else np.array(["-"] * len(df_valid)),
             "date_arr": df_valid[date_col].astype(str).to_numpy() if date_col and date_col in df_valid.columns else np.array(["-"] * len(df_valid)),
             "home_arr": df_valid[home_col].astype(str).to_numpy() if home_col and home_col in df_valid.columns else np.array(["-"] * len(df_valid)),
@@ -434,16 +483,17 @@ def render_tab2(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
         
         cached_dbs = {}
         for bm in bookmakers:
-            cached_dbs[bm] = get_preprocessed_bm_db(bm, spreadsheet_id)
+            cached_dbs[bm] = get_preprocessed_bm_db_v2(bm, spreadsheet_id)
 
         def count_matched_in_db(prep_db, h_val, d_val, a_val):
             if not prep_db or h_val < 1.01 or d_val < 1.01 or a_val < 1.01:
-                return 0, 0, 0, 0
+                return 0, 0, 0, 0, 0, 0, 0
             try:
                 h_arr = prep_db["h_arr"]
                 d_arr = prep_db["d_arr"]
                 a_arr = prep_db["a_arr"]
                 res_arr = prep_db["res_arr"]
+                tot_goals_arr = prep_db["tot_goals_arr"]
 
                 cond = (
                     (h_arr >= h_val - tol) & (h_arr <= h_val + tol) &
@@ -456,10 +506,16 @@ def render_tab2(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
                     hw = int(np.sum(m_res == "홈승"))
                     dr = int(np.sum(m_res == "무승부"))
                     aw = int(np.sum(m_res == "원정승"))
-                    return cnt, hw, dr, aw
+
+                    m_goals = tot_goals_arr[cond]
+                    valid_goals = m_goals[m_goals >= 0]
+                    ou_cnt = int(len(valid_goals))
+                    ov_cnt = int(np.sum(valid_goals > 2.5)) if ou_cnt > 0 else 0
+                    un_cnt = int(ou_cnt - ov_cnt) if ou_cnt > 0 else 0
+                    return cnt, hw, dr, aw, ou_cnt, ov_cnt, un_cnt
             except Exception:
                 pass
-            return 0, 0, 0, 0
+            return 0, 0, 0, 0, 0, 0, 0
 
         def get_matched_details_in_db(prep_db, h_val, d_val, a_val):
             if not prep_db or h_val < 1.01 or d_val < 1.01 or a_val < 1.01:
@@ -587,7 +643,7 @@ def render_tab2(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
                 key="sel_radar_criteria"
             )
         with c_crit2:
-            st.caption(f"💡 현재 **[{selected_radar_criteria}]** 배당 및 과거 시트 데이터를 기준으로 고승률픽/폭탄주의픽을 자동 계산합니다.")
+            st.caption(f"💡 현재 **[{selected_radar_criteria}]** 배당 및 과거 시트 데이터를 기준으로 고승률픽/폭탄주의픽/2.5언오버픽을 자동 계산합니다.")
 
         def run_round_scan(criteria_name):
             scanned_list = []
@@ -630,39 +686,54 @@ def render_tab2(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
                 avg_oa = round(float(np.mean(valid_oa)), 2) if valid_oa else 0.0
 
                 match_cnt, win_prob, draw_prob, lose_prob = 0, 0.0, 0.0, 0.0
+                ou_cnt, ov_cnt, un_cnt, over_prob, under_prob = 0, 0, 0, 0.0, 0.0
                 crit_h, crit_d, crit_a = 0.0, 0.0, 0.0
 
                 if criteria_name == "배트맨":
                     crit_h, crit_d, crit_a = bh, bd, ba
                     if bh >= 1.01 and bd >= 1.01 and ba >= 1.01:
-                        match_cnt, hw, dr, aw = count_matched_in_db(cached_dbs.get("배트맨"), bh, bd, ba)
+                        match_cnt, hw, dr, aw, ou_cnt, ov_cnt, un_cnt = count_matched_in_db(cached_dbs.get("배트맨"), bh, bd, ba)
                         if match_cnt > 0:
                             win_prob = round((hw / match_cnt) * 100, 1)
                             draw_prob = round((dr / match_cnt) * 100, 1)
                             lose_prob = round((aw / match_cnt) * 100, 1)
+                        if ou_cnt > 0:
+                            over_prob = round((ov_cnt / ou_cnt) * 100, 1)
+                            under_prob = round((un_cnt / ou_cnt) * 100, 1)
                 elif criteria_name in overseas_bookmakers:
                     crit_h, crit_d, crit_a = all_bms_odds.get(criteria_name, (0.0, 0.0, 0.0))
                     if crit_h >= 1.01 and crit_d >= 1.01 and crit_a >= 1.01:
-                        match_cnt, hw, dr, aw = count_matched_in_db(cached_dbs.get(criteria_name), crit_h, crit_d, crit_a)
+                        match_cnt, hw, dr, aw, ou_cnt, ov_cnt, un_cnt = count_matched_in_db(cached_dbs.get(criteria_name), crit_h, crit_d, crit_a)
                         if match_cnt > 0:
                             win_prob = round((hw / match_cnt) * 100, 1)
                             draw_prob = round((dr / match_cnt) * 100, 1)
                             lose_prob = round((aw / match_cnt) * 100, 1)
+                        if ou_cnt > 0:
+                            over_prob = round((ov_cnt / ou_cnt) * 100, 1)
+                            under_prob = round((un_cnt / ou_cnt) * 100, 1)
                 elif criteria_name == "🌟 해외 8개사 종합평균":
                     crit_h, crit_d, crit_a = avg_oh, avg_od, avg_oa
                     if avg_oh >= 1.01 and avg_od >= 1.01 and avg_oa >= 1.01:
                         tot_m, tot_hw, tot_dr, tot_aw = 0, 0, 0, 0
+                        tot_ou, tot_ov, tot_un = 0, 0, 0
                         for obm in overseas_bookmakers:
-                            c_m, c_hw, c_dr, c_aw = count_matched_in_db(cached_dbs.get(obm), avg_oh, avg_od, avg_oa)
+                            c_m, c_hw, c_dr, c_aw, c_ou, c_ov, c_un = count_matched_in_db(cached_dbs.get(obm), avg_oh, avg_od, avg_oa)
                             tot_m += c_m
                             tot_hw += c_hw
                             tot_dr += c_dr
                             tot_aw += c_aw
+                            tot_ou += c_ou
+                            tot_ov += c_ov
+                            tot_un += c_un
                         match_cnt = tot_m
+                        ou_cnt, ov_cnt, un_cnt = tot_ou, tot_ov, tot_un
                         if match_cnt > 0:
                             win_prob = round((tot_hw / match_cnt) * 100, 1)
                             draw_prob = round((tot_dr / match_cnt) * 100, 1)
                             lose_prob = round((tot_aw / match_cnt) * 100, 1)
+                        if ou_cnt > 0:
+                            over_prob = round((ov_cnt / ou_cnt) * 100, 1)
+                            under_prob = round((un_cnt / ou_cnt) * 100, 1)
 
                 h2h_cnt, h2h_hw, h2h_dr, h2h_aw = 0, 0, 0, 0
                 if has_h2h:
@@ -683,10 +754,14 @@ def render_tab2(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
                 diff_h = round(bh - avg_oh, 2) if (bh > 0 and avg_oh > 0) else 0.0
                 tags = []
 
-                if match_cnt >= 2 and (win_prob >= 70.0 or lose_prob >= 70.0):
+                if match_cnt >= 5 and (win_prob >= 70.0 or lose_prob >= 70.0):
                     tags.append(f"🔥 고승률({selected_radar_criteria})")
-                if crit_h > 0 and crit_a > 0 and crit_h < crit_a and (draw_prob + lose_prob) >= 70.0 and match_cnt >= 2:
+                if crit_h > 0 and crit_a > 0 and crit_h < crit_a and (draw_prob + lose_prob) >= 70.0 and match_cnt >= 5:
                     tags.append(f"⚡ 역배폭탄({selected_radar_criteria})")
+                if ou_cnt >= 5 and over_prob >= 70.0:
+                    tags.append(f"📈 2.5오버({selected_radar_criteria})")
+                if ou_cnt >= 5 and under_prob >= 70.0:
+                    tags.append(f"📉 2.5언더({selected_radar_criteria})")
                 if diff_h >= 0.05:
                     tags.append("💰 배당 메리트")
                 if h2h_cnt >= 2 and (h2h_hw == h2h_cnt or h2h_aw == h2h_cnt):
@@ -704,6 +779,8 @@ def render_tab2(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
                     "all_odds": all_bms_odds,
                     "match_cnt": match_cnt,
                     "win_prob": win_prob, "draw_prob": draw_prob, "lose_prob": lose_prob,
+                    "ou_cnt": ou_cnt, "ov_cnt": ov_cnt, "un_cnt": un_cnt,
+                    "over_prob": over_prob, "under_prob": under_prob,
                     "h2h_cnt": h2h_cnt, "h2h_record": f"{h2h_cnt}전 {h2h_hw}승 {h2h_dr}무 {h2h_aw}패",
                     "diff_h": diff_h,
                     "tags": tags
@@ -713,12 +790,14 @@ def render_tab2(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
 
         scanned_results = run_round_scan(selected_radar_criteria)
 
-        col_f1, col_f2, col_f3, col_f4, col_f5 = st.columns(5)
+        col_f1, col_f2, col_f3, col_f4, col_f5, col_f6, col_f7 = st.columns(7)
         f_all = col_f1.button("🌐 전체 경기 보기", use_container_width=True)
-        f_high = col_f2.button(f"🔥 [고승률 주력픽 TOP 5]", use_container_width=True)
-        f_upset = col_f3.button(f"⚡ [역배/무 폭탄주의 TOP 5]", use_container_width=True)
-        f_value = col_f4.button("💰 [배당 메리트 TOP 5]", use_container_width=True)
-        f_h2h = col_f5.button("⚔️ [천적 극상성 TOP 5]", use_container_width=True)
+        f_high = col_f2.button("🔥 [고승률 주력픽 TOP 5]", use_container_width=True)
+        f_upset = col_f3.button("⚡ [역배/무 폭탄주의 TOP 5]", use_container_width=True)
+        f_over = col_f4.button("📈 [2.5 오버 TOP 5]", use_container_width=True)
+        f_under = col_f5.button("📉 [2.5 언더 TOP 5]", use_container_width=True)
+        f_value = col_f6.button("💰 [배당 메리트 TOP 5]", use_container_width=True)
+        f_h2h = col_f7.button("⚔️ [천적 극상성 TOP 5]", use_container_width=True)
 
         display_list = scanned_results
         filter_title = "📋 이번 라운드 전체 스캔 리스트"
@@ -726,13 +805,23 @@ def render_tab2(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
 
         if f_high:
             display_list = [m for m in scanned_results if any("🔥 고승률" in t for t in m["tags"])]
-            display_list = sorted(display_list, key=lambda x: max(x["win_prob"], x["lose_prob"]), reverse=True)[:5]
+            display_list = sorted(display_list, key=lambda x: (max(x["win_prob"], x["lose_prob"]), x["match_cnt"]), reverse=True)[:5]
             filter_title = f"🔥 [{selected_radar_criteria} 기준 고승률 / 주력픽 TOP 5] 추천 경기"
             is_top5_view = True
         elif f_upset:
             display_list = [m for m in scanned_results if any("⚡ 역배폭탄" in t for t in m["tags"])]
-            display_list = sorted(display_list, key=lambda x: (x["draw_prob"] + x["lose_prob"]), reverse=True)[:5]
+            display_list = sorted(display_list, key=lambda x: ((x["draw_prob"] + x["lose_prob"]), x["match_cnt"]), reverse=True)[:5]
             filter_title = f"⚡ [{selected_radar_criteria} 기준 역배 / 무승부 폭탄 주의픽 TOP 5] 추천 경기"
+            is_top5_view = True
+        elif f_over:
+            display_list = [m for m in scanned_results if any("📈 2.5오버" in t for t in m["tags"])]
+            display_list = sorted(display_list, key=lambda x: (x["over_prob"], x["ou_cnt"]), reverse=True)[:5]
+            filter_title = f"📈 [{selected_radar_criteria} 기준 2.5 오버 주력픽 TOP 5] 추천 경기"
+            is_top5_view = True
+        elif f_under:
+            display_list = [m for m in scanned_results if any("📉 2.5언더" in t for t in m["tags"])]
+            display_list = sorted(display_list, key=lambda x: (x["under_prob"], x["ou_cnt"]), reverse=True)[:5]
+            filter_title = f"📉 [{selected_radar_criteria} 기준 2.5 언더 주력픽 TOP 5] 추천 경기"
             is_top5_view = True
         elif f_value:
             display_list = [m for m in scanned_results if "💰 배당 메리트" in m["tags"]]
@@ -750,7 +839,7 @@ def render_tab2(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
         if is_top5_view:
             st.subheader(f"{filter_title} (총 {len(display_list)}경기)")
             if not display_list:
-                st.info(f"💡 선택하신 조건({selected_radar_criteria})에 일치하는 추천 경기가 없습니다. (과거 매칭 2건 이상 및 승률/역배 기준 미충족)")
+                st.info(f"💡 선택하신 조건({selected_radar_criteria})에 일치하는 추천 경기가 없습니다. (과거 매칭 5건 이상 및 확률 70% 이상 기준 미충족)")
             else:
                 for i, item in enumerate(display_list):
                     with st.container(border=True):
@@ -770,6 +859,7 @@ def render_tab2(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
                             st.markdown(f"**🏢 배트맨 배당:** `{bh}` / `{bd}` / `{ba}` &nbsp;|&nbsp; **해외 평균:** `{oh}` / `{od}` / `{oa}` (편차: `{diff_str}`)")
                             st.markdown(f"🎯 **[{selected_radar_criteria} 동일배당 ({ch}/{cd}/{ca}) 승률 (과거 {item['match_cnt']}건)]**")
                             st.markdown(f"👉 홈승 **{item['win_prob']}%** / 무승부 **{item['draw_prob']}%** / 원정 **{item['lose_prob']}%**")
+                            st.markdown(f"⚽ **2.5 언오버 (과거 {item['ou_cnt']}건):** 오버 **{item['over_prob']}%** ({item['ov_cnt']}회) / 언더 **{item['under_prob']}%** ({item['un_cnt']}회)")
                             st.caption(f"⚔️ **상대전적:** {item['h2h_record']}")
 
                         with c_head3:
@@ -849,7 +939,9 @@ def render_tab2(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
                             배트맨 배당: <b style="color: #dc2626;">승 {bh}</b> | <b style="color: #059669;">무 {bd}</b> | <b style="color: #2563eb;">패 {ba}</b> &nbsp;|&nbsp; 
                             해외 평균: <b>{oh} / {od} / {oa}</b><br>
                             🎯 <b>{selected_radar_criteria} 동일배당 ({ch}/{cd}/{ca}) 승률 (과거 {target_item['match_cnt']}건):</b> 
-                            홈 <b>{target_item['win_prob']}%</b> / 무 <b>{target_item['draw_prob']}%</b> / 원 <b>{target_item['lose_prob']}%</b>
+                            홈 <b>{target_item['win_prob']}%</b> / 무 <b>{target_item['draw_prob']}%</b> / 원 <b>{target_item['lose_prob']}%</b><br>
+                            ⚽ <b>2.5 언오버 (과거 {target_item['ou_cnt']}건):</b> 
+                            오버 <b style="color: #dc2626;">{target_item['over_prob']}% ({target_item['ov_cnt']}회)</b> / 언더 <b style="color: #2563eb;">{target_item['under_prob']}% ({target_item['un_cnt']}회)</b>
                         </p>
                     </div>
                     """, unsafe_allow_html=True)
