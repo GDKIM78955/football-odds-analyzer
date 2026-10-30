@@ -11,7 +11,22 @@ def get_t3_preprocessed_bm(bm_name, spreadsheet_id):
     if df_bm.empty:
         return None
     try:
-        cols = list(df_bm.columns)
+        df_work = df_bm.copy()
+        cols = list(df_work.columns)
+
+        # 시트에 아직 6칸 밀린 행(-1, 2.5 끼어든 행)이 남아있을 경우 자동으로 제자리(28~35열)로 보정
+        if len(cols) >= 41:
+            c28 = cols[28]
+            c40 = cols[40]
+            shifted_mask = (
+                df_work[c28].astype(str).str.strip().isin(["-1", "-1.0"]) |
+                df_work[c40].astype(str).str.strip().isin(["홈승", "무승부", "원정승"])
+            )
+            if shifted_mask.any():
+                max_offset = min(8, len(cols) - 34)
+                for offset in range(max_offset):
+                    df_work.loc[shifted_mask, cols[28 + offset]] = df_work.loc[shifted_mask, cols[34 + offset]].values
+
         h_col = next((c for c in cols if any(k in c for k in ["해당_홈", "배당_홈", "홈배당", "홈_승", "H_ODDS"])), None)
         d_col = next((c for c in cols if any(k in c for k in ["해당_무", "배당_무", "무배당", "무승부", "D_ODDS"])), None)
         a_col = next((c for c in cols if any(k in c for k in ["해당_원", "배당_원", "원정배당", "원정_승", "A_ODDS"])), None)
@@ -26,7 +41,6 @@ def get_t3_preprocessed_bm(bm_name, spreadsheet_id):
         if not (h_col and d_col and a_col and res_col):
             return None
 
-        df_work = df_bm.copy()
         df_work["H_num"] = pd.to_numeric(df_work[h_col], errors="coerce").fillna(0.0)
         df_work["D_num"] = pd.to_numeric(df_work[d_col], errors="coerce").fillna(0.0)
         df_work["A_num"] = pd.to_numeric(df_work[a_col], errors="coerce").fillna(0.0)
@@ -322,7 +336,10 @@ def render_tab3(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
             st.markdown("##### 🌟 [네이버 블로그/카페 전용] 동일 배당 매칭 스코어 기반 종합 분석 카드")
             st.caption("초록색 버튼을 클릭하여 블로그 글쓰기 창에서 Ctrl+V 하세요!")
 
-            compare_options = ["🌟 해외 종합 가중평균 (전체 평균)"] + overseas_bookmakers
+            compare_options = [
+                "🌟 전체 종합 가중평균 (배트맨+해외 전체 매칭 합산)",
+                "🌐 해외 종합 가중평균 (해외 8개사 매칭만 합산)"
+            ] + bookmakers
             sel_compare_target = st.selectbox("비교할 대상 선택 (카드 1)", compare_options, index=0, key="sel_compare_bm_t2_card1")
 
             b_odds_val = odds_inputs_t2.get("배트맨", (0.0, 0.0, 0.0))
@@ -344,7 +361,11 @@ def render_tab3(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
                 else:
                     o_odds_val = (0.0, 0.0, 0.0)
                 
-                display_name = f"해외 종합평균 (유효 {len(valid_h)}개사)"
+                if "전체 종합" in sel_compare_target:
+                    valid_all_cnt = sum(1 for bm in bookmakers if all(x >= 1.01 for x in odds_inputs_t2.get(bm, (0.0, 0.0, 0.0))))
+                    display_name = f"종합 가중평균 (유효 {valid_all_cnt}개사)"
+                else:
+                    display_name = f"해외 종합평균 (유효 {len(valid_h)}개사)"
             else:
                 o_odds_val = odds_inputs_t2.get(sel_compare_target, (0.0, 0.0, 0.0))
                 display_name = sel_compare_target
@@ -354,7 +375,15 @@ def render_tab3(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
             ou_stats_dict = None
 
             target_matched_df = pd.DataFrame()
-            if "종합 가중평균" in sel_compare_target:
+            if "전체 종합" in sel_compare_target:
+                frames_to_concat = []
+                for bm in bookmakers:
+                    bm_upper = bm.upper()
+                    if bm_upper in matched_all and not matched_all[bm_upper].empty:
+                        frames_to_concat.append(matched_all[bm_upper])
+                if frames_to_concat:
+                    target_matched_df = pd.concat(frames_to_concat, ignore_index=True)
+            elif "해외 종합" in sel_compare_target:
                 frames_to_concat = []
                 for obm in overseas_bookmakers:
                     obm_upper = obm.upper()
@@ -379,48 +408,71 @@ def render_tab3(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
                 if not res_col and len(cols) > 32:
                     res_col = cols[34] if len(cols) > 34 else cols[32]
 
-                if h_score_col and a_score_col and res_col:
+                if res_col:
                     hw_cnt_match, dr_cnt_match, aw_cnt_match = 0, 0, 0
                     ov_cnt, un_cnt = 0, 0
-                    valid_matches = 0
+                    total_matched_cnt = 0
+                    score_valid_cnt = 0
 
-                    parsed_matches = []
+                    parsed_scores = []
                     for _, mr in target_matched_df.iterrows():
-                        try:
-                            hs = float(str(mr[h_score_col]).strip())
-                            as_sc = float(str(mr[a_score_col]).strip())
-                            res_val = str(mr[res_col]).strip()
-                            parsed_matches.append((hs, as_sc, res_val))
-                            valid_matches += 1
+                        res_val = str(mr[res_col]).strip() if res_col in mr else ""
+                        hs, as_sc = None, None
+                        if h_score_col and a_score_col:
+                            try:
+                                hs_raw = float(str(mr[h_score_col]).strip())
+                                as_raw = float(str(mr[a_score_col]).strip())
+                                if hs_raw >= 0 and as_raw >= 0:
+                                    hs, as_sc = hs_raw, as_raw
+                            except:
+                                pass
 
-                            if res_val == "홈승" or hs > as_sc:
+                        # 만약 해당 행이 시트에서 6칸 밀려있어 기본 스코어 열이 음수(-1)이거나 비어있다면 34, 35, 40번째 열에서 복구 시도
+                        if (hs is None or as_sc is None) and len(cols) >= 36:
+                            try:
+                                hs_alt = float(str(mr[cols[34]]).strip())
+                                as_alt = float(str(mr[cols[35]]).strip())
+                                if hs_alt >= 0 and as_alt >= 0:
+                                    hs, as_sc = hs_alt, as_alt
+                            except:
+                                pass
+                        if res_val not in ["홈승", "무승부", "원정승"] and len(cols) >= 41:
+                            alt_res = str(mr[cols[40]]).strip()
+                            if alt_res in ["홈승", "무승부", "원정승"]:
+                                res_val = alt_res
+
+                        if res_val in ["홈승", "무승부", "원정승"] or (hs is not None and as_sc is not None):
+                            total_matched_cnt += 1
+                            if res_val == "홈승" or (res_val not in ["홈승", "무승부", "원정승"] and hs > as_sc):
                                 hw_cnt_match += 1
-                            elif res_val == "무승부" or hs == as_sc:
+                            elif res_val == "무승부" or (res_val not in ["홈승", "무승부", "원정승"] and hs == as_sc):
                                 dr_cnt_match += 1
                             else:
                                 aw_cnt_match += 1
 
+                        if hs is not None and as_sc is not None:
+                            parsed_scores.append((hs, as_sc))
+                            score_valid_cnt += 1
                             if (hs + as_sc) > ou_line_val:
                                 ov_cnt += 1
                             else:
                                 un_cnt += 1
-                        except:
-                            continue
 
-                    if valid_matches > 0:
+                    if total_matched_cnt > 0:
                         match_stats_dict = {
-                            "count": valid_matches,
-                            "home_win_pct": round((hw_cnt_match / valid_matches) * 100, 1),
-                            "draw_pct": round((dr_cnt_match / valid_matches) * 100, 1),
-                            "away_win_pct": round((aw_cnt_match / valid_matches) * 100, 1)
+                            "count": total_matched_cnt,
+                            "home_win_pct": round((hw_cnt_match / total_matched_cnt) * 100, 1),
+                            "draw_pct": round((dr_cnt_match / total_matched_cnt) * 100, 1),
+                            "away_win_pct": round((aw_cnt_match / total_matched_cnt) * 100, 1)
                         }
 
+                    if score_valid_cnt > 0:
                         for hc_val in hc_lines_val:
                             hw_hc_cnt = 0
                             hd_hc_cnt = 0
                             aw_hc_cnt = 0
                             
-                            for hs, as_sc, _ in parsed_matches:
+                            for hs, as_sc in parsed_scores:
                                 adjusted_home_score = hs + hc_val
                                 if adjusted_home_score > as_sc:
                                     hw_hc_cnt += 1
@@ -431,10 +483,10 @@ def render_tab3(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
                             
                             hc_stats_list.append({
                                 "line": hc_val,
-                                "count": valid_matches,
-                                "home_win_pct": round((hw_hc_cnt / valid_matches) * 100, 1),
-                                "draw_pct": round((hd_hc_cnt / valid_matches) * 100, 1),
-                                "away_win_pct": round((aw_hc_cnt / valid_matches) * 100, 1),
+                                "count": score_valid_cnt,
+                                "home_win_pct": round((hw_hc_cnt / score_valid_cnt) * 100, 1),
+                                "draw_pct": round((hd_hc_cnt / score_valid_cnt) * 100, 1),
+                                "away_win_pct": round((aw_hc_cnt / score_valid_cnt) * 100, 1),
                                 "home_win_cnt": hw_hc_cnt,
                                 "draw_cnt": hd_hc_cnt,
                                 "away_win_cnt": aw_hc_cnt
@@ -442,9 +494,9 @@ def render_tab3(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
 
                         ou_stats_dict = {
                             "line": ou_line_val,
-                            "count": valid_matches,
-                            "over_pct": round((ov_cnt / valid_matches) * 100, 1),
-                            "under_pct": round((un_cnt / valid_matches) * 100, 1),
+                            "count": score_valid_cnt,
+                            "over_pct": round((ov_cnt / score_valid_cnt) * 100, 1),
+                            "under_pct": round((un_cnt / score_valid_cnt) * 100, 1),
                             "over_cnt": ov_cnt,
                             "under_cnt": un_cnt
                         }
