@@ -685,7 +685,7 @@ def render_tab2(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
 
                 if match_cnt >= 2 and (win_prob >= 70.0 or lose_prob >= 70.0):
                     tags.append(f"🔥 고승률({selected_radar_criteria})")
-                if crit_h > 0 and crit_a > 0 and crit_h < crit_a and (draw_prob + lose_prob) >= 55.0 and match_cnt >= 2:
+                if crit_h > 0 and crit_a > 0 and crit_h < crit_a and (draw_prob + lose_prob) >= 70.0 and match_cnt >= 2:
                     tags.append(f"⚡ 역배폭탄({selected_radar_criteria})")
                 if diff_h >= 0.05:
                     tags.append("💰 배당 메리트")
@@ -868,3 +868,4 @@ def render_tab2(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
                         st.session_state.sel_h2h_away = target_item["away"]
                         st.session_state.inj_filter_team = target_item["home"]
                         st.success(f"🎯 [{target_item['home']} vs {target_item['away']}] 경기가 분석 탭으로 전송되었습니다! (상단 탭 3, 5, 6 확인)")
+                        st.rerun()
