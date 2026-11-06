@@ -34,13 +34,14 @@ st.set_page_config(
     layout="wide"
 )
 
+# 요청하신 새 업체 순서 적용 (1번, 2번, 3번 탭 모두 동일하게 이 순서로 배치됨)
 BOOKMAKERS = [
-    "배트맨", "10x10", "1xbet", "betway",
-    "bwin", "william hill", "bet365", "pinnacle", "stake"
+    "배트맨", "10x10", "1xbet", "bwin", "stake",
+    "bet365", "william hill", "betway", "pinnacle"
 ]
 OVERSEAS_BOOKMAKERS = [
-    "10x10", "1xbet", "betway",
-    "bwin", "william hill", "bet365", "pinnacle", "stake"
+    "10x10", "1xbet", "bwin", "stake",
+    "bet365", "william hill", "betway", "pinnacle"
 ]
 SPREADSHEET_ID = "1-b-QusmoSnsvMhToNFe1B1IK7dJUKjjANs89y5ZekAQ"
 
