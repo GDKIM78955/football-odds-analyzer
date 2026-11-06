@@ -3,6 +3,36 @@ import pandas as pd
 import numpy as np
 from database import load_sheet_data
 
+# 구글 시트 '라운드스캔' 탭의 기본 열 순서 (화면 입력 순서가 바뀌어도 시트에는 원래 열 위치에 맞춰 안전하게 저장됨)
+DEFAULT_SCAN_SHEET_OBMS = [
+    "10x10", "1xbet", "betway", "bwin",
+    "william hill", "bet365", "pinnacle", "stake"
+]
+
+
+def build_scan_row_by_sheet_headers(header_row, base_info_list, odds_dict, fallback_obms):
+    row = list(base_info_list)
+    # 시트 1행 헤더가 존재하면 헤더의 업체 순서에 맞춰 정확히 매핑
+    if header_row and len(header_row) >= 32:
+        detected_obms = []
+        for col_idx in range(8, 32, 3):
+            h_name = str(header_row[col_idx]).strip().lower()
+            matched_bm = next((b for b in fallback_obms if b.lower() in h_name), None)
+            if matched_bm:
+                detected_obms.append(matched_bm)
+        order_to_use = detected_obms if len(detected_obms) == len(fallback_obms) else DEFAULT_SCAN_SHEET_OBMS
+    else:
+        order_to_use = DEFAULT_SCAN_SHEET_OBMS
+
+    for obm in order_to_use:
+        oh, od, oa = odds_dict.get(obm, (0.0, 0.0, 0.0))
+        c_oh = oh if oh > 0 else ""
+        c_od = od if od > 0 else ""
+        c_oa = oa if oa > 0 else ""
+        row.extend([c_oh, c_od, c_oa])
+    return row
+
+
 @st.cache_data(ttl=300, show_spinner=False)
 def get_preprocessed_bm_db_v3(bm_name, spreadsheet_id):
     df_db = load_sheet_data(bm_name, spreadsheet_id)
@@ -53,6 +83,7 @@ def get_preprocessed_bm_db_v3(bm_name, spreadsheet_id):
         }
     except Exception:
         return None
+
 
 def render_tab2(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
     st.subheader("📡 라운드 경기 배당 자동 스캐너 & 추천픽 레이더")
@@ -212,22 +243,19 @@ def render_tab2(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
                         try:
                             spreadsheet = client.open_by_key(spreadsheet_id)
                             ws_scan = spreadsheet.worksheet(scanner_sheet_name)
-                            
-                            new_scan_row = [
+                            all_data = ws_scan.get_all_values()
+                            header_row = all_data[0] if len(all_data) > 0 else []
+
+                            base_info = [
                                 cur_s_match["season"], cur_s_match["league"], cur_s_match["date"],
                                 cur_s_match["home"], cur_s_match["away"],
                                 cur_s_match["batman_odds"][0], cur_s_match["batman_odds"][1], cur_s_match["batman_odds"][2]
                             ]
-                            for obm in overseas_bookmakers:
-                                oh, od, oa = sq_overseas_inputs.get(obm, (0.0, 0.0, 0.0))
-                                c_oh = oh if oh > 0 else ""
-                                c_od = od if od > 0 else ""
-                                c_oa = oa if oa > 0 else ""
-                                new_scan_row.extend([c_oh, c_od, c_oa])
+                            new_scan_row = build_scan_row_by_sheet_headers(
+                                header_row, base_info, sq_overseas_inputs, overseas_bookmakers
+                            )
 
-                            all_data = ws_scan.get_all_values()
                             target_row_idx = None
-                            
                             if len(all_data) > 1:
                                 for r_i, row in enumerate(all_data[1:], start=2):
                                     if len(row) >= 5:
@@ -340,21 +368,18 @@ def render_tab2(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
                             try:
                                 spreadsheet = client.open_by_key(spreadsheet_id)
                                 ws_scan = spreadsheet.worksheet(scanner_sheet_name)
-                                
-                                new_scan_row = [
+                                all_data = ws_scan.get_all_values()
+                                header_row = all_data[0] if len(all_data) > 0 else []
+
+                                base_info = [
                                     ds_season, ds_league, ds_date, ds_home.strip(), ds_away.strip(),
                                     ds_bh, ds_bd, ds_ba
                                 ]
-                                for obm in overseas_bookmakers:
-                                    oh, od, oa = ds_overseas_inputs.get(obm, (0.0, 0.0, 0.0))
-                                    c_oh = oh if oh > 0 else ""
-                                    c_od = od if od > 0 else ""
-                                    c_oa = oa if oa > 0 else ""
-                                    new_scan_row.extend([c_oh, c_od, c_oa])
+                                new_scan_row = build_scan_row_by_sheet_headers(
+                                    header_row, base_info, ds_overseas_inputs, overseas_bookmakers
+                                )
 
-                                all_data = ws_scan.get_all_values()
                                 target_row_idx = None
-                                
                                 if len(all_data) > 1:
                                     for r_i, row in enumerate(all_data[1:], start=2):
                                         if len(row) >= 5:
