@@ -397,7 +397,7 @@ def render_tab3(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
     st.markdown("---")
     st.markdown("##### 🎯 과거 데이터 기반 핸디캡 & 언오버 확률 분석 기준점 설정")
     
-    hc_options = [-5.0, -4.0, -3.0, -2.5, -2.0, -1.5, -1.0, -0.5, 0.0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 4.0, 5.0]
+    hc_options = [-0.5, -1.0, -1.5, -2.0, -2.5, -3.0, -4.0, -5.0, 0.0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 4.0, 5.0]
     ou_options = [1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0, 5.5, 6.0, 6.5]
 
     hc_col1, ou_col1 = st.columns(2)
@@ -405,9 +405,13 @@ def render_tab3(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
     with hc_col1:
         with st.container(border=True):
             st.markdown("**🎯 핸디캡 기준점 (2~3개 복수 선택 가능)**")
-            default_hcs = [-1.5, -1.0, -0.5] if all(x in hc_options for x in [-1.5, -1.0, -0.5]) else [-1.0]
+            default_hcs = [-0.5, -1.0, -1.5] if all(x in hc_options for x in [-0.5, -1.0, -1.5]) else [-1.0]
             sel_hc_lines = st.multiselect("핸디캡 기준점 선택 (최대 3개 권장)", hc_options, default=default_hcs, key="t3_sel_hc_lines")
-            hc_lines_val = sorted([float(x) for x in sel_hc_lines])
+            # 마이너스 핸디캡도 -1, -2 순서(절댓값 오름차순)로 정렬되고 플러스 핸디캡도 +1, +2 순서로 정렬되도록 처리
+            hc_lines_val = sorted(
+                [float(x) for x in sel_hc_lines],
+                key=lambda x: (0 if x < 0 else (1 if x == 0 else 2), abs(x))
+            )
             if not hc_lines_val:
                 hc_lines_val = [-1.0]
 
