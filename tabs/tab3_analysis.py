@@ -50,10 +50,14 @@ def generate_naver_match_history_infographic(
     title_lg = f"[{league_name}] " if league_name else ""
 
     if not records:
-        return f"""
-        <div style="font-family: 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif; max-width: 680px; margin: 0 auto; border: 1px solid #cbd5e1; border-radius: 10px; padding: 20px; text-align: center; color: #64748b;">
-            조건에 일치하는 과거 매칭 경기 내역이 없습니다.
-        </div>
+        return """
+        <table width="100%" cellpadding="0" cellspacing="0" style="max-width: 680px; margin: 0 auto; border-collapse: collapse; border: 1px solid #cbd5e1;">
+            <tr>
+                <td bgcolor="#f8fafc" style="background-color: #f8fafc; padding: 20px; text-align: center; color: #64748b; font-family: 'Malgun Gothic', sans-serif;">
+                    조건에 일치하는 과거 매칭 경기 내역이 없습니다.
+                </td>
+            </tr>
+        </table>
         """
 
     total_cnt = len(records)
@@ -91,150 +95,149 @@ def generate_naver_match_history_infographic(
 
     rows_html = ""
     for idx, r in enumerate(records):
-        bg_row = "#ffffff" if idx % 2 == 0 else "#f8fafc"
-        raw_season = str(r.get("season", "")).strip()
-        if raw_season and raw_season != "-":
-            season_str = raw_season if "시즌" in raw_season else f"{raw_season}시즌"
-        else:
-            season_str = "-"
+        # 네이버 카페/블로그 붙여넣기 시에도 줄 구분이 확실하도록 짝수/홀수 행 배경색을 <td bgcolor>에 직접 지정
+        bg_row = "#ffffff" if idx % 2 == 0 else "#e8eef5"
+        raw_season = str(r.get("season", "")).replace("시즌", "").strip()
+        season_str = raw_season if raw_season else "-"
         r_lg = r["league"]
         r_home = r["home"]
         r_away = r["away"]
         r_res = r["res"]
         hs, as_sc = r["hs"], r["as"]
 
-        # 홈/원정 승리 팀 강조 스타일
+        # 홈/원정 승리 팀 강조 스타일 및 결과 셀 전용 배경색 (span 테두리 대신 td 배경색을 써서 네이버 카페 밑줄 현상 완전 방지)
         if r_res == "홈승":
-            h_style = "font-weight: 800; color: #1e3a8a;"
-            a_style = "font-weight: 500; color: #64748b;"
-            res_badge_bg = "#dbeafe"
-            res_badge_fg = "#1d4ed8"
-            res_badge_border = "#93c5fd"
-            res_label = "홈승"
+            h_style = "font-weight: 800; color: #1e3a8a; font-size: 15px; text-decoration: none;"
+            a_style = "font-weight: 600; color: #475569; font-size: 15px; text-decoration: none;"
+            res_cell_bg = "#dbeafe"
+            res_fg = "#1d4ed8"
+            res_label = "🏠 홈승"
         elif r_res == "원정승":
-            h_style = "font-weight: 500; color: #64748b;"
-            a_style = "font-weight: 800; color: #991b1b;"
-            res_badge_bg = "#ffe4e6"
-            res_badge_fg = "#be123c"
-            res_badge_border = "#fda4af"
-            res_label = "원정승"
+            h_style = "font-weight: 600; color: #475569; font-size: 15px; text-decoration: none;"
+            a_style = "font-weight: 800; color: #991b1b; font-size: 15px; text-decoration: none;"
+            res_cell_bg = "#ffe4e6"
+            res_fg = "#be123c"
+            res_label = "🚗 원정승"
         else:
-            h_style = "font-weight: 700; color: #334155;"
-            a_style = "font-weight: 700; color: #334155;"
-            res_badge_bg = "#d1fae5"
-            res_badge_fg = "#047857"
-            res_badge_border = "#6ee7b7"
-            res_label = "무승부"
+            h_style = "font-weight: 700; color: #1e293b; font-size: 15px; text-decoration: none;"
+            a_style = "font-weight: 700; color: #1e293b; font-size: 15px; text-decoration: none;"
+            res_cell_bg = "#d1fae5"
+            res_fg = "#047857"
+            res_label = "⚖️ 무승부"
 
         if hs is not None and as_sc is not None:
             tot_g = int(hs + as_sc)
             score_str = f"{int(hs)} : {int(as_sc)}"
             if (hs + as_sc) > ou_line:
-                ou_badge = f"<span style='display: inline-block; background-color: #fff1f2; color: #e11d48; border: 1px solid #fecdd3; border-radius: 4px; padding: 2px 7px; font-size: 11px; font-weight: 700; white-space: nowrap;'>{tot_g}골 · 오버</span>"
+                ou_text = f"<span style='color: #e11d48; font-size: 12px; font-weight: 800; text-decoration: none;'>{tot_g}골 · 오버</span>"
             else:
-                ou_badge = f"<span style='display: inline-block; background-color: #eff6ff; color: #2563eb; border: 1px solid #bfdbfe; border-radius: 4px; padding: 2px 7px; font-size: 11px; font-weight: 700; white-space: nowrap;'>{tot_g}골 · 언더</span>"
+                ou_text = f"<span style='color: #2563eb; font-size: 12px; font-weight: 800; text-decoration: none;'>{tot_g}골 · 언더</span>"
         else:
             score_str = "VS"
-            ou_badge = "<span style='color: #94a3b8; font-size: 11px;'>-</span>"
+            ou_text = "<span style='color: #64748b; font-size: 12px; text-decoration: none;'>-</span>"
 
         rows_html += f"""
-        <tr style="background-color: {bg_row}; border-bottom: 1px solid #e2e8f0;">
-            <td style="padding: 10px 8px; text-align: center; vertical-align: middle; width: 22%; white-space: nowrap;">
-                <div style="font-size: 11px; color: #475569; font-weight: 700;">{season_str}</div>
-                <div style="display: inline-block; margin-top: 3px; background-color: #f1f5f9; color: #1e293b; border: 1px solid #cbd5e1; border-radius: 4px; padding: 1px 6px; font-size: 11px; font-weight: 700;">{r_lg}</div>
+        <tr>
+            <td bgcolor="{bg_row}" style="background-color: {bg_row}; padding: 11px 8px; text-align: center; vertical-align: middle; width: 18%; border-bottom: 1px solid #cbd5e1; white-space: nowrap; text-decoration: none;">
+                <div style="font-size: 12px; color: #334155; font-weight: 800; text-decoration: none;">{season_str}</div>
+                <div style="font-size: 11px; color: #0f172a; font-weight: 700; margin-top: 2px; text-decoration: none;">[{r_lg}]</div>
             </td>
-            <td style="padding: 10px 6px; text-align: right; vertical-align: middle; width: 24%; font-size: 13px; word-break: keep-all; {h_style}">
+            <td bgcolor="{bg_row}" style="background-color: {bg_row}; padding: 11px 8px; text-align: right; vertical-align: middle; width: 25%; border-bottom: 1px solid #cbd5e1; word-break: keep-all; {h_style}">
                 {r_home}
             </td>
-            <td style="padding: 10px 4px; text-align: center; vertical-align: middle; width: 14%; white-space: nowrap;">
-                <span style="display: inline-block; background-color: #0f172a; color: #ffffff; font-weight: 800; font-size: 13px; padding: 4px 10px; border-radius: 6px; letter-spacing: 1px; white-space: nowrap;">
-                    {score_str}
-                </span>
+            <td bgcolor="{bg_row}" style="background-color: {bg_row}; padding: 11px 4px; text-align: center; vertical-align: middle; width: 14%; border-bottom: 1px solid #cbd5e1; white-space: nowrap;">
+                <table align="center" cellpadding="0" cellspacing="0" style="margin: 0 auto; border-collapse: collapse;">
+                    <tr>
+                        <td bgcolor="#0f172a" style="background-color: #0f172a; color: #ffffff; font-weight: 800; font-size: 14px; padding: 5px 12px; border-radius: 6px; letter-spacing: 1px; white-space: nowrap; text-decoration: none;">
+                            {score_str}
+                        </td>
+                    </tr>
+                </table>
             </td>
-            <td style="padding: 10px 6px; text-align: left; vertical-align: middle; width: 24%; font-size: 13px; word-break: keep-all; {a_style}">
+            <td bgcolor="{bg_row}" style="background-color: {bg_row}; padding: 11px 8px; text-align: left; vertical-align: middle; width: 25%; border-bottom: 1px solid #cbd5e1; word-break: keep-all; {a_style}">
                 {r_away}
             </td>
-            <td style="padding: 10px 8px; text-align: center; vertical-align: middle; width: 16%; white-space: nowrap;">
-                <div style="margin-bottom: 3px;">
-                    <span style="display: inline-block; background-color: {res_badge_bg}; color: {res_badge_fg}; border: 1px solid {res_badge_border}; border-radius: 12px; padding: 2px 10px; font-size: 11px; font-weight: 800; white-space: nowrap;">
-                        {res_label}
-                    </span>
-                </div>
-                <div>{ou_badge}</div>
+            <td bgcolor="{res_cell_bg}" style="background-color: {res_cell_bg}; padding: 9px 8px; text-align: center; vertical-align: middle; width: 18%; border-bottom: 1px solid #cbd5e1; border-left: 1px solid #cbd5e1; white-space: nowrap; text-decoration: none;">
+                <div style="font-size: 13px; font-weight: 800; color: {res_fg}; margin-bottom: 2px; text-decoration: none;">{res_label}</div>
+                <div style="text-decoration: none;">{ou_text}</div>
             </td>
         </tr>
         """
 
     gauge_cells = ""
     if w_bar > 0:
-        gauge_cells += f"<td style='width: {w_bar}%; background-color: #2563eb; color: #ffffff; text-align: center; font-size: 11px; font-weight: 700; padding: 5px 0; white-space: nowrap;'>홈승 {hw_pct}%</td>"
+        gauge_cells += f"<td bgcolor='#2563eb' style='width: {w_bar}%; background-color: #2563eb; color: #ffffff; text-align: center; font-size: 11px; font-weight: 700; padding: 6px 0; white-space: nowrap; text-decoration: none;'>홈승 {hw_pct}%</td>"
     if d_bar > 0:
-        gauge_cells += f"<td style='width: {d_bar}%; background-color: #10b981; color: #ffffff; text-align: center; font-size: 11px; font-weight: 700; padding: 5px 0; white-space: nowrap;'>무 {dr_pct}%</td>"
+        gauge_cells += f"<td bgcolor='#10b981' style='width: {d_bar}%; background-color: #10b981; color: #ffffff; text-align: center; font-size: 11px; font-weight: 700; padding: 6px 0; white-space: nowrap; text-decoration: none;'>무 {dr_pct}%</td>"
     if a_bar > 0:
-        gauge_cells += f"<td style='width: {a_bar}%; background-color: #e11d48; color: #ffffff; text-align: center; font-size: 11px; font-weight: 700; padding: 5px 0; white-space: nowrap;'>원정 {aw_pct}%</td>"
+        gauge_cells += f"<td bgcolor='#e11d48' style='width: {a_bar}%; background-color: #e11d48; color: #ffffff; text-align: center; font-size: 11px; font-weight: 700; padding: 6px 0; white-space: nowrap; text-decoration: none;'>원정 {aw_pct}%</td>"
 
     html = f"""
-    <div style="font-family: 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif; max-width: 680px; margin: 0 auto; background-color: #ffffff; border: 2px solid #1e293b; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.08);">
+    <div style="font-family: 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif; max-width: 680px; margin: 0 auto; background-color: #ffffff; border: 2px solid #1e293b; border-radius: 10px; overflow: hidden;">
         <!-- 상단 타이틀 배너 -->
-        <table style="width: 100%; border-collapse: collapse; background-color: #0f172a; color: #ffffff;">
+        <table width="100%" cellpadding="0" cellspacing="0" style="width: 100%; border-collapse: collapse; background-color: #0f172a; color: #ffffff;">
             <tr>
-                <td style="padding: 16px 20px; vertical-align: middle;">
-                    <div style="font-size: 11px; color: #38bdf8; font-weight: 800; letter-spacing: 0.5px; margin-bottom: 4px;">
+                <td bgcolor="#0f172a" style="background-color: #0f172a; padding: 16px 20px; vertical-align: middle;">
+                    <div style="font-size: 11px; color: #38bdf8; font-weight: 800; letter-spacing: 0.5px; margin-bottom: 4px; text-decoration: none;">
                         ⚽ HISTORICAL MATCH RESULT ARCHIVE ({scope_label})
                     </div>
-                    <div style="font-size: 18px; font-weight: 800; color: #ffffff; word-break: keep-all; line-height: 1.3;">
+                    <div style="font-size: 19px; font-weight: 800; color: #ffffff; word-break: keep-all; line-height: 1.3; text-decoration: none;">
                         {title_lg}{title_match}
                     </div>
-                    <div style="font-size: 13px; font-weight: 600; color: #cbd5e1; margin-top: 4px; word-break: keep-all;">
+                    <div style="font-size: 13px; font-weight: 600; color: #cbd5e1; margin-top: 4px; word-break: keep-all; text-decoration: none;">
                         과거 동일배당 매치 히스토리
                     </div>
                 </td>
-                <td style="padding: 16px 20px; text-align: right; vertical-align: middle; width: 120px; white-space: nowrap;">
-                    <span style="display: inline-block; background-color: #1e293b; border: 1px solid #475569; color: #f8fafc; font-size: 13px; font-weight: 800; padding: 7px 14px; border-radius: 8px; white-space: nowrap;">
-                        총 {total_cnt}경기
-                    </span>
+                <td bgcolor="#0f172a" style="background-color: #0f172a; padding: 16px 20px; text-align: right; vertical-align: middle; width: 120px; white-space: nowrap;">
+                    <table align="right" cellpadding="0" cellspacing="0" style="border-collapse: collapse;">
+                        <tr>
+                            <td bgcolor="#1e293b" style="background-color: #1e293b; border: 1px solid #475569; color: #f8fafc; font-size: 14px; font-weight: 800; padding: 8px 14px; border-radius: 6px; white-space: nowrap; text-decoration: none;">
+                                총 {total_cnt}경기
+                            </td>
+                        </tr>
+                    </table>
                 </td>
             </tr>
         </table>
 
         <!-- 핵심 요약 KPI 3단 박스 -->
-        <table style="width: 100%; border-collapse: collapse; background-color: #f8fafc; border-bottom: 1px solid #e2e8f0;">
+        <table width="100%" cellpadding="0" cellspacing="0" style="width: 100%; border-collapse: collapse; background-color: #f1f5f9; border-bottom: 1px solid #cbd5e1;">
             <tr>
-                <td style="width: 34%; padding: 12px 10px; text-align: center; border-right: 1px solid #e2e8f0;">
-                    <div style="font-size: 11px; color: #64748b; font-weight: 700; margin-bottom: 4px;">📌 과거 승·무·패 흐름</div>
-                    <div style="font-size: 13px; font-weight: 800; color: #0f172a; white-space: nowrap;">
-                        <span style="color: #1d4ed8;">홈 {hw_cnt}승</span> · <span style="color: #047857;">{dr_cnt}무</span> · <span style="color: #be123c;">원정 {aw_cnt}승</span>
+                <td bgcolor="#f1f5f9" style="background-color: #f1f5f9; width: 34%; padding: 12px 10px; text-align: center; border-right: 1px solid #cbd5e1;">
+                    <div style="font-size: 11px; color: #475569; font-weight: 700; margin-bottom: 4px; text-decoration: none;">📌 과거 승·무·패 흐름</div>
+                    <div style="font-size: 13px; font-weight: 800; color: #0f172a; white-space: nowrap; text-decoration: none;">
+                        <span style="color: #1d4ed8; text-decoration: none;">홈 {hw_cnt}승</span> · <span style="color: #047857; text-decoration: none;">{dr_cnt}무</span> · <span style="color: #be123c; text-decoration: none;">원정 {aw_cnt}승</span>
                     </div>
                 </td>
-                <td style="width: 33%; padding: 12px 10px; text-align: center; border-right: 1px solid #e2e8f0;">
-                    <div style="font-size: 11px; color: #64748b; font-weight: 700; margin-bottom: 4px;">⚽ 경기당 평균 득점</div>
-                    <div style="font-size: 13px; font-weight: 800; color: #0f172a; white-space: nowrap;">
-                        평균 <span style="color: #0f172a;">{avg_tot}골</span> <span style="font-size: 11px; font-weight: 600; color: #64748b;">(홈 {avg_h} : 원정 {avg_a})</span>
+                <td bgcolor="#f1f5f9" style="background-color: #f1f5f9; width: 33%; padding: 12px 10px; text-align: center; border-right: 1px solid #cbd5e1;">
+                    <div style="font-size: 11px; color: #475569; font-weight: 700; margin-bottom: 4px; text-decoration: none;">⚽ 경기당 평균 득점</div>
+                    <div style="font-size: 13px; font-weight: 800; color: #0f172a; white-space: nowrap; text-decoration: none;">
+                        평균 <span style="color: #0f172a; text-decoration: none;">{avg_tot}골</span> <span style="font-size: 11px; font-weight: 600; color: #475569; text-decoration: none;">(홈 {avg_h} : 원정 {avg_a})</span>
                     </div>
                 </td>
-                <td style="width: 33%; padding: 12px 10px; text-align: center;">
-                    <div style="font-size: 11px; color: #64748b; font-weight: 700; margin-bottom: 4px;">⚡ {ou_line} 기준 언오버 비율</div>
-                    <div style="font-size: 13px; font-weight: 800; white-space: nowrap;">
-                        <span style="color: #e11d48;">오버 {ov_pct}%</span> <span style="color: #94a3b8; font-weight: 400;">|</span> <span style="color: #2563eb;">언더 {un_pct}%</span>
+                <td bgcolor="#f1f5f9" style="background-color: #f1f5f9; width: 33%; padding: 12px 10px; text-align: center;">
+                    <div style="font-size: 11px; color: #475569; font-weight: 700; margin-bottom: 4px; text-decoration: none;">⚡ {ou_line} 기준 언오버 비율</div>
+                    <div style="font-size: 13px; font-weight: 800; white-space: nowrap; text-decoration: none;">
+                        <span style="color: #e11d48; text-decoration: none;">오버 {ov_pct}%</span> <span style="color: #94a3b8; font-weight: 400; text-decoration: none;">|</span> <span style="color: #2563eb; text-decoration: none;">언더 {un_pct}%</span>
                     </div>
                 </td>
             </tr>
         </table>
 
         <!-- 승무패 비율 게이지 바 -->
-        <table style="width: 100%; border-collapse: collapse;">
+        <table width="100%" cellpadding="0" cellspacing="0" style="width: 100%; border-collapse: collapse;">
             <tr>{gauge_cells}</tr>
         </table>
 
         <!-- 매칭 경기 상세 스코어보드 리스트 -->
-        <table style="width: 100%; border-collapse: collapse;">
+        <table width="100%" cellpadding="0" cellspacing="0" style="width: 100%; border-collapse: collapse;">
             <thead>
-                <tr style="background-color: #f1f5f9; border-top: 1px solid #cbd5e1; border-bottom: 2px solid #cbd5e1;">
-                    <th style="padding: 8px; font-size: 11px; color: #475569; text-align: center; width: 22%;">시즌 / 리그</th>
-                    <th style="padding: 8px; font-size: 11px; color: #475569; text-align: right; width: 24%;">홈팀</th>
-                    <th style="padding: 8px; font-size: 11px; color: #475569; text-align: center; width: 14%;">스코어</th>
-                    <th style="padding: 8px; font-size: 11px; color: #475569; text-align: left; width: 24%;">원정팀</th>
-                    <th style="padding: 8px; font-size: 11px; color: #475569; text-align: center; width: 16%;">결과 / 언오버</th>
+                <tr>
+                    <th bgcolor="#cbd5e1" style="background-color: #cbd5e1; padding: 9px 8px; font-size: 12px; color: #1e293b; text-align: center; width: 18%; border-top: 1px solid #94a3b8; border-bottom: 2px solid #94a3b8; text-decoration: none;">시즌 / 리그</th>
+                    <th bgcolor="#cbd5e1" style="background-color: #cbd5e1; padding: 9px 8px; font-size: 12px; color: #1e293b; text-align: right; width: 25%; border-top: 1px solid #94a3b8; border-bottom: 2px solid #94a3b8; text-decoration: none;">홈팀</th>
+                    <th bgcolor="#cbd5e1" style="background-color: #cbd5e1; padding: 9px 4px; font-size: 12px; color: #1e293b; text-align: center; width: 14%; border-top: 1px solid #94a3b8; border-bottom: 2px solid #94a3b8; text-decoration: none;">스코어</th>
+                    <th bgcolor="#cbd5e1" style="background-color: #cbd5e1; padding: 9px 8px; font-size: 12px; color: #1e293b; text-align: left; width: 25%; border-top: 1px solid #94a3b8; border-bottom: 2px solid #94a3b8; text-decoration: none;">원정팀</th>
+                    <th bgcolor="#cbd5e1" style="background-color: #cbd5e1; padding: 9px 8px; font-size: 12px; color: #1e293b; text-align: center; width: 18%; border-top: 1px solid #94a3b8; border-bottom: 2px solid #94a3b8; text-decoration: none;">결과 / 언오버</th>
                 </tr>
             </thead>
             <tbody>
@@ -243,9 +246,13 @@ def generate_naver_match_history_infographic(
         </table>
 
         <!-- 하단 주의사항 안내 푸터 -->
-        <div style="background-color: #f8fafc; padding: 12px 16px; text-align: left; font-size: 11px; color: #475569; border-top: 1px solid #e2e8f0; line-height: 1.5; word-break: keep-all;">
-            <b style="color: #334155;">※ 안내 및 주의사항:</b> 업체별로 각각 배당에 따라 동일한 과거 경기가 중복 카운팅되는 경우가 있기 때문에, 본 히스토리 표에서는 <b>동일 경기 중복을 제거</b>하여 표시하므로 상단에 작성된 동일 배당 매칭 데이터 경기 수와 다를 수 있습니다.
-        </div>
+        <table width="100%" cellpadding="0" cellspacing="0" style="width: 100%; border-collapse: collapse;">
+            <tr>
+                <td bgcolor="#f1f5f9" style="background-color: #f1f5f9; padding: 12px 16px; text-align: left; font-size: 11px; color: #475569; border-top: 1px solid #cbd5e1; line-height: 1.5; word-break: keep-all; text-decoration: none;">
+                    <b style="color: #1e293b; text-decoration: none;">※ 안내 및 주의사항:</b> 업체별로 각각 배당에 따라 동일한 과거 경기가 중복 카운팅되는 경우가 있기 때문에, 본 히스토리 표에서는 <b style="color: #1e293b; text-decoration: none;">동일 경기 중복을 제거</b>하여 표시하므로 상단에 작성된 동일 배당 매칭 데이터 경기 수와 다를 수 있습니다.
+                </td>
+            </tr>
+        </table>
     </div>
     """
     return html
@@ -925,8 +932,8 @@ def render_tab3(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
                     ou_line=ou_line_val,
                     scope_label=scope_lbl_str
                 )
-                dynamic_h = min(920, max(440, 280 + 52 * len(history_records)))
-                render_clipboard_component(card3_html, "t3_clip_card3_history_v2", height=dynamic_h)
+                dynamic_h = min(920, max(440, 280 + 54 * len(history_records)))
+                render_clipboard_component(card3_html, "t3_clip_card3_history_v3", height=dynamic_h)
 
             for name, m_df in active_matched.items():
                 with st.expander(f"📌 [{name}] 원본 매칭 내역 총 {len(m_df)}건 표로 확인하기", expanded=False):
