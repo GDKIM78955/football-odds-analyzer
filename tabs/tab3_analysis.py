@@ -43,6 +43,207 @@ def normalize_bm_dataframe(df_bm):
     return pd.DataFrame(arr, columns=new_cols)
 
 
+def generate_naver_match_history_infographic(
+    records, league_name="", home_team="", away_team="", ou_line=2.5, scope_label="전체 리그"
+):
+    title_match = f"{home_team} vs {away_team}" if (home_team and away_team) else "분석 대상 경기"
+    title_lg = f"[{league_name}] " if league_name else ""
+
+    if not records:
+        return f"""
+        <div style="font-family: 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif; max-width: 680px; margin: 0 auto; border: 1px solid #cbd5e1; border-radius: 10px; padding: 20px; text-align: center; color: #64748b;">
+            조건에 일치하는 과거 매칭 경기 내역이 없습니다.
+        </div>
+        """
+
+    total_cnt = len(records)
+    hw_cnt = sum(1 for r in records if r["res"] == "홈승")
+    dr_cnt = sum(1 for r in records if r["res"] == "무승부")
+    aw_cnt = sum(1 for r in records if r["res"] == "원정승")
+
+    hw_pct = round((hw_cnt / total_cnt) * 100, 1) if total_cnt > 0 else 0.0
+    dr_pct = round((dr_cnt / total_cnt) * 100, 1) if total_cnt > 0 else 0.0
+    aw_pct = round((aw_cnt / total_cnt) * 100, 1) if total_cnt > 0 else 0.0
+
+    valid_sc_records = [r for r in records if r["hs"] is not None and r["as"] is not None]
+    sc_cnt = len(valid_sc_records)
+    if sc_cnt > 0:
+        avg_h = round(sum(r["hs"] for r in valid_sc_records) / sc_cnt, 2)
+        avg_a = round(sum(r["as"] for r in valid_sc_records) / sc_cnt, 2)
+        avg_tot = round(avg_h + avg_a, 2)
+        ov_cnt = sum(1 for r in valid_sc_records if (r["hs"] + r["as"]) > ou_line)
+        un_cnt = sc_cnt - ov_cnt
+        ov_pct = round((ov_cnt / sc_cnt) * 100, 1)
+        un_pct = round((un_cnt / sc_cnt) * 100, 1)
+    else:
+        avg_h, avg_a, avg_tot = 0.0, 0.0, 0.0
+        ov_cnt, un_cnt, ov_pct, un_pct = 0, 0, 0.0, 0.0
+
+    # 승무패 비율 바 너비 보정
+    w_bar = max(hw_pct, 8.0) if hw_cnt > 0 else 0.0
+    d_bar = max(dr_pct, 8.0) if dr_cnt > 0 else 0.0
+    a_bar = max(aw_pct, 8.0) if aw_cnt > 0 else 0.0
+    bar_sum = w_bar + d_bar + a_bar
+    if bar_sum > 0:
+        w_bar = round((w_bar / bar_sum) * 100, 1)
+        d_bar = round((d_bar / bar_sum) * 100, 1)
+        a_bar = round(100.0 - w_bar - d_bar, 1)
+
+    rows_html = ""
+    for idx, r in enumerate(records):
+        bg_row = "#ffffff" if idx % 2 == 0 else "#f8fafc"
+        r_date = r["date"]
+        r_lg = r["league"]
+        r_home = r["home"]
+        r_away = r["away"]
+        r_res = r["res"]
+        hs, as_sc = r["hs"], r["as"]
+
+        # 홈/원정 승리 팀 강조 스타일
+        if r_res == "홈승":
+            h_style = "font-weight: 800; color: #1e3a8a;"
+            a_style = "font-weight: 500; color: #64748b;"
+            res_badge_bg = "#dbeafe"
+            res_badge_fg = "#1d4ed8"
+            res_badge_border = "#93c5fd"
+            res_label = "홈승"
+        elif r_res == "원정승":
+            h_style = "font-weight: 500; color: #64748b;"
+            a_style = "font-weight: 800; color: #991b1b;"
+            res_badge_bg = "#ffe4e6"
+            res_badge_fg = "#be123c"
+            res_badge_border = "#fda4af"
+            res_label = "원정승"
+        else:
+            h_style = "font-weight: 700; color: #334155;"
+            a_style = "font-weight: 700; color: #334155;"
+            res_badge_bg = "#d1fae5"
+            res_badge_fg = "#047857"
+            res_badge_border = "#6ee7b7"
+            res_label = "무승부"
+
+        if hs is not None and as_sc is not None:
+            tot_g = int(hs + as_sc)
+            score_str = f"{int(hs)} : {int(as_sc)}"
+            if (hs + as_sc) > ou_line:
+                ou_badge = f"<span style='display: inline-block; background-color: #fff1f2; color: #e11d48; border: 1px solid #fecdd3; border-radius: 4px; padding: 2px 7px; font-size: 11px; font-weight: 700;'>{tot_g}골 · 오버</span>"
+            else:
+                ou_badge = f"<span style='display: inline-block; background-color: #eff6ff; color: #2563eb; border: 1px solid #bfdbfe; border-radius: 4px; padding: 2px 7px; font-size: 11px; font-weight: 700;'>{tot_g}골 · 언더</span>"
+        else:
+            score_str = "VS"
+            ou_badge = "<span style='color: #94a3b8; font-size: 11px;'>-</span>"
+
+        rows_html += f"""
+        <tr style="background-color: {bg_row}; border-bottom: 1px solid #e2e8f0;">
+            <td style="padding: 10px 8px; text-align: center; vertical-align: middle; width: 22%;">
+                <div style="font-size: 11px; color: #64748b; font-weight: 600;">{r_date}</div>
+                <div style="display: inline-block; margin-top: 3px; background-color: #f1f5f9; color: #334155; border-radius: 4px; padding: 1px 6px; font-size: 11px; font-weight: 700;">{r_lg}</div>
+            </td>
+            <td style="padding: 10px 6px; text-align: right; vertical-align: middle; width: 24%; font-size: 13px; {h_style}">
+                {r_home}
+            </td>
+            <td style="padding: 10px 4px; text-align: center; vertical-align: middle; width: 14%;">
+                <span style="display: inline-block; background-color: #0f172a; color: #ffffff; font-weight: 800; font-size: 13px; padding: 4px 10px; border-radius: 6px; letter-spacing: 1px;">
+                    {score_str}
+                </span>
+            </td>
+            <td style="padding: 10px 6px; text-align: left; vertical-align: middle; width: 24%; font-size: 13px; {a_style}">
+                {r_away}
+            </td>
+            <td style="padding: 10px 8px; text-align: center; vertical-align: middle; width: 16%;">
+                <div style="margin-bottom: 3px;">
+                    <span style="display: inline-block; background-color: {res_badge_bg}; color: {res_badge_fg}; border: 1px solid {res_badge_border}; border-radius: 12px; padding: 2px 10px; font-size: 11px; font-weight: 800;">
+                        {res_label}
+                    </span>
+                </div>
+                <div>{ou_badge}</div>
+            </td>
+        </tr>
+        """
+
+    gauge_cells = ""
+    if w_bar > 0:
+        gauge_cells += f"<td style='width: {w_bar}%; background-color: #2563eb; color: #ffffff; text-align: center; font-size: 11px; font-weight: 700; padding: 5px 0;'>홈승 {hw_pct}%</td>"
+    if d_bar > 0:
+        gauge_cells += f"<td style='width: {d_bar}%; background-color: #10b981; color: #ffffff; text-align: center; font-size: 11px; font-weight: 700; padding: 5px 0;'>무 {dr_pct}%</td>"
+    if a_bar > 0:
+        gauge_cells += f"<td style='width: {a_bar}%; background-color: #e11d48; color: #ffffff; text-align: center; font-size: 11px; font-weight: 700; padding: 5px 0;'>원정 {aw_pct}%</td>"
+
+    html = f"""
+    <div style="font-family: 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif; max-width: 680px; margin: 0 auto; background-color: #ffffff; border: 2px solid #1e293b; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.08);">
+        <!-- 상단 타이틀 배너 -->
+        <table style="width: 100%; border-collapse: collapse; background-color: #0f172a; color: #ffffff;">
+            <tr>
+                <td style="padding: 16px 20px;">
+                    <div style="font-size: 11px; color: #38bdf8; font-weight: 800; letter-spacing: 0.5px; margin-bottom: 4px;">
+                        ⚽ HISTORICAL MATCH RESULT ARCHIVE ({scope_label})
+                    </div>
+                    <div style="font-size: 18px; font-weight: 800; color: #ffffff;">
+                        {title_lg}{title_match} <span style="font-size: 14px; font-weight: 600; color: #cbd5e1;">과거 동일배당 매치 히스토리</span>
+                    </div>
+                </td>
+                <td style="padding: 16px 20px; text-align: right; vertical-align: middle;">
+                    <span style="display: inline-block; background-color: #1e293b; border: 1px solid #475569; color: #f8fafc; font-size: 12px; font-weight: 800; padding: 6px 12px; border-radius: 8px;">
+                        총 {total_cnt}경기 매칭
+                    </span>
+                </td>
+            </tr>
+        </table>
+
+        <!-- 핵심 요약 KPI 3단 박스 -->
+        <table style="width: 100%; border-collapse: collapse; background-color: #f8fafc; border-bottom: 1px solid #e2e8f0;">
+            <tr>
+                <td style="width: 34%; padding: 12px 10px; text-align: center; border-right: 1px solid #e2e8f0;">
+                    <div style="font-size: 11px; color: #64748b; font-weight: 700; margin-bottom: 4px;">📌 과거 승·무·패 흐름</div>
+                    <div style="font-size: 13px; font-weight: 800; color: #0f172a;">
+                        <span style="color: #1d4ed8;">홈 {hw_cnt}승</span> · <span style="color: #047857;">{dr_cnt}무</span> · <span style="color: #be123c;">원정 {aw_cnt}승</span>
+                    </div>
+                </td>
+                <td style="width: 33%; padding: 12px 10px; text-align: center; border-right: 1px solid #e2e8f0;">
+                    <div style="font-size: 11px; color: #64748b; font-weight: 700; margin-bottom: 4px;">⚽ 경기당 평균 득점</div>
+                    <div style="font-size: 13px; font-weight: 800; color: #0f172a;">
+                        평균 <span style="color: #0f172a;">{avg_tot}골</span> <span style="font-size: 11px; font-weight: 600; color: #64748b;">(홈 {avg_h} : 원정 {avg_a})</span>
+                    </div>
+                </td>
+                <td style="width: 33%; padding: 12px 10px; text-align: center;">
+                    <div style="font-size: 11px; color: #64748b; font-weight: 700; margin-bottom: 4px;">⚡ {ou_line} 기준 언오버 비율</div>
+                    <div style="font-size: 13px; font-weight: 800;">
+                        <span style="color: #e11d48;">오버 {ov_pct}%</span> <span style="color: #94a3b8; font-weight: 400;">|</span> <span style="color: #2563eb;">언더 {un_pct}%</span>
+                    </div>
+                </td>
+            </tr>
+        </table>
+
+        <!-- 승무패 비율 게이지 바 -->
+        <table style="width: 100%; border-collapse: collapse;">
+            <tr>{gauge_cells}</tr>
+        </table>
+
+        <!-- 매칭 경기 상세 스코어보드 리스트 -->
+        <table style="width: 100%; border-collapse: collapse;">
+            <thead>
+                <tr style="background-color: #f1f5f9; border-top: 1px solid #cbd5e1; border-bottom: 2px solid #cbd5e1;">
+                    <th style="padding: 8px; font-size: 11px; color: #475569; text-align: center; width: 22%;">일자 / 리그</th>
+                    <th style="padding: 8px; font-size: 11px; color: #475569; text-align: right; width: 24%;">홈팀</th>
+                    <th style="padding: 8px; font-size: 11px; color: #475569; text-align: center; width: 14%;">스코어</th>
+                    <th style="padding: 8px; font-size: 11px; color: #475569; text-align: left; width: 24%;">원정팀</th>
+                    <th style="padding: 8px; font-size: 11px; color: #475569; text-align: center; width: 16%;">결과 / 언오버</th>
+                </tr>
+            </thead>
+            <tbody>
+                {rows_html}
+            </tbody>
+        </table>
+
+        <!-- 하단 푸터 -->
+        <div style="background-color: #f8fafc; padding: 10px 16px; text-align: center; font-size: 11px; color: #64748b; border-top: 1px solid #e2e8f0;">
+            💡 위 기록은 동일 배당 구간에서 실제로 치러진 과거 매치업 및 최종 경기 결과입니다.
+        </div>
+    </div>
+    """
+    return html
+
+
 @st.cache_data(ttl=300, show_spinner=False)
 def get_t3_preprocessed_bm_v3(bm_name, spreadsheet_id):
     df_bm = load_sheet_data(bm_name, spreadsheet_id)
@@ -629,14 +830,98 @@ def render_tab3(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
             render_clipboard_component(card2_html, "t2_clip_card2", height=450)
 
         st.markdown("---")
-        st.subheader("📋 매칭된 과거 경기 상세 리스트 (업체별 전체 내역)")
+        st.subheader("📋 매칭된 과거 경기 상세 리스트 (업체별 전체 내역 & 인포그래픽)")
         
-        view_option = st.radio("상세 리스트 필터 선택", ["전체 리그 매칭 내역", f"[{target_league}] 동일 리그 매칭 내역"], horizontal=True)
+        c_v1, c_v2 = st.columns(2)
+        with c_v1:
+            view_option = st.radio(
+                "상세 리스트 범위 선택",
+                ["전체 리그 매칭 내역", f"[{target_league}] 동일 리그 매칭 내역"],
+                horizontal=True,
+                key="t3_hist_scope_radio"
+            )
+        with c_v2:
+            dedup_option = st.radio(
+                "인포그래픽 중복 경기 표시 방식",
+                ["전체 매칭 건수 모두 표시", "동일 경기 중복 제거 (1경기씩 깔끔 표시)"],
+                horizontal=True,
+                key="t3_hist_dedup_radio"
+            )
+
         active_matched = matched_target if "동일 리그" in view_option else matched_all
+        scope_lbl_str = f"{target_league} 동일 리그" if "동일 리그" in view_option else "전체 리그"
 
         if active_matched:
+            # 인포그래픽용 매칭 경기 레코드 추출 (배당 및 정/중/역 제외, 스코어 및 결과 중심)
+            history_records = []
+            seen_match_keys = set()
+
             for name, m_df in active_matched.items():
-                with st.expander(f"📌 [{name}] 매칭 내역 총 {len(m_df)}건 확인하기", expanded=False):
+                m_df_norm = normalize_bm_dataframe(m_df)
+                arr_h = m_df_norm.to_numpy(dtype=object)
+                nr_h, nc_h = arr_h.shape
+
+                for ri in range(nr_h):
+                    r_lg = str(arr_h[ri, 1]).strip() if nc_h > 1 else "-"
+                    r_dt = str(arr_h[ri, 2]).strip() if nc_h > 2 else "-"
+                    r_hm = str(arr_h[ri, 3]).strip() if nc_h > 3 else "-"
+                    r_aw = str(arr_h[ri, 4]).strip() if nc_h > 4 else "-"
+
+                    res_i = next((ci for ci in range(nc_h - 1, 27, -1) if str(arr_h[ri, ci]).strip() in ("홈승", "무승부", "원정승")), None)
+                    r_res = str(arr_h[ri, res_i]).strip() if res_i is not None else "-"
+
+                    hs_v, as_v = None, None
+                    if res_i is not None and res_i >= 6:
+                        try:
+                            hs_v = float(str(arr_h[ri, res_i - 6]).strip())
+                            as_v = float(str(arr_h[ri, res_i - 5]).strip())
+                        except:
+                            hs_v, as_v = None, None
+                    if (hs_v is None or as_v is None) and nc_h > 29:
+                        try:
+                            h0 = float(str(arr_h[ri, 28]).strip())
+                            a0 = float(str(arr_h[ri, 29]).strip())
+                            if h0 >= 0 and a0 >= 0:
+                                hs_v, as_v = h0, a0
+                        except:
+                            pass
+
+                    if r_res not in ("홈승", "무승부", "원정승") and hs_v is not None and as_v is not None:
+                        r_res = "홈승" if hs_v > as_v else ("무승부" if hs_v == as_v else "원정승")
+
+                    m_key = (r_dt, r_hm, r_aw)
+                    if "중복 제거" in dedup_option:
+                        if m_key in seen_match_keys:
+                            continue
+                        seen_match_keys.add(m_key)
+
+                    history_records.append({
+                        "league": r_lg,
+                        "date": r_dt,
+                        "home": r_hm,
+                        "away": r_aw,
+                        "hs": hs_v,
+                        "as": as_v,
+                        "res": r_res
+                    })
+
+            with st.expander("📊 / 📋 [카드 3] 과거 동일배당 매칭 경기 히스토리 스코어보드 인포그래픽 복사 (추천 ⭐)", expanded=True):
+                st.markdown("##### 🌟 [네이버 블로그/카페 전용] 과거 동일배당 매치업 & 실제 경기결과 스코어보드")
+                st.caption("복잡한 배당 수치나 정배/역배 표시를 빼고, 과거 매치업·스코어·승무패·언오버 흐름만 중계 화면처럼 깔끔하게 정리한 카드입니다.")
+
+                card3_html = generate_naver_match_history_infographic(
+                    history_records,
+                    league_name=target_league,
+                    home_team=t2_home_team.strip(),
+                    away_team=t2_away_team.strip(),
+                    ou_line=ou_line_val,
+                    scope_label=scope_lbl_str
+                )
+                dynamic_h = min(900, max(420, 260 + 52 * len(history_records)))
+                render_clipboard_component(card3_html, "t3_clip_card3_history", height=dynamic_h)
+
+            for name, m_df in active_matched.items():
+                with st.expander(f"📌 [{name}] 원본 매칭 내역 총 {len(m_df)}건 표로 확인하기", expanded=False):
                     m_df_norm = normalize_bm_dataframe(m_df)
                     pref_cols = ["시즌", "리그명", "날짜", "홈팀", "원정팀", "해당_홈", "해당_무", "해당_원", "홈스코어", "원정스코어", "경기결과", "정/중/역", "적중배당"]
                     show_cols = [c for c in pref_cols if c in m_df_norm.columns]
