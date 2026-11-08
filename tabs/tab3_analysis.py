@@ -92,7 +92,11 @@ def generate_naver_match_history_infographic(
     rows_html = ""
     for idx, r in enumerate(records):
         bg_row = "#ffffff" if idx % 2 == 0 else "#f8fafc"
-        r_date = r["date"]
+        raw_season = str(r.get("season", "")).strip()
+        if raw_season and raw_season != "-":
+            season_str = raw_season if "시즌" in raw_season else f"{raw_season}시즌"
+        else:
+            season_str = "-"
         r_lg = r["league"]
         r_home = r["home"]
         r_away = r["away"]
@@ -126,33 +130,33 @@ def generate_naver_match_history_infographic(
             tot_g = int(hs + as_sc)
             score_str = f"{int(hs)} : {int(as_sc)}"
             if (hs + as_sc) > ou_line:
-                ou_badge = f"<span style='display: inline-block; background-color: #fff1f2; color: #e11d48; border: 1px solid #fecdd3; border-radius: 4px; padding: 2px 7px; font-size: 11px; font-weight: 700;'>{tot_g}골 · 오버</span>"
+                ou_badge = f"<span style='display: inline-block; background-color: #fff1f2; color: #e11d48; border: 1px solid #fecdd3; border-radius: 4px; padding: 2px 7px; font-size: 11px; font-weight: 700; white-space: nowrap;'>{tot_g}골 · 오버</span>"
             else:
-                ou_badge = f"<span style='display: inline-block; background-color: #eff6ff; color: #2563eb; border: 1px solid #bfdbfe; border-radius: 4px; padding: 2px 7px; font-size: 11px; font-weight: 700;'>{tot_g}골 · 언더</span>"
+                ou_badge = f"<span style='display: inline-block; background-color: #eff6ff; color: #2563eb; border: 1px solid #bfdbfe; border-radius: 4px; padding: 2px 7px; font-size: 11px; font-weight: 700; white-space: nowrap;'>{tot_g}골 · 언더</span>"
         else:
             score_str = "VS"
             ou_badge = "<span style='color: #94a3b8; font-size: 11px;'>-</span>"
 
         rows_html += f"""
         <tr style="background-color: {bg_row}; border-bottom: 1px solid #e2e8f0;">
-            <td style="padding: 10px 8px; text-align: center; vertical-align: middle; width: 22%;">
-                <div style="font-size: 11px; color: #64748b; font-weight: 600;">{r_date}</div>
-                <div style="display: inline-block; margin-top: 3px; background-color: #f1f5f9; color: #334155; border-radius: 4px; padding: 1px 6px; font-size: 11px; font-weight: 700;">{r_lg}</div>
+            <td style="padding: 10px 8px; text-align: center; vertical-align: middle; width: 22%; white-space: nowrap;">
+                <div style="font-size: 11px; color: #475569; font-weight: 700;">{season_str}</div>
+                <div style="display: inline-block; margin-top: 3px; background-color: #f1f5f9; color: #1e293b; border: 1px solid #cbd5e1; border-radius: 4px; padding: 1px 6px; font-size: 11px; font-weight: 700;">{r_lg}</div>
             </td>
-            <td style="padding: 10px 6px; text-align: right; vertical-align: middle; width: 24%; font-size: 13px; {h_style}">
+            <td style="padding: 10px 6px; text-align: right; vertical-align: middle; width: 24%; font-size: 13px; word-break: keep-all; {h_style}">
                 {r_home}
             </td>
-            <td style="padding: 10px 4px; text-align: center; vertical-align: middle; width: 14%;">
-                <span style="display: inline-block; background-color: #0f172a; color: #ffffff; font-weight: 800; font-size: 13px; padding: 4px 10px; border-radius: 6px; letter-spacing: 1px;">
+            <td style="padding: 10px 4px; text-align: center; vertical-align: middle; width: 14%; white-space: nowrap;">
+                <span style="display: inline-block; background-color: #0f172a; color: #ffffff; font-weight: 800; font-size: 13px; padding: 4px 10px; border-radius: 6px; letter-spacing: 1px; white-space: nowrap;">
                     {score_str}
                 </span>
             </td>
-            <td style="padding: 10px 6px; text-align: left; vertical-align: middle; width: 24%; font-size: 13px; {a_style}">
+            <td style="padding: 10px 6px; text-align: left; vertical-align: middle; width: 24%; font-size: 13px; word-break: keep-all; {a_style}">
                 {r_away}
             </td>
-            <td style="padding: 10px 8px; text-align: center; vertical-align: middle; width: 16%;">
+            <td style="padding: 10px 8px; text-align: center; vertical-align: middle; width: 16%; white-space: nowrap;">
                 <div style="margin-bottom: 3px;">
-                    <span style="display: inline-block; background-color: {res_badge_bg}; color: {res_badge_fg}; border: 1px solid {res_badge_border}; border-radius: 12px; padding: 2px 10px; font-size: 11px; font-weight: 800;">
+                    <span style="display: inline-block; background-color: {res_badge_bg}; color: {res_badge_fg}; border: 1px solid {res_badge_border}; border-radius: 12px; padding: 2px 10px; font-size: 11px; font-weight: 800; white-space: nowrap;">
                         {res_label}
                     </span>
                 </div>
@@ -163,28 +167,31 @@ def generate_naver_match_history_infographic(
 
     gauge_cells = ""
     if w_bar > 0:
-        gauge_cells += f"<td style='width: {w_bar}%; background-color: #2563eb; color: #ffffff; text-align: center; font-size: 11px; font-weight: 700; padding: 5px 0;'>홈승 {hw_pct}%</td>"
+        gauge_cells += f"<td style='width: {w_bar}%; background-color: #2563eb; color: #ffffff; text-align: center; font-size: 11px; font-weight: 700; padding: 5px 0; white-space: nowrap;'>홈승 {hw_pct}%</td>"
     if d_bar > 0:
-        gauge_cells += f"<td style='width: {d_bar}%; background-color: #10b981; color: #ffffff; text-align: center; font-size: 11px; font-weight: 700; padding: 5px 0;'>무 {dr_pct}%</td>"
+        gauge_cells += f"<td style='width: {d_bar}%; background-color: #10b981; color: #ffffff; text-align: center; font-size: 11px; font-weight: 700; padding: 5px 0; white-space: nowrap;'>무 {dr_pct}%</td>"
     if a_bar > 0:
-        gauge_cells += f"<td style='width: {a_bar}%; background-color: #e11d48; color: #ffffff; text-align: center; font-size: 11px; font-weight: 700; padding: 5px 0;'>원정 {aw_pct}%</td>"
+        gauge_cells += f"<td style='width: {a_bar}%; background-color: #e11d48; color: #ffffff; text-align: center; font-size: 11px; font-weight: 700; padding: 5px 0; white-space: nowrap;'>원정 {aw_pct}%</td>"
 
     html = f"""
     <div style="font-family: 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif; max-width: 680px; margin: 0 auto; background-color: #ffffff; border: 2px solid #1e293b; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.08);">
         <!-- 상단 타이틀 배너 -->
         <table style="width: 100%; border-collapse: collapse; background-color: #0f172a; color: #ffffff;">
             <tr>
-                <td style="padding: 16px 20px;">
+                <td style="padding: 16px 20px; vertical-align: middle;">
                     <div style="font-size: 11px; color: #38bdf8; font-weight: 800; letter-spacing: 0.5px; margin-bottom: 4px;">
                         ⚽ HISTORICAL MATCH RESULT ARCHIVE ({scope_label})
                     </div>
-                    <div style="font-size: 18px; font-weight: 800; color: #ffffff;">
-                        {title_lg}{title_match} <span style="font-size: 14px; font-weight: 600; color: #cbd5e1;">과거 동일배당 매치 히스토리</span>
+                    <div style="font-size: 18px; font-weight: 800; color: #ffffff; word-break: keep-all; line-height: 1.3;">
+                        {title_lg}{title_match}
+                    </div>
+                    <div style="font-size: 13px; font-weight: 600; color: #cbd5e1; margin-top: 4px; word-break: keep-all;">
+                        과거 동일배당 매치 히스토리
                     </div>
                 </td>
-                <td style="padding: 16px 20px; text-align: right; vertical-align: middle;">
-                    <span style="display: inline-block; background-color: #1e293b; border: 1px solid #475569; color: #f8fafc; font-size: 12px; font-weight: 800; padding: 6px 12px; border-radius: 8px;">
-                        총 {total_cnt}경기 매칭
+                <td style="padding: 16px 20px; text-align: right; vertical-align: middle; width: 120px; white-space: nowrap;">
+                    <span style="display: inline-block; background-color: #1e293b; border: 1px solid #475569; color: #f8fafc; font-size: 13px; font-weight: 800; padding: 7px 14px; border-radius: 8px; white-space: nowrap;">
+                        총 {total_cnt}경기
                     </span>
                 </td>
             </tr>
@@ -195,19 +202,19 @@ def generate_naver_match_history_infographic(
             <tr>
                 <td style="width: 34%; padding: 12px 10px; text-align: center; border-right: 1px solid #e2e8f0;">
                     <div style="font-size: 11px; color: #64748b; font-weight: 700; margin-bottom: 4px;">📌 과거 승·무·패 흐름</div>
-                    <div style="font-size: 13px; font-weight: 800; color: #0f172a;">
+                    <div style="font-size: 13px; font-weight: 800; color: #0f172a; white-space: nowrap;">
                         <span style="color: #1d4ed8;">홈 {hw_cnt}승</span> · <span style="color: #047857;">{dr_cnt}무</span> · <span style="color: #be123c;">원정 {aw_cnt}승</span>
                     </div>
                 </td>
                 <td style="width: 33%; padding: 12px 10px; text-align: center; border-right: 1px solid #e2e8f0;">
                     <div style="font-size: 11px; color: #64748b; font-weight: 700; margin-bottom: 4px;">⚽ 경기당 평균 득점</div>
-                    <div style="font-size: 13px; font-weight: 800; color: #0f172a;">
+                    <div style="font-size: 13px; font-weight: 800; color: #0f172a; white-space: nowrap;">
                         평균 <span style="color: #0f172a;">{avg_tot}골</span> <span style="font-size: 11px; font-weight: 600; color: #64748b;">(홈 {avg_h} : 원정 {avg_a})</span>
                     </div>
                 </td>
                 <td style="width: 33%; padding: 12px 10px; text-align: center;">
                     <div style="font-size: 11px; color: #64748b; font-weight: 700; margin-bottom: 4px;">⚡ {ou_line} 기준 언오버 비율</div>
-                    <div style="font-size: 13px; font-weight: 800;">
+                    <div style="font-size: 13px; font-weight: 800; white-space: nowrap;">
                         <span style="color: #e11d48;">오버 {ov_pct}%</span> <span style="color: #94a3b8; font-weight: 400;">|</span> <span style="color: #2563eb;">언더 {un_pct}%</span>
                     </div>
                 </td>
@@ -223,7 +230,7 @@ def generate_naver_match_history_infographic(
         <table style="width: 100%; border-collapse: collapse;">
             <thead>
                 <tr style="background-color: #f1f5f9; border-top: 1px solid #cbd5e1; border-bottom: 2px solid #cbd5e1;">
-                    <th style="padding: 8px; font-size: 11px; color: #475569; text-align: center; width: 22%;">일자 / 리그</th>
+                    <th style="padding: 8px; font-size: 11px; color: #475569; text-align: center; width: 22%;">시즌 / 리그</th>
                     <th style="padding: 8px; font-size: 11px; color: #475569; text-align: right; width: 24%;">홈팀</th>
                     <th style="padding: 8px; font-size: 11px; color: #475569; text-align: center; width: 14%;">스코어</th>
                     <th style="padding: 8px; font-size: 11px; color: #475569; text-align: left; width: 24%;">원정팀</th>
@@ -235,9 +242,9 @@ def generate_naver_match_history_infographic(
             </tbody>
         </table>
 
-        <!-- 하단 푸터 -->
-        <div style="background-color: #f8fafc; padding: 10px 16px; text-align: center; font-size: 11px; color: #64748b; border-top: 1px solid #e2e8f0;">
-            💡 위 기록은 동일 배당 구간에서 실제로 치러진 과거 매치업 및 최종 경기 결과입니다.
+        <!-- 하단 주의사항 안내 푸터 -->
+        <div style="background-color: #f8fafc; padding: 12px 16px; text-align: left; font-size: 11px; color: #475569; border-top: 1px solid #e2e8f0; line-height: 1.5; word-break: keep-all;">
+            <b style="color: #334155;">※ 안내 및 주의사항:</b> 업체별로 각각 배당에 따라 동일한 과거 경기가 중복 카운팅되는 경우가 있기 때문에, 본 히스토리 표에서는 <b>동일 경기 중복을 제거</b>하여 표시하므로 상단에 작성된 동일 배당 매칭 데이터 경기 수와 다를 수 있습니다.
         </div>
     </div>
     """
@@ -843,7 +850,7 @@ def render_tab3(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
         with c_v2:
             dedup_option = st.radio(
                 "인포그래픽 중복 경기 표시 방식",
-                ["전체 매칭 건수 모두 표시", "동일 경기 중복 제거 (1경기씩 깔끔 표시)"],
+                ["동일 경기 중복 제거 (1경기씩 깔끔 표시)", "전체 매칭 건수 모두 표시"],
                 horizontal=True,
                 key="t3_hist_dedup_radio"
             )
@@ -852,7 +859,6 @@ def render_tab3(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
         scope_lbl_str = f"{target_league} 동일 리그" if "동일 리그" in view_option else "전체 리그"
 
         if active_matched:
-            # 인포그래픽용 매칭 경기 레코드 추출 (배당 및 정/중/역 제외, 스코어 및 결과 중심)
             history_records = []
             seen_match_keys = set()
 
@@ -862,6 +868,7 @@ def render_tab3(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
                 nr_h, nc_h = arr_h.shape
 
                 for ri in range(nr_h):
+                    r_sn = str(arr_h[ri, 0]).strip() if nc_h > 0 else "-"
                     r_lg = str(arr_h[ri, 1]).strip() if nc_h > 1 else "-"
                     r_dt = str(arr_h[ri, 2]).strip() if nc_h > 2 else "-"
                     r_hm = str(arr_h[ri, 3]).strip() if nc_h > 3 else "-"
@@ -889,13 +896,14 @@ def render_tab3(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
                     if r_res not in ("홈승", "무승부", "원정승") and hs_v is not None and as_v is not None:
                         r_res = "홈승" if hs_v > as_v else ("무승부" if hs_v == as_v else "원정승")
 
-                    m_key = (r_dt, r_hm, r_aw)
+                    m_key = (r_sn, r_dt, r_hm, r_aw)
                     if "중복 제거" in dedup_option:
                         if m_key in seen_match_keys:
                             continue
                         seen_match_keys.add(m_key)
 
                     history_records.append({
+                        "season": r_sn,
                         "league": r_lg,
                         "date": r_dt,
                         "home": r_hm,
@@ -917,8 +925,8 @@ def render_tab3(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
                     ou_line=ou_line_val,
                     scope_label=scope_lbl_str
                 )
-                dynamic_h = min(900, max(420, 260 + 52 * len(history_records)))
-                render_clipboard_component(card3_html, "t3_clip_card3_history", height=dynamic_h)
+                dynamic_h = min(920, max(440, 280 + 52 * len(history_records)))
+                render_clipboard_component(card3_html, "t3_clip_card3_history_v2", height=dynamic_h)
 
             for name, m_df in active_matched.items():
                 with st.expander(f"📌 [{name}] 원본 매칭 내역 총 {len(m_df)}건 표로 확인하기", expanded=False):
