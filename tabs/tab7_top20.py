@@ -3,6 +3,207 @@ import pandas as pd
 import numpy as np
 from database import load_sheet_data
 from tabs.tab2_scanner import get_preprocessed_bm_db_v3
+from infographics import render_clipboard_component
+
+
+def generate_naver_top20_ranking_infographic(
+    ranked_list, min_cnt_used=5, ou_line=2.5, show_odds=False
+):
+    if not ranked_list:
+        return """
+        <table width="100%" cellpadding="0" cellspacing="0" style="max-width: 720px; margin: 0 auto; border-collapse: collapse; border: 1px solid #cbd5e1;">
+            <tr>
+                <td bgcolor="#f8fafc" style="background-color: #f8fafc; padding: 20px; text-align: center; color: #64748b; font-family: 'Malgun Gothic', sans-serif;">
+                    산출된 최우선 추천픽 데이터가 없습니다.
+                </td>
+            </tr>
+        </table>
+        """
+
+    total_shown = len(ranked_list)
+    avg_best_prob = round(sum(x["best_prob"] for x in ranked_list) / total_shown, 1) if total_shown > 0 else 0.0
+    wdl_pick_cnt = sum(1 for x in ranked_list if x["best_cat"] == "승무패")
+    ou_pick_cnt = total_shown - wdl_pick_cnt
+
+    rows_html = ""
+    for idx, item in enumerate(ranked_list):
+        rank_num = idx + 1
+        bg_row = "#ffffff" if idx % 2 == 0 else "#e8eef5"
+
+        # 1~3위 메달 및 순위 박스 색상 지정 (네이버 카페/블로그 밑줄 방지를 위해 내부 table/td bgcolor 사용)
+        if rank_num == 1:
+            rk_bg, rk_fg, rk_txt = "#b45309", "#ffffff", "🥇 1위"
+        elif rank_num == 2:
+            rk_bg, rk_fg, rk_txt = "#334155", "#ffffff", "🥈 2위"
+        elif rank_num == 3:
+            rk_bg, rk_fg, rk_txt = "#7c2d12", "#ffffff", "🥉 3위"
+        else:
+            rk_bg, rk_fg, rk_txt = "#1e293b", "#f8fafc", f"{rank_num}위"
+
+        best_lbl = item["best_label"]
+        best_prob = item["best_prob"]
+        best_hits = item["best_hits"]
+        best_tot = item["best_total"]
+
+        # 추천픽 유형에 따른 팀명 강조 및 추천 셀 전용 파스텔 배경색
+        if "홈승" in best_lbl:
+            h_style = "font-weight: 800; color: #1e3a8a; font-size: 15px; text-decoration: none;"
+            a_style = "font-weight: 600; color: #475569; font-size: 14px; text-decoration: none;"
+            pick_bg, pick_fg = "#dbeafe", "#1d4ed8"
+        elif "원정승" in best_lbl:
+            h_style = "font-weight: 600; color: #475569; font-size: 14px; text-decoration: none;"
+            a_style = "font-weight: 800; color: #991b1b; font-size: 15px; text-decoration: none;"
+            pick_bg, pick_fg = "#ffe4e6", "#be123c"
+        elif "무승부" in best_lbl:
+            h_style = "font-weight: 700; color: #1e293b; font-size: 15px; text-decoration: none;"
+            a_style = "font-weight: 700; color: #1e293b; font-size: 15px; text-decoration: none;"
+            pick_bg, pick_fg = "#d1fae5", "#047857"
+        elif "오버" in best_lbl:
+            h_style = "font-weight: 700; color: #0f172a; font-size: 15px; text-decoration: none;"
+            a_style = "font-weight: 700; color: #0f172a; font-size: 15px; text-decoration: none;"
+            pick_bg, pick_fg = "#ffedd5", "#c2410c"
+        else:
+            h_style = "font-weight: 700; color: #0f172a; font-size: 15px; text-decoration: none;"
+            a_style = "font-weight: 700; color: #0f172a; font-size: 15px; text-decoration: none;"
+            pick_bg, pick_fg = "#e0e7ff", "#4338ca"
+
+        bh, bd, ba = item["batman_odds"]
+        odds_sub_html = (
+            f"<div style='font-size: 11px; color: #64748b; margin-top: 3px; text-decoration: none;'>"
+            f"배트맨: {bh} / {bd} / {ba}</div>"
+            if show_odds and bh > 0
+            else ""
+        )
+
+        sec_str = item["second_str"]
+        wdl_summary = f"승 {item['win_prob']}% · 무 {item['draw_prob']}% · 패 {item['lose_prob']}%"
+        ou_summary = f"{ou_line}오버 {item['over_prob']}% · 언더 {item['under_prob']}%"
+
+        rows_html += f"""
+        <tr>
+            <td bgcolor="{bg_row}" style="background-color: {bg_row}; padding: 11px 6px; text-align: center; vertical-align: middle; width: 11%; border-bottom: 1px solid #cbd5e1; white-space: nowrap;">
+                <table align="center" cellpadding="0" cellspacing="0" style="margin: 0 auto; border-collapse: collapse;">
+                    <tr>
+                        <td bgcolor="{rk_bg}" style="background-color: {rk_bg}; color: {rk_fg}; font-weight: 800; font-size: 12px; padding: 5px 9px; border-radius: 6px; white-space: nowrap; text-decoration: none;">
+                            {rk_txt}
+                        </td>
+                    </tr>
+                </table>
+            </td>
+            <td bgcolor="{bg_row}" style="background-color: {bg_row}; padding: 11px 6px; text-align: center; vertical-align: middle; width: 14%; border-bottom: 1px solid #cbd5e1; white-space: nowrap; text-decoration: none;">
+                <div style="font-size: 12px; color: #0f172a; font-weight: 800; text-decoration: none;">[{item['league']}]</div>
+                <div style="font-size: 11px; color: #475569; font-weight: 600; margin-top: 2px; text-decoration: none;">{item['date']}</div>
+            </td>
+            <td bgcolor="{bg_row}" style="background-color: {bg_row}; padding: 11px 10px; text-align: center; vertical-align: middle; width: 33%; border-bottom: 1px solid #cbd5e1; word-break: keep-all; text-decoration: none;">
+                <div style="line-height: 1.35; text-decoration: none;">
+                    <span style="{h_style}">{item['home']}</span>
+                    <span style="font-size: 12px; color: #94a3b8; font-weight: 700; margin: 0 5px; text-decoration: none;">VS</span>
+                    <span style="{a_style}">{item['away']}</span>
+                </div>
+                {odds_sub_html}
+            </td>
+            <td bgcolor="{pick_bg}" style="background-color: {pick_bg}; padding: 10px 8px; text-align: center; vertical-align: middle; width: 22%; border-bottom: 1px solid #cbd5e1; border-left: 1px solid #cbd5e1; border-right: 1px solid #cbd5e1; white-space: nowrap; text-decoration: none;">
+                <div style="font-size: 14px; font-weight: 800; color: {pick_fg}; text-decoration: none;">
+                    {best_lbl}
+                </div>
+                <div style="font-size: 13px; font-weight: 800; color: #0f172a; margin-top: 3px; text-decoration: none;">
+                    적중률 <span style="color: {pick_fg}; font-size: 14px; text-decoration: none;">{best_prob}%</span>
+                    <span style="font-size: 11px; color: #475569; font-weight: 700; text-decoration: none;">({best_hits}/{best_tot}건)</span>
+                </div>
+            </td>
+            <td bgcolor="{bg_row}" style="background-color: {bg_row}; padding: 10px 8px; text-align: center; vertical-align: middle; width: 20%; border-bottom: 1px solid #cbd5e1; white-space: nowrap; text-decoration: none;">
+                <div style="font-size: 12px; font-weight: 800; color: #334155; margin-bottom: 3px; text-decoration: none;">
+                    🥈 {sec_str}
+                </div>
+                <div style="font-size: 10px; color: #64748b; font-weight: 600; text-decoration: none;">
+                    {wdl_summary}
+                </div>
+                <div style="font-size: 10px; color: #64748b; font-weight: 600; margin-top: 1px; text-decoration: none;">
+                    {ou_summary}
+                </div>
+            </td>
+        </tr>
+        """
+
+    html = f"""
+    <div style="font-family: 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif; max-width: 720px; margin: 0 auto; background-color: #ffffff; border: 2px solid #1e293b; border-radius: 10px; overflow: hidden;">
+        <!-- 상단 배너 -->
+        <table width="100%" cellpadding="0" cellspacing="0" style="width: 100%; border-collapse: collapse; background-color: #0f172a; color: #ffffff;">
+            <tr>
+                <td bgcolor="#0f172a" style="background-color: #0f172a; padding: 16px 20px; vertical-align: middle;">
+                    <div style="font-size: 11px; color: #fbbf24; font-weight: 800; letter-spacing: 0.5px; margin-bottom: 4px; text-decoration: none;">
+                        🏆 DAILY PRIORITY PICK RANKING (9-BOOKMAKER INTEGRATED)
+                    </div>
+                    <div style="font-size: 19px; font-weight: 800; color: #ffffff; word-break: keep-all; line-height: 1.3; text-decoration: none;">
+                        당일 최우선 주력픽 TOP {total_shown} 종합 랭킹
+                    </div>
+                    <div style="font-size: 12px; font-weight: 600; color: #cbd5e1; margin-top: 4px; word-break: keep-all; text-decoration: none;">
+                        9대 북메이커 과거 동일배당 매칭 데이터 통합 적중확률 순위 (최소 {min_cnt_used}건 이상 검증)
+                    </div>
+                </td>
+                <td bgcolor="#0f172a" style="background-color: #0f172a; padding: 16px 20px; text-align: right; vertical-align: middle; width: 130px; white-space: nowrap;">
+                    <table align="right" cellpadding="0" cellspacing="0" style="border-collapse: collapse;">
+                        <tr>
+                            <td bgcolor="#1e293b" style="background-color: #1e293b; border: 1px solid #475569; color: #fbbf24; font-size: 14px; font-weight: 800; padding: 8px 14px; border-radius: 6px; white-space: nowrap; text-decoration: none;">
+                                상위 {total_shown}경기
+                            </td>
+                        </tr>
+                    </table>
+                </td>
+            </tr>
+        </table>
+
+        <!-- 상단 3단 요약 바 -->
+        <table width="100%" cellpadding="0" cellspacing="0" style="width: 100%; border-collapse: collapse; background-color: #f1f5f9; border-bottom: 1px solid #cbd5e1;">
+            <tr>
+                <td bgcolor="#f1f5f9" style="background-color: #f1f5f9; width: 34%; padding: 11px 10px; text-align: center; border-right: 1px solid #cbd5e1;">
+                    <div style="font-size: 11px; color: #475569; font-weight: 700; margin-bottom: 3px; text-decoration: none;">🎯 신뢰도 검증 기준</div>
+                    <div style="font-size: 13px; font-weight: 800; color: #0f172a; white-space: nowrap; text-decoration: none;">
+                        9개사 합산 <span style="color: #2563eb; text-decoration: none;">최소 {min_cnt_used}건↑</span>
+                    </div>
+                </td>
+                <td bgcolor="#f1f5f9" style="background-color: #f1f5f9; width: 33%; padding: 11px 10px; text-align: center; border-right: 1px solid #cbd5e1;">
+                    <div style="font-size: 11px; color: #475569; font-weight: 700; margin-bottom: 3px; text-decoration: none;">🔥 선정 픽 평균 적중률</div>
+                    <div style="font-size: 13px; font-weight: 800; color: #e11d48; white-space: nowrap; text-decoration: none;">
+                        평균 {avg_best_prob}%
+                    </div>
+                </td>
+                <td bgcolor="#f1f5f9" style="background-color: #f1f5f9; width: 33%; padding: 11px 10px; text-align: center;">
+                    <div style="font-size: 11px; color: #475569; font-weight: 700; margin-bottom: 3px; text-decoration: none;">📊 주력 종목 비중</div>
+                    <div style="font-size: 13px; font-weight: 800; color: #0f172a; white-space: nowrap; text-decoration: none;">
+                        승무패 {wdl_pick_cnt}건 · 언오버 {ou_pick_cnt}건
+                    </div>
+                </td>
+            </tr>
+        </table>
+
+        <!-- 메인 순위 테이블 -->
+        <table width="100%" cellpadding="0" cellspacing="0" style="width: 100%; border-collapse: collapse;">
+            <thead>
+                <tr>
+                    <th bgcolor="#cbd5e1" style="background-color: #cbd5e1; padding: 9px 6px; font-size: 12px; color: #1e293b; text-align: center; width: 11%; border-top: 1px solid #94a3b8; border-bottom: 2px solid #94a3b8; text-decoration: none;">순위</th>
+                    <th bgcolor="#cbd5e1" style="background-color: #cbd5e1; padding: 9px 6px; font-size: 12px; color: #1e293b; text-align: center; width: 14%; border-top: 1px solid #94a3b8; border-bottom: 2px solid #94a3b8; text-decoration: none;">리그 / 일자</th>
+                    <th bgcolor="#cbd5e1" style="background-color: #cbd5e1; padding: 9px 8px; font-size: 12px; color: #1e293b; text-align: center; width: 33%; border-top: 1px solid #94a3b8; border-bottom: 2px solid #94a3b8; text-decoration: none;">매치업 (홈 vs 원정)</th>
+                    <th bgcolor="#cbd5e1" style="background-color: #cbd5e1; padding: 9px 8px; font-size: 12px; color: #1e293b; text-align: center; width: 22%; border-top: 1px solid #94a3b8; border-bottom: 2px solid #94a3b8; text-decoration: none;">👑 1순위 추천픽 (확률)</th>
+                    <th bgcolor="#cbd5e1" style="background-color: #cbd5e1; padding: 9px 8px; font-size: 12px; color: #1e293b; text-align: center; width: 20%; border-top: 1px solid #94a3b8; border-bottom: 2px solid #94a3b8; text-decoration: none;">🥈 2순위 / 세부비율</th>
+                </tr>
+            </thead>
+            <tbody>
+                {rows_html}
+            </tbody>
+        </table>
+
+        <!-- 하단 주의사항 푸터 -->
+        <table width="100%" cellpadding="0" cellspacing="0" style="width: 100%; border-collapse: collapse;">
+            <tr>
+                <td bgcolor="#f1f5f9" style="background-color: #f1f5f9; padding: 12px 16px; text-align: left; font-size: 11px; color: #475569; border-top: 1px solid #cbd5e1; line-height: 1.5; word-break: keep-all; text-decoration: none;">
+                    <b style="color: #1e293b; text-decoration: none;">※ 산출 기준 안내:</b> 위 순위는 당일 등록된 경기들을 대상으로 9개 배당 업체의 과거 동일배당 구간 데이터를 전수 대조하여, <b style="color: #1e293b; text-decoration: none;">최소 {min_cnt_used}건 이상 매칭된 항목(승/무/패 및 {ou_line} 언오버)</b> 중 적중 확률과 표본 수가 가장 높은 순서대로 산출한 데이터입니다.
+                </td>
+            </tr>
+        </table>
+    </div>
+    """
+    return html
 
 
 def render_tab6_top20(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
@@ -186,7 +387,6 @@ def render_tab6_top20(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
                     "second_str": f"{second_pick[0]} ({second_pick[1]}%)" if second_pick else "-"
                 })
 
-            # 전체 경기 중 1순위: 최고 적중확률, 2순위: 매칭 표본 건수, 3순위: 적중 횟수로 정렬 후 상위 20개 추출
             ranked_matches.sort(
                 key=lambda x: (x["best_prob"], x["best_total"], x["best_hits"]),
                 reverse=True
@@ -237,6 +437,43 @@ def render_tab6_top20(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
                 height=min(760, 38 * (len(table_rows) + 1)),
                 hide_index=True
             )
+
+            with st.expander("📊 / 📋 [네이버 블로그/카페 전용] 당일 최우선 추천픽 순위표 인포그래픽 복사 (추천 ⭐)", expanded=True):
+                st.markdown("##### 🌟 [네이버 블로그/카페 전용] 당일 최우선 주력픽 순위보드 인포그래픽")
+                st.caption("초록색 복사 버튼을 클릭하여 네이버 블로그나 카페 글쓰기 창에 그대로 붙여넣기(Ctrl+V) 하세요!")
+
+                c_ig1, c_ig2 = st.columns(2)
+                with c_ig1:
+                    limit_opt = st.radio(
+                        "인포그래픽에 표시할 순위 범위",
+                        ["TOP 20 전체 표시", "TOP 10 (1~10위만 표시)", "TOP 5 (1~5위 핵심만 표시)"],
+                        horizontal=True,
+                        key="top20_ig_limit_radio"
+                    )
+                with c_ig2:
+                    odds_opt = st.radio(
+                        "배트맨 배당 표시 여부",
+                        ["배당 숨기기 (깔끔 버전 ⭐)", "배트맨 배당 함께 표시"],
+                        horizontal=True,
+                        key="top20_ig_odds_radio"
+                    )
+
+                if "TOP 5" in limit_opt:
+                    ig_target_list = top20_list[:5]
+                elif "TOP 10" in limit_opt:
+                    ig_target_list = top20_list[:10]
+                else:
+                    ig_target_list = top20_list
+
+                show_odds_flag = "함께 표시" in odds_opt
+                top20_ig_html = generate_naver_top20_ranking_infographic(
+                    ig_target_list,
+                    min_cnt_used=min_cnt_used,
+                    ou_line=ou_used,
+                    show_odds=show_odds_flag
+                )
+                ig_height = min(1150, max(450, 260 + 62 * len(ig_target_list)))
+                render_clipboard_component(top20_ig_html, "top20_clip_ranking_ig", height=ig_height)
 
             st.markdown("---")
             st.markdown("#### 📋 1~20위 경기별 상세 브리핑 & 3번 탭(도표 생성) 원클릭 연동")
