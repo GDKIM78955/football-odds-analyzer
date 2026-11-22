@@ -9,8 +9,60 @@ DEFAULT_SCAN_SHEET_OBMS = [
     "william hill", "bet365", "pinnacle", "stake"
 ]
 
+# 0.5 단위 클릭 선택 옵션 (-0.5 ~ -5.0 -> 0.0 -> +0.5 ~ +5.0 순서 고정)
+HC_OPTIONS = [
+    -0.5, -1.0, -1.5, -2.0, -2.5, -3.0, -3.5, -4.0, -4.5, -5.0,
+    0.0,
+    0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0
+]
+OU_OPTIONS = [1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0, 5.5, 6.0, 6.5]
 
-def build_scan_row_by_sheet_headers(header_row, base_info_list, odds_dict, fallback_obms):
+
+def format_hc_label(x):
+    return f"+{x}" if x > 0 else str(x)
+
+
+def sort_hc_lines(hc_list):
+    return sorted(
+        [float(x) for x in hc_list],
+        key=lambda x: (0 if x < 0 else (1 if x == 0 else 2), abs(x))
+    )
+
+
+def parse_hc_lines(raw_val, default_list=None):
+    if default_list is None:
+        default_list = [-1.0]
+    if raw_val is None or str(raw_val).strip() == "":
+        return list(default_list)
+    res = []
+    for part in str(raw_val).split(","):
+        try:
+            v = float(part.strip().replace("+", ""))
+            if v in HC_OPTIONS and v not in res:
+                res.append(v)
+        except Exception:
+            pass
+    return sort_hc_lines(res) if res else list(default_list)
+
+
+def format_hc_lines(hc_list):
+    if not hc_list:
+        return "-1.0"
+    ordered = sort_hc_lines(hc_list)
+    return ", ".join(format_hc_label(x) for x in ordered)
+
+
+def parse_ou_line(raw_val, default_val=2.5):
+    try:
+        v = float(str(raw_val).strip())
+        if v in OU_OPTIONS:
+            return v
+    except Exception:
+        pass
+    return default_val
+
+
+def build_scan_row_by_sheet_headers(header_row, base_info_list, odds_dict, fallback_obms, hc_str="-1.0", ou_val=2.5):
     row = list(base_info_list)
     # 시트 1행 헤더가 존재하면 헤더의 업체 순서에 맞춰 정확히 매핑
     if header_row and len(header_row) >= 32:
@@ -30,6 +82,9 @@ def build_scan_row_by_sheet_headers(header_row, base_info_list, odds_dict, fallb
         c_od = od if od > 0 else ""
         c_oa = oa if oa > 0 else ""
         row.extend([c_oh, c_od, c_oa])
+
+    # AG열(핸디캡기준), AH열(언오버기준) 추가
+    row.extend([hc_str, ou_val])
     return row
 
 
@@ -87,7 +142,7 @@ def get_preprocessed_bm_db_v3(bm_name, spreadsheet_id):
 
 def render_tab2(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
     st.subheader("📡 라운드 경기 배당 자동 스캐너 & 추천픽 레이더")
-    st.caption("와이즈토토로 배트맨 경기를 연속으로 담아두고 해외 배당을 차례대로 채워 '라운드스캔' 시트에 저장 및 분석합니다.")
+    st.caption("와이즈토토로 배트맨 경기(배당 + 핸디캡/언오버 기준점)를 연속으로 담아두고 해외 배당을 차례대로 채워 '라운드스캔' 시트에 저장 및 분석합니다.")
 
     scanner_sheet_name = "라운드스캔"
     stats_sheet_name = "경기내용"
@@ -103,7 +158,7 @@ def render_tab2(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
 
     scan_input_mode = st.radio(
         "스캔 경기 입력 방식",
-        ["🚀 [2단계 분할 입력] 와이즈토토 먼저 모아서 ➔ 해외 배당 순차 입력 (추천 ⭐)", "⚡ [1경기 직접 등록 및 기존 배당 수정]"],
+        ["🚀 [2단계 분할 입력] 와이즈토토 먼저 모아서 ➔ 해외 배당 순차 입력 (추천 ⭐)", "⚡ [1경기 직접 등록 및 기존 배당/기준점 수정]"],
         horizontal=True,
         key="scan_input_mode_radio"
     )
@@ -113,7 +168,7 @@ def render_tab2(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
 
         with c_sc_step1:
             st.markdown("##### 1️⃣ [1단계] 와이즈토토 배트맨 경기 연속 등록")
-            st.caption("와이즈토토를 보면서 이번 라운드 경기들의 배트맨 배당을 대기열에 담아둡니다.")
+            st.caption("와이즈토토를 보면서 이번 라운드 경기들의 배트맨 배당과 핸디캡·언오버 기준점을 대기열에 담아둡니다.")
 
             with st.container(border=True):
                 c_sq1, c_sq2, c_sq3 = st.columns(3)
@@ -131,12 +186,31 @@ def render_tab2(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
                 sq_bd = sqb_d.number_input("무", value=0.0, step=0.01, min_value=0.0, key="sq_in_bd")
                 sq_ba = sqb_a.number_input("원정", value=0.0, step=0.01, min_value=0.0, key="sq_in_ba")
 
+                st.markdown("**🎯 경기별 핸디캡 & 언오버 기준점 (클릭 선택)**")
+                c_sq_ln1, c_sq_ln2 = st.columns([2, 1])
+                sq_hc_lines = c_sq_ln1.multiselect(
+                    "핸디캡 기준점 (복수 선택 가능)",
+                    HC_OPTIONS,
+                    default=[-1.0],
+                    format_func=format_hc_label,
+                    key="sq_in_hc"
+                )
+                sq_ou_line = c_sq_ln2.selectbox(
+                    "언오버 기준점",
+                    OU_OPTIONS,
+                    index=OU_OPTIONS.index(2.5),
+                    key="sq_in_ou"
+                )
+
                 if st.button("➕ 스캔 대기열에 경기 추가 (계속 등록)", type="primary", use_container_width=True, key="btn_add_scan_queue"):
                     if sq_home.strip() and sq_away.strip():
+                        chosen_hcs = sort_hc_lines(sq_hc_lines) if sq_hc_lines else [-1.0]
                         st.session_state.scan_queue.append({
                             "season": sq_season, "league": sq_league, "date": sq_date,
                             "home": sq_home.strip(), "away": sq_away.strip(),
-                            "batman_odds": (sq_bh, sq_bd, sq_ba)
+                            "batman_odds": (sq_bh, sq_bd, sq_ba),
+                            "hc_lines": chosen_hcs,
+                            "ou_line": float(sq_ou_line)
                         })
                         st.success(f"🎉 [{sq_home} vs {sq_away}] 스캔 대기열 추가 완료! (총 {len(st.session_state.scan_queue)}경기 대기 중)")
                     else:
@@ -147,10 +221,13 @@ def render_tab2(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
                 sq_preview = []
                 for i, m in enumerate(st.session_state.scan_queue):
                     status = "👉 [작성 차례]" if i == st.session_state.current_scan_queue_idx else ("⏳ [대기 중]" if i > st.session_state.current_scan_queue_idx else "✅ [완료]")
+                    hc_disp = format_hc_lines(m.get("hc_lines", [-1.0]))
+                    ou_disp = m.get("ou_line", 2.5)
                     sq_preview.append({
                         "순번": i + 1, "상태": status,
                         "매치업": f"{m['home']} vs {m['away']}", "리그/날짜": f"{m['league']} ({m['date']})",
-                        "배트맨 배당": f"{m['batman_odds'][0]} / {m['batman_odds'][1]} / {m['batman_odds'][2]}"
+                        "배트맨 배당": f"{m['batman_odds'][0]} / {m['batman_odds'][1]} / {m['batman_odds'][2]}",
+                        "기준점(핸/언)": f"핸({hc_disp}) / 언({ou_disp})"
                     })
                 st.dataframe(pd.DataFrame(sq_preview), use_container_width=True, hide_index=True)
 
@@ -171,12 +248,20 @@ def render_tab2(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
                     e_sbd = seb2.number_input("배트맨 무", value=float(target_sq_item["batman_odds"][1]), step=0.01, key="edit_sbd")
                     e_sba = seb3.number_input("배트맨 원정", value=float(target_sq_item["batman_odds"][2]), step=0.01, key="edit_sba")
 
+                    ec_ln1, ec_ln2 = st.columns([2, 1])
+                    cur_hc_def = [x for x in target_sq_item.get("hc_lines", [-1.0]) if x in HC_OPTIONS] or [-1.0]
+                    e_shc = ec_ln1.multiselect("핸디캡 기준 수정", HC_OPTIONS, default=cur_hc_def, format_func=format_hc_label, key=f"edit_shc_{sel_sq_idx}")
+                    cur_ou_def = target_sq_item.get("ou_line", 2.5)
+                    e_sou = ec_ln2.selectbox("언오버 기준 수정", OU_OPTIONS, index=OU_OPTIONS.index(cur_ou_def) if cur_ou_def in OU_OPTIONS else 2, key=f"edit_sou_{sel_sq_idx}")
+
                     if st.button("🔄 선택한 스캔 대기 경기 갱신", type="primary", use_container_width=True):
                         st.session_state.scan_queue[sel_sq_idx]["home"] = e_sqh.strip()
                         st.session_state.scan_queue[sel_sq_idx]["away"] = e_sqa.strip()
                         st.session_state.scan_queue[sel_sq_idx]["league"] = e_sql.strip()
                         st.session_state.scan_queue[sel_sq_idx]["date"] = e_sqd.strip()
                         st.session_state.scan_queue[sel_sq_idx]["batman_odds"] = (e_sbh, e_sbd, e_sba)
+                        st.session_state.scan_queue[sel_sq_idx]["hc_lines"] = sort_hc_lines(e_shc) if e_shc else [-1.0]
+                        st.session_state.scan_queue[sel_sq_idx]["ou_line"] = float(e_sou)
                         st.success(f"🎉 스캔 대기열 #{sel_sq_idx + 1} 경기 정보가 성공적으로 수정되었습니다!")
                         st.rerun()
 
@@ -205,12 +290,15 @@ def render_tab2(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
                     st.rerun()
 
                 next_s_match = st.session_state.scan_queue[s_cur_idx + 1] if s_cur_idx + 1 < s_q_len else None
+                cur_hc_str = format_hc_lines(cur_s_match.get("hc_lines", [-1.0]))
+                cur_ou_val = cur_s_match.get("ou_line", 2.5)
 
                 st.markdown(f"""
                 <div style="background-color: #047857; color: white; padding: 15px; border-radius: 8px; margin-bottom: 15px;">
                     <div style="font-size: 13px; color: #a7f3d0;">[진행 중: {s_cur_idx + 1} / {s_q_len} 번째 경기]</div>
                     <div style="font-size: 18px; font-weight: bold; margin-top: 4px;">👉 {cur_s_match['home']} vs {cur_s_match['away']} ({cur_s_match['league']})</div>
                     <div style="font-size: 13px; margin-top: 4px;">배트맨 배당: {cur_s_match['batman_odds'][0]} / {cur_s_match['batman_odds'][1]} / {cur_s_match['batman_odds'][2]} | 날짜: {cur_s_match['date']}</div>
+                    <div style="font-size: 12px; color: #d1fae5; margin-top: 4px;">🎯 저장될 기준점: 핸디캡 ({cur_hc_str}) &nbsp;|&nbsp; 언오버 ({cur_ou_val})</div>
                 </div>
                 """, unsafe_allow_html=True)
 
@@ -252,7 +340,8 @@ def render_tab2(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
                                 cur_s_match["batman_odds"][0], cur_s_match["batman_odds"][1], cur_s_match["batman_odds"][2]
                             ]
                             new_scan_row = build_scan_row_by_sheet_headers(
-                                header_row, base_info, sq_overseas_inputs, overseas_bookmakers
+                                header_row, base_info, sq_overseas_inputs, overseas_bookmakers,
+                                hc_str=cur_hc_str, ou_val=cur_ou_val
                             )
 
                             target_row_idx = None
@@ -266,7 +355,7 @@ def render_tab2(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
                                             break
                             
                             if target_row_idx:
-                                ws_scan.update(f"A{target_row_idx}:AF{target_row_idx}", [new_scan_row], value_input_option="USER_ENTERED")
+                                ws_scan.update(f"A{target_row_idx}:AH{target_row_idx}", [new_scan_row], value_input_option="USER_ENTERED")
                             else:
                                 ws_scan.append_row(new_scan_row, value_input_option="USER_ENTERED", table_range="A1")
                             
@@ -291,6 +380,8 @@ def render_tab2(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
                 st.session_state.ds_bh = 0.0
                 st.session_state.ds_bd = 0.0
                 st.session_state.ds_ba = 0.0
+                st.session_state.ds_hc = [-1.0]
+                st.session_state.ds_ou = 2.5
                 for obm in overseas_bookmakers:
                     st.session_state[f"ds_{obm}_h"] = 0.0
                     st.session_state[f"ds_{obm}_d"] = 0.0
@@ -308,18 +399,25 @@ def render_tab2(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
                             st.session_state.ds_bh = safe_flt(r.get("배트맨_홈"), 0.0)
                             st.session_state.ds_bd = safe_flt(r.get("배트맨_무"), 0.0)
                             st.session_state.ds_ba = safe_flt(r.get("배트맨_원"), 0.0)
+                            st.session_state.ds_hc = parse_hc_lines(r.get("핸디캡기준", ""), [-1.0])
+                            st.session_state.ds_ou = parse_ou_line(r.get("언오버기준", ""), 2.5)
                             for obm in overseas_bookmakers:
                                 st.session_state[f"ds_{obm}_h"] = safe_flt(r.get(f"{obm}_홈"), 0.0)
                                 st.session_state[f"ds_{obm}_d"] = safe_flt(r.get(f"{obm}_무"), 0.0)
                                 st.session_state[f"ds_{obm}_a"] = safe_flt(r.get(f"{obm}_원"), 0.0)
                             break
 
+        if "ds_hc" not in st.session_state:
+            st.session_state.ds_hc = [-1.0]
+        if "ds_ou" not in st.session_state:
+            st.session_state.ds_ou = 2.5
+
         with st.container(border=True):
             if not df_scan_raw.empty and "홈팀" in df_scan_raw.columns:
-                st.markdown("##### 🔍 [기존 등록 경기 배당 불러와서 수정하기]")
+                st.markdown("##### 🔍 [기존 등록 경기 배당 & 기준점 불러와서 수정하기]")
                 match_labels = ["➕ [새로운 경기 직접 입력]"] + [f"{r.get('홈팀', '')} vs {r.get('원정팀', '')} ({r.get('리그명', '')})" for _, r in df_scan_raw.iterrows()]
                 st.selectbox(
-                    "불러올 경기 선택 (선택 시 아래 입력창에 즉시 자동 반영)", 
+                    "불러올 경기 선택 (선택 시 아래 배당과 핸디캡/언오버 기준점이 즉시 자동 반영)", 
                     match_labels, 
                     index=0, 
                     key="sel_scan_loader",
@@ -341,6 +439,20 @@ def render_tab2(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
             ds_bd = c_db2.number_input("무", value=0.0, step=0.01, min_value=0.0, key="ds_bd")
             ds_ba = c_db3.number_input("원정", value=0.0, step=0.01, min_value=0.0, key="ds_ba")
 
+            st.markdown("**🎯 경기별 핸디캡 & 언오버 기준점 (변동 시 여기서 수정 후 덮어쓰기)**")
+            c_ds_ln1, c_ds_ln2 = st.columns([2, 1])
+            ds_hc_lines = c_ds_ln1.multiselect(
+                "핸디캡 기준점 (복수 선택 가능)",
+                HC_OPTIONS,
+                format_func=format_hc_label,
+                key="ds_hc"
+            )
+            ds_ou_line = c_ds_ln2.selectbox(
+                "언오버 기준점",
+                OU_OPTIONS,
+                key="ds_ou"
+            )
+
             st.markdown("**🌐 주요 해외 북메이커 배당 (선택: 있는 것만 입력)**")
             ds_overseas_inputs = {}
             for i in range(0, len(overseas_bookmakers), 4):
@@ -360,7 +472,7 @@ def render_tab2(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
 
             col_add_btn, col_del_btn = st.columns([2, 1])
             with col_add_btn:
-                if st.button("💾 [라운드스캔] 신규 등록 또는 기존 배당 덮어쓰기(수정)", type="primary", use_container_width=True, key="btn_single_save_scan"):
+                if st.button("💾 [라운드스캔] 신규 등록 또는 기존 배당/기준점 덮어쓰기(수정)", type="primary", use_container_width=True, key="btn_single_save_scan"):
                     if ds_home.strip() and ds_away.strip():
                         from database import get_gspread_client
                         client = get_gspread_client()
@@ -375,8 +487,10 @@ def render_tab2(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
                                     ds_season, ds_league, ds_date, ds_home.strip(), ds_away.strip(),
                                     ds_bh, ds_bd, ds_ba
                                 ]
+                                hc_save_str = format_hc_lines(ds_hc_lines if ds_hc_lines else [-1.0])
                                 new_scan_row = build_scan_row_by_sheet_headers(
-                                    header_row, base_info, ds_overseas_inputs, overseas_bookmakers
+                                    header_row, base_info, ds_overseas_inputs, overseas_bookmakers,
+                                    hc_str=hc_save_str, ou_val=float(ds_ou_line)
                                 )
 
                                 target_row_idx = None
@@ -390,11 +504,11 @@ def render_tab2(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
                                                 break
                                 
                                 if target_row_idx:
-                                    ws_scan.update(f"A{target_row_idx}:AF{target_row_idx}", [new_scan_row], value_input_option="USER_ENTERED")
+                                    ws_scan.update(f"A{target_row_idx}:AH{target_row_idx}", [new_scan_row], value_input_option="USER_ENTERED")
                                     import time
                                     time.sleep(0.3)
                                     st.cache_data.clear()
-                                    st.success(f"🔄 [{ds_home} vs {ds_away}] 기존 경기의 배당이 최신 데이터로 성공적으로 덮어쓰기(수정)되었습니다!")
+                                    st.success(f"🔄 [{ds_home} vs {ds_away}] 기존 경기의 배당 및 기준점이 최신 데이터로 수정되었습니다!")
                                 else:
                                     ws_scan.append_row(new_scan_row, value_input_option="USER_ENTERED", table_range="A1")
                                     import time
@@ -442,7 +556,7 @@ def render_tab2(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
         for bm in bookmakers:
             cached_dbs[bm] = get_preprocessed_bm_db_v3(bm, spreadsheet_id)
 
-        def count_matched_in_db(prep_db, h_val, d_val, a_val):
+        def count_matched_in_db(prep_db, h_val, d_val, a_val, ou_line=2.5):
             if not prep_db or h_val < 1.01 or d_val < 1.01 or a_val < 1.01:
                 return 0, 0, 0, 0, 0, 0, 0
             try:
@@ -459,7 +573,7 @@ def render_tab2(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
                     v_goals = prep_db["tot_goals_arr"][cond]
                     v_goals = v_goals[v_goals >= 0]
                     ou_cnt = int(len(v_goals))
-                    ov_cnt = int(np.sum(v_goals > 2.5)) if ou_cnt > 0 else 0
+                    ov_cnt = int(np.sum(v_goals > ou_line)) if ou_cnt > 0 else 0
                     return cnt, hw, dr, aw, ou_cnt, ov_cnt, int(ou_cnt - ov_cnt)
             except Exception:
                 pass
@@ -571,7 +685,7 @@ def render_tab2(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
                 key="sel_radar_criteria"
             )
         with c_crit2:
-            st.caption(f"💡 현재 **[{selected_radar_criteria}]** 배당 및 과거 시트 데이터를 기준으로 고승률픽/폭탄주의픽/2.5언오버픽을 자동 계산합니다.")
+            st.caption(f"💡 현재 **[{selected_radar_criteria}]** 배당 및 각 경기에 저장된 **언오버 기준점**을 적용해 추천픽을 자동 계산합니다.")
 
         def run_round_scan(criteria_name):
             scanned_list = []
@@ -585,6 +699,9 @@ def render_tab2(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
                 
                 if not home or not away:
                     continue
+
+                row_hc_lines = parse_hc_lines(r.get("핸디캡기준", ""), [-1.0])
+                row_ou_line = parse_ou_line(r.get("언오버기준", ""), 2.5)
 
                 bh = safe_flt(r.get("배트맨_홈"), 0.0)
                 bd = safe_flt(r.get("배트맨_무"), 0.0)
@@ -615,16 +732,16 @@ def render_tab2(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
                 if criteria_name == "배트맨":
                     crit_h, crit_d, crit_a = bh, bd, ba
                     if bh >= 1.01 and bd >= 1.01 and ba >= 1.01:
-                        match_cnt, hw, dr, aw, ou_cnt, ov_cnt, un_cnt = count_matched_in_db(cached_dbs.get("배트맨"), bh, bd, ba)
+                        match_cnt, hw, dr, aw, ou_cnt, ov_cnt, un_cnt = count_matched_in_db(cached_dbs.get("배트맨"), bh, bd, ba, ou_line=row_ou_line)
                 elif criteria_name in overseas_bookmakers:
                     crit_h, crit_d, crit_a = all_bms_odds.get(criteria_name, (0.0, 0.0, 0.0))
                     if crit_h >= 1.01 and crit_d >= 1.01 and crit_a >= 1.01:
-                        match_cnt, hw, dr, aw, ou_cnt, ov_cnt, un_cnt = count_matched_in_db(cached_dbs.get(criteria_name), crit_h, crit_d, crit_a)
+                        match_cnt, hw, dr, aw, ou_cnt, ov_cnt, un_cnt = count_matched_in_db(cached_dbs.get(criteria_name), crit_h, crit_d, crit_a, ou_line=row_ou_line)
                 elif criteria_name == "🌟 해외 8개사 종합평균":
                     crit_h, crit_d, crit_a = avg_oh, avg_od, avg_oa
                     if avg_oh >= 1.01 and avg_od >= 1.01 and avg_oa >= 1.01:
                         for obm in overseas_bookmakers:
-                            c_m, c_hw, c_dr, c_aw, c_ou, c_ov, c_un = count_matched_in_db(cached_dbs.get(obm), avg_oh, avg_od, avg_oa)
+                            c_m, c_hw, c_dr, c_aw, c_ou, c_ov, c_un = count_matched_in_db(cached_dbs.get(obm), avg_oh, avg_od, avg_oa, ou_line=row_ou_line)
                             match_cnt += c_m
                             hw += c_hw
                             dr += c_dr
@@ -667,9 +784,9 @@ def render_tab2(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
                 if crit_h > 0 and crit_a > 0 and crit_h < crit_a and (draw_prob + lose_prob) >= 70.0 and match_cnt >= 5:
                     tags.append(f"⚡ 역배폭탄({selected_radar_criteria})")
                 if ou_cnt >= 5 and over_prob >= 70.0:
-                    tags.append(f"📈 2.5오버({selected_radar_criteria})")
+                    tags.append(f"📈 {row_ou_line}오버({selected_radar_criteria})")
                 if ou_cnt >= 5 and under_prob >= 70.0:
-                    tags.append(f"📉 2.5언더({selected_radar_criteria})")
+                    tags.append(f"📉 {row_ou_line}언더({selected_radar_criteria})")
                 if diff_h >= 0.05:
                     tags.append("💰 배당 메리트")
                 if h2h_cnt >= 2 and (h2h_hw == h2h_cnt or h2h_aw == h2h_cnt):
@@ -685,6 +802,8 @@ def render_tab2(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
                     "crit_odds": (crit_h, crit_d, crit_a),
                     "overseas_avg": (avg_oh, avg_od, avg_oa),
                     "all_odds": all_bms_odds,
+                    "hc_lines": row_hc_lines,
+                    "ou_line": row_ou_line,
                     "match_cnt": match_cnt,
                     "win_prob": win_prob, "draw_prob": draw_prob, "lose_prob": lose_prob,
                     "ou_cnt": ou_cnt, "ov_cnt": ov_cnt, "un_cnt": un_cnt,
@@ -702,8 +821,8 @@ def render_tab2(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
         f_all = col_f1.button("🌐 전체 경기 보기", use_container_width=True)
         f_high = col_f2.button("🔥 [고승률 TOP 5]", use_container_width=True)
         f_upset = col_f3.button("⚡ [역배폭탄 TOP 5]", use_container_width=True)
-        f_over = col_f4.button("📈 [2.5 오버 TOP 5]", use_container_width=True)
-        f_under = col_f5.button("📉 [2.5 언더 TOP 5]", use_container_width=True)
+        f_over = col_f4.button("📈 [오버 TOP 5]", use_container_width=True)
+        f_under = col_f5.button("📉 [언더 TOP 5]", use_container_width=True)
         f_value = col_f6.button("💰 [배당메리트 TOP 5]", use_container_width=True)
         f_h2h = col_f7.button("⚔️ [천적상성 TOP 5]", use_container_width=True)
 
@@ -722,14 +841,14 @@ def render_tab2(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
             filter_title = f"⚡ [{selected_radar_criteria} 기준 역배 / 무승부 폭탄 주의픽 TOP 5] 추천 경기"
             is_top5_view = True
         elif f_over:
-            display_list = [m for m in scanned_results if any("📈 2.5오버" in t for t in m["tags"])]
+            display_list = [m for m in scanned_results if any("오버(" in t for t in m["tags"])]
             display_list = sorted(display_list, key=lambda x: (x["over_prob"], x["ou_cnt"]), reverse=True)[:5]
-            filter_title = f"📈 [{selected_radar_criteria} 기준 2.5 오버 주력픽 TOP 5] 추천 경기"
+            filter_title = f"📈 [{selected_radar_criteria} 기준 오버 주력픽 TOP 5] 추천 경기"
             is_top5_view = True
         elif f_under:
-            display_list = [m for m in scanned_results if any("📉 2.5언더" in t for t in m["tags"])]
+            display_list = [m for m in scanned_results if any("언더(" in t for t in m["tags"])]
             display_list = sorted(display_list, key=lambda x: (x["under_prob"], x["ou_cnt"]), reverse=True)[:5]
-            filter_title = f"📉 [{selected_radar_criteria} 기준 2.5 언더 주력픽 TOP 5] 추천 경기"
+            filter_title = f"📉 [{selected_radar_criteria} 기준 언더 주력픽 TOP 5] 추천 경기"
             is_top5_view = True
         elif f_value:
             display_list = [m for m in scanned_results if "💰 배당 메리트" in m["tags"]]
@@ -757,6 +876,7 @@ def render_tab2(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
                             tag_badges = " ".join([f"`{t}`" for t in item["tags"]])
                             st.markdown(f"### #{i+1} {item['home']} vs {item['away']}")
                             st.caption(f"🏆 {item['league']} | 📅 {item['date']} | {tag_badges}")
+                            st.caption(f"🎯 기준점: 핸디캡 `{format_hc_lines(item['hc_lines'])}` / 언오버 `{item['ou_line']}`")
 
                         with c_head2:
                             bh, bd, ba = item["batman_odds"]
@@ -767,7 +887,7 @@ def render_tab2(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
                             st.markdown(f"**🏢 배트맨 배당:** `{bh}` / `{bd}` / `{ba}` &nbsp;|&nbsp; **해외 평균:** `{oh}` / `{od}` / `{oa}` (편차: `{diff_str}`)")
                             st.markdown(f"🎯 **[{selected_radar_criteria} 동일배당 ({ch}/{cd}/{ca}) 승률 (과거 {item['match_cnt']}건)]**")
                             st.markdown(f"👉 홈승 **{item['win_prob']}%** / 무승부 **{item['draw_prob']}%** / 원정 **{item['lose_prob']}%**")
-                            st.markdown(f"⚽ **2.5 언오버 (과거 {item['ou_cnt']}건):** 오버 **{item['over_prob']}%** ({item['ov_cnt']}회) / 언더 **{item['under_prob']}%** ({item['un_cnt']}회)")
+                            st.markdown(f"⚽ **{item['ou_line']} 언오버 (과거 {item['ou_cnt']}건):** 오버 **{item['over_prob']}%** ({item['ov_cnt']}회) / 언더 **{item['under_prob']}%** ({item['un_cnt']}회)")
                             st.caption(f"⚔️ **상대전적:** {item['h2h_record']}")
 
                         with c_head3:
@@ -782,6 +902,8 @@ def render_tab2(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
                                     st.session_state[f"t2_{bm}_h"] = float(h_val)
                                     st.session_state[f"t2_{bm}_d"] = float(d_val)
                                     st.session_state[f"t2_{bm}_a"] = float(a_val)
+                                st.session_state["t3_sel_hc_lines"] = item["hc_lines"]
+                                st.session_state["t3_sel_ou_line"] = item["ou_line"]
                                 st.session_state.sel_h2h_home = item["home"]
                                 st.session_state.sel_h2h_away = item["away"]
                                 st.session_state.inj_filter_team = item["home"]
@@ -821,7 +943,10 @@ def render_tab2(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
                     bh, bd, ba = m["batman_odds"]
                     summary_rows.append({
                         "날짜": m["date"], "리그": m["league"], "홈팀": m["home"], "원정팀": m["away"],
-                        "배트맨(홈)": bh, "배트맨(무)": bd, "배트맨(원)": ba, "주요 레이더": ", ".join(m["tags"])
+                        "배트맨(홈)": bh, "배트맨(무)": bd, "배트맨(원)": ba,
+                        "핸디캡기준": format_hc_lines(m["hc_lines"]),
+                        "언오버기준": m["ou_line"],
+                        "주요 레이더": ", ".join(m["tags"])
                     })
                 
                 st.dataframe(pd.DataFrame(summary_rows), use_container_width=True, height=min(240, 36 * (len(summary_rows) + 1)), hide_index=True)
@@ -829,7 +954,6 @@ def render_tab2(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
 
                 match_options = []
                 for idx, m in enumerate(filtered_matches):
-                    bh, bd, ba = m["batman_odds"]
                     match_options.append((f"[{m['league']}] {m['date']} {m['home']} vs {m['away']}", idx))
 
                 selected_label = st.selectbox("분석할 경기를 목록에서 선택하세요", options=[opt[0] for opt in match_options], key="scanner_match_selector")
@@ -846,9 +970,10 @@ def render_tab2(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
                         <p style="margin: 6px 0 0 0; color: #334155; font-size: 13px;">
                             배트맨 배당: <b style="color: #dc2626;">승 {bh}</b> | <b style="color: #059669;">무 {bd}</b> | <b style="color: #2563eb;">패 {ba}</b> &nbsp;|&nbsp; 
                             해외 평균: <b>{oh} / {od} / {oa}</b><br>
+                            🎯 <b>저장된 기준점:</b> 핸디캡 <b>{format_hc_lines(target_item['hc_lines'])}</b> &nbsp;|&nbsp; 언오버 <b>{target_item['ou_line']}</b><br>
                             🎯 <b>{selected_radar_criteria} 동일배당 ({ch}/{cd}/{ca}) 승률 (과거 {target_item['match_cnt']}건):</b> 
                             홈 <b>{target_item['win_prob']}%</b> / 무 <b>{target_item['draw_prob']}%</b> / 원 <b>{target_item['lose_prob']}%</b><br>
-                            ⚽ <b>2.5 언오버 (과거 {target_item['ou_cnt']}건):</b> 
+                            ⚽ <b>{target_item['ou_line']} 언오버 (과거 {target_item['ou_cnt']}건):</b> 
                             오버 <b style="color: #dc2626;">{target_item['over_prob']}% ({target_item['ov_cnt']}회)</b> / 언더 <b style="color: #2563eb;">{target_item['under_prob']}% ({target_item['un_cnt']}회)</b>
                         </p>
                     </div>
@@ -864,6 +989,8 @@ def render_tab2(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
                             st.session_state[f"t2_{bm}_h"] = float(h_val)
                             st.session_state[f"t2_{bm}_d"] = float(d_val)
                             st.session_state[f"t2_{bm}_a"] = float(a_val)
+                        st.session_state["t3_sel_hc_lines"] = target_item["hc_lines"]
+                        st.session_state["t3_sel_ou_line"] = target_item["ou_line"]
                         st.session_state.sel_h2h_home = target_item["home"]
                         st.session_state.sel_h2h_away = target_item["away"]
                         st.session_state.inj_filter_team = target_item["home"]
