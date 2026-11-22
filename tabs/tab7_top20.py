@@ -2,7 +2,13 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 from database import load_sheet_data
-from tabs.tab2_scanner import get_preprocessed_bm_db_v3
+from tabs.tab2_scanner import (
+    get_preprocessed_bm_db_v3,
+    OU_OPTIONS,
+    parse_hc_lines,
+    parse_ou_line,
+    format_hc_lines
+)
 from infographics import render_clipboard_component
 
 
@@ -30,7 +36,6 @@ def generate_naver_top20_ranking_infographic(
         rank_num = idx + 1
         bg_row = "#ffffff" if idx % 2 == 0 else "#e8eef5"
 
-        # 1~3위 메달 및 순위 박스 색상 지정 (네이버 카페/블로그 밑줄 방지를 위해 내부 table/td bgcolor 사용)
         if rank_num == 1:
             rk_bg, rk_fg, rk_txt = "#b45309", "#ffffff", "🥇 1위"
         elif rank_num == 2:
@@ -45,7 +50,6 @@ def generate_naver_top20_ranking_infographic(
         best_hits = item["best_hits"]
         best_tot = item["best_total"]
 
-        # 추천픽 유형에 따른 팀명 강조 및 추천 셀 전용 파스텔 배경색
         if "홈승" in best_lbl:
             h_style = "font-weight: 800; color: #1e3a8a; font-size: 15px; text-decoration: none;"
             a_style = "font-weight: 600; color: #475569; font-size: 14px; text-decoration: none;"
@@ -75,9 +79,10 @@ def generate_naver_top20_ranking_infographic(
             else ""
         )
 
+        item_ou = item.get("ou_line", ou_line)
         sec_str = item["second_str"]
         wdl_summary = f"승 {item['win_prob']}% · 무 {item['draw_prob']}% · 패 {item['lose_prob']}%"
-        ou_summary = f"{ou_line}오버 {item['over_prob']}% · 언더 {item['under_prob']}%"
+        ou_summary = f"{item_ou}오버 {item['over_prob']}% · 언더 {item['under_prob']}%"
 
         rows_html += f"""
         <tr>
@@ -197,7 +202,7 @@ def generate_naver_top20_ranking_infographic(
         <table width="100%" cellpadding="0" cellspacing="0" style="width: 100%; border-collapse: collapse;">
             <tr>
                 <td bgcolor="#f1f5f9" style="background-color: #f1f5f9; padding: 12px 16px; text-align: left; font-size: 11px; color: #475569; border-top: 1px solid #cbd5e1; line-height: 1.5; word-break: keep-all; text-decoration: none;">
-                    <b style="color: #1e293b; text-decoration: none;">※ 산출 기준 안내:</b> 위 순위는 당일 등록된 경기들을 대상으로 9개 배당 업체의 과거 동일배당 구간 데이터를 전수 대조하여, <b style="color: #1e293b; text-decoration: none;">최소 {min_cnt_used}건 이상 매칭된 항목(승/무/패 및 {ou_line} 언오버)</b> 중 적중 확률과 표본 수가 가장 높은 순서대로 산출한 데이터입니다.
+                    <b style="color: #1e293b; text-decoration: none;">※ 산출 기준 안내:</b> 위 순위는 당일 등록된 경기들을 대상으로 9개 배당 업체의 과거 동일배당 구간 데이터를 전수 대조하여, <b style="color: #1e293b; text-decoration: none;">최소 {min_cnt_used}건 이상 매칭된 항목(승/무/패 및 경기별 설정 언오버)</b> 중 적중 확률과 표본 수가 가장 높은 순서대로 산출한 데이터입니다.
                 </td>
             </tr>
         </table>
@@ -208,7 +213,7 @@ def generate_naver_top20_ranking_infographic(
 
 def render_tab6_top20(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
     st.subheader("🏆 당일 최우선 추천픽 TOP 20 종합 랭킹 (9개사 통합 분석)")
-    st.caption("라운드스캔에 등록된 모든 경기를 대상으로 9개 북메이커 전체 과거 동일배당(승무패 + 언오버) 데이터를 종합 분석하여 적중 확률이 가장 높은 1~20위 경기를 우선순위로 산출합니다.")
+    st.caption("라운드스캔에 등록된 모든 경기를 대상으로 9개 북메이커 전체 과거 동일배당(승무패 + 경기별 언오버) 데이터를 종합 분석하여 적중 확률이 가장 높은 1~20위 경기를 우선순위로 산출합니다.")
 
     scanner_sheet_name = "라운드스캔"
     df_scan_raw = load_sheet_data(scanner_sheet_name, spreadsheet_id)
@@ -233,13 +238,13 @@ def render_tab6_top20(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
                 key="top20_min_match_cnt"
             )
         with c_set2:
-            ou_options = [1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5]
             ou_line_val = float(
                 st.selectbox(
-                    "⚽ 언오버 분석 기준점",
-                    ou_options,
-                    index=ou_options.index(2.5),
-                    key="top20_ou_line"
+                    "⚽ 미등록 경기 기본 언오버 기준점",
+                    OU_OPTIONS,
+                    index=OU_OPTIONS.index(2.5),
+                    key="top20_ou_line",
+                    help="시트에 경기별 언오버 기준점이 저장되어 있으면 그 기준점을 우선 사용하고, 비어 있는 경기만 이 기본값을 적용합니다."
                 )
             )
         with c_set3:
@@ -275,6 +280,9 @@ def render_tab6_top20(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
 
                 if not home or not away:
                     continue
+
+                row_hc_lines = parse_hc_lines(r.get("핸디캡기준", ""), [-1.0])
+                row_ou_line = parse_ou_line(r.get("언오버기준", ""), ou_line_val)
 
                 bh = safe_flt(r.get("배트맨_홈"), 0.0)
                 bd = safe_flt(r.get("배트맨_무"), 0.0)
@@ -327,7 +335,7 @@ def render_tab6_top20(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
                         v_goals = v_goals[v_goals >= 0]
                         c_ou = int(len(v_goals))
                         if c_ou > 0:
-                            c_ov = int(np.sum(v_goals > ou_line_val))
+                            c_ov = int(np.sum(v_goals > row_ou_line))
                             tot_ou_cnt += c_ou
                             tot_ov += c_ov
                             tot_un += int(c_ou - c_ov)
@@ -339,20 +347,18 @@ def render_tab6_top20(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
                 over_prob = round((tot_ov / tot_ou_cnt) * 100, 1) if tot_ou_cnt > 0 else 0.0
                 under_prob = round((tot_un / tot_ou_cnt) * 100, 1) if tot_ou_cnt > 0 else 0.0
 
-                # 승무패 + 언오버 통합 후보 중 최소 매칭 건수(min_match_cnt)를 충족하는 픽 수집
                 candidates = []
                 if tot_wdl_cnt >= min_match_cnt:
                     candidates.append(("🏠 홈승", win_prob, tot_hw, tot_wdl_cnt, "승무패"))
                     candidates.append(("⚖️ 무승부", draw_prob, tot_dr, tot_wdl_cnt, "승무패"))
                     candidates.append(("🚗 원정승", lose_prob, tot_aw, tot_wdl_cnt, "승무패"))
                 if tot_ou_cnt >= min_match_cnt:
-                    candidates.append((f"📈 {ou_line_val} 오버", over_prob, tot_ov, tot_ou_cnt, "언오버"))
-                    candidates.append((f"📉 {ou_line_val} 언더", under_prob, tot_un, tot_ou_cnt, "언오버"))
+                    candidates.append((f"📈 {row_ou_line} 오버", over_prob, tot_ov, tot_ou_cnt, "언오버"))
+                    candidates.append((f"📉 {row_ou_line} 언더", under_prob, tot_un, tot_ou_cnt, "언오버"))
 
                 if not candidates:
                     continue
 
-                # 확률 높은 순 -> 매칭 건수 많은 순 정렬
                 candidates.sort(key=lambda x: (x[1], x[3], x[2]), reverse=True)
                 best_pick = candidates[0]
                 second_pick = candidates[1] if len(candidates) > 1 else None
@@ -366,6 +372,8 @@ def render_tab6_top20(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
                     "batman_odds": (bh, bd, ba),
                     "overseas_avg": (avg_oh, avg_od, avg_oa),
                     "all_odds": all_bms_odds,
+                    "hc_lines": row_hc_lines,
+                    "ou_line": row_ou_line,
                     "active_bm_cnt": active_bm_cnt,
                     "tot_wdl_cnt": tot_wdl_cnt,
                     "tot_hw": tot_hw,
@@ -419,6 +427,7 @@ def render_tab6_top20(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
             table_rows = []
             for rank_idx, item in enumerate(top20_list, 1):
                 bh, bd, ba = item["batman_odds"]
+                item_ou = item.get("ou_line", ou_used)
                 table_rows.append({
                     "순위": f"🏆 {rank_idx}위" if rank_idx <= 3 else f"{rank_idx}위",
                     "리그/날짜": f"{item['league']} ({item['date']})",
@@ -427,7 +436,7 @@ def render_tab6_top20(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
                     "적중확률 (성공/매칭)": f"{item['best_prob']}% ({item['best_hits']}/{item['best_total']}건)",
                     "🥈 차선책 (2순위)": item["second_str"],
                     "9개사 승/무/패 종합": f"승 {item['win_prob']}% / 무 {item['draw_prob']}% / 패 {item['lose_prob']}% ({item['tot_wdl_cnt']}건)",
-                    f"9개사 {ou_used} 언오버": f"오버 {item['over_prob']}% / 언더 {item['under_prob']}% ({item['tot_ou_cnt']}건)",
+                    "9개사 언오버 (경기별 기준)": f"[{item_ou}] 오버 {item['over_prob']}% / 언더 {item['under_prob']}% ({item['tot_ou_cnt']}건)",
                     "배트맨 배당": f"{bh} / {bd} / {ba}"
                 })
 
@@ -479,12 +488,15 @@ def render_tab6_top20(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
             st.markdown("#### 📋 1~20위 경기별 상세 브리핑 & 3번 탭(도표 생성) 원클릭 연동")
 
             for rank_idx, item in enumerate(top20_list, 1):
+                item_ou = item.get("ou_line", ou_used)
+                item_hcs = item.get("hc_lines", [-1.0])
                 with st.container(border=True):
                     c1, c2, c3 = st.columns([2.2, 3.3, 1.8])
                     with c1:
                         rank_badge = f"🥇 1위" if rank_idx == 1 else (f"🥈 2위" if rank_idx == 2 else (f"🥉 3위" if rank_idx == 3 else f"#{rank_idx}위"))
                         st.markdown(f"### {rank_badge} {item['home']} vs {item['away']}")
                         st.caption(f"🏆 {item['league']} | 📅 {item['date']} | 분석 업체: {item['active_bm_cnt']}개사")
+                        st.caption(f"🎯 기준점: 핸디캡 `{format_hc_lines(item_hcs)}` / 언오버 `{item_ou}`")
                         st.markdown(
                             f"👑 **최우선 추천:** `{item['best_label']}` "
                             f"(**{item['best_prob']}%** · {item['best_hits']}/{item['best_total']}건)"
@@ -503,7 +515,7 @@ def render_tab6_top20(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
                             f"원정 **{item['lose_prob']}%** ({item['tot_aw']}회)"
                         )
                         st.markdown(
-                            f"⚽ **9개사 {ou_used} 언오버 ({item['tot_ou_cnt']}건):** "
+                            f"⚽ **9개사 {item_ou} 언오버 ({item['tot_ou_cnt']}건):** "
                             f"오버 **{item['over_prob']}%** ({item['tot_ov']}회) / "
                             f"언더 **{item['under_prob']}%** ({item['tot_un']}회) &nbsp;|&nbsp; "
                             f"🥈 **2순위:** `{item['second_str']}`"
@@ -525,7 +537,9 @@ def render_tab6_top20(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
                                 st.session_state[f"t2_{bm}_h"] = float(h_val)
                                 st.session_state[f"t2_{bm}_d"] = float(d_val)
                                 st.session_state[f"t2_{bm}_a"] = float(a_val)
+                            st.session_state["t3_sel_hc_lines"] = item_hcs
+                            st.session_state["t3_sel_ou_line"] = item_ou
                             st.session_state.sel_h2h_home = item["home"]
                             st.session_state.sel_h2h_away = item["away"]
-                            st.success(f"🎯 [{item['home']} vs {item['away']}] 배당이 3번 탭으로 전송되었습니다!")
+                            st.success(f"🎯 [{item['home']} vs {item['away']}] 배당 및 기준점이 3번 탭으로 전송되었습니다!")
                             st.rerun()
