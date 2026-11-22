@@ -3,6 +3,10 @@ import pandas as pd
 import numpy as np
 from database import load_sheet_data
 from infographics import generate_naver_odds_with_handicap_infographic, generate_naver_odds_infographic, render_clipboard_component
+from tabs.tab2_scanner import (
+    HC_OPTIONS, OU_OPTIONS, format_hc_label,
+    sort_hc_lines, parse_hc_lines, parse_ou_line
+)
 
 
 def normalize_bm_dataframe(df_bm):
@@ -95,7 +99,6 @@ def generate_naver_match_history_infographic(
 
     rows_html = ""
     for idx, r in enumerate(records):
-        # 네이버 카페/블로그 붙여넣기 시에도 줄 구분이 확실하도록 짝수/홀수 행 배경색을 <td bgcolor>에 직접 지정
         bg_row = "#ffffff" if idx % 2 == 0 else "#e8eef5"
         raw_season = str(r.get("season", "")).replace("시즌", "").strip()
         season_str = raw_season if raw_season else "-"
@@ -105,7 +108,6 @@ def generate_naver_match_history_infographic(
         r_res = r["res"]
         hs, as_sc = r["hs"], r["as"]
 
-        # 홈/원정 승리 팀 강조 스타일 및 결과 셀 전용 배경색 (span 테두리 대신 td 배경색을 써서 네이버 카페 밑줄 현상 완전 방지)
         if r_res == "홈승":
             h_style = "font-weight: 800; color: #1e3a8a; font-size: 15px; text-decoration: none;"
             a_style = "font-weight: 600; color: #475569; font-size: 15px; text-decoration: none;"
@@ -330,6 +332,15 @@ def render_tab3(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
         except:
             return default
 
+    # 세션 기본값 초기화 (위젯 렌더링 전 안전 초기화)
+    if "t3_sel_hc_lines" not in st.session_state or not st.session_state["t3_sel_hc_lines"]:
+        st.session_state["t3_sel_hc_lines"] = [-1.0]
+    else:
+        st.session_state["t3_sel_hc_lines"] = [x for x in st.session_state["t3_sel_hc_lines"] if x in HC_OPTIONS] or [-1.0]
+
+    if "t3_sel_ou_line" not in st.session_state or st.session_state["t3_sel_ou_line"] not in OU_OPTIONS:
+        st.session_state["t3_sel_ou_line"] = 2.5
+
     def on_t3_match_load():
         sel_t3 = st.session_state.get("sel_t3_match_loader", "➕ [직접 수동 입력하기]")
         if sel_t3 != "➕ [직접 수동 입력하기]":
@@ -349,14 +360,18 @@ def render_tab3(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
                             st.session_state[f"t2_{obm}_h"] = float(safe_flt(r.get(f"{obm}_홈"), 0.0))
                             st.session_state[f"t2_{obm}_d"] = float(safe_flt(r.get(f"{obm}_무"), 0.0))
                             st.session_state[f"t2_{obm}_a"] = float(safe_flt(r.get(f"{obm}_원"), 0.0))
+
+                        # 저장된 핸디캡/언오버 기준점 자동 세팅
+                        st.session_state["t3_sel_hc_lines"] = parse_hc_lines(r.get("핸디캡기준", ""), [-1.0])
+                        st.session_state["t3_sel_ou_line"] = parse_ou_line(r.get("언오버기준", ""), 2.5)
                         break
 
     with st.container(border=True):
         if not df_t3_scan.empty and "홈팀" in df_t3_scan.columns:
-            st.markdown("##### 🔍 [라운드스캔 시트에서 분석할 경기 불러오기] (선택 시 9개사 배당 자동 세팅)")
+            st.markdown("##### 🔍 [라운드스캔 시트에서 분석할 경기 불러오기] (선택 시 9개사 배당 + 핸디캡/언오버 기준점 자동 세팅)")
             t3_match_labels = ["➕ [직접 수동 입력하기]"] + [f"[{r.get('리그명', '')}] {r.get('홈팀', '')} vs {r.get('원정팀', '')} ({r.get('경기날짜', '')})" for _, r in df_t3_scan.iterrows()]
             st.selectbox(
-                "분석할 경기를 선택하면 아래 입력창에 배당이 자동으로 채워집니다.",
+                "분석할 경기를 선택하면 아래 입력창에 배당과 저장된 기준점이 자동으로 채워집니다.",
                 t3_match_labels,
                 index=0,
                 key="sel_t3_match_loader",
@@ -367,7 +382,7 @@ def render_tab3(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
 
     if "selected_scan_match" in st.session_state and st.session_state.selected_scan_match:
         sm = st.session_state.selected_scan_match
-        st.success(f"🎯 [스캐너 연동 완료] 현재 **[{sm['home']} vs {sm['away']}]** 경기의 배당 데이터가 자동 적용되어 있습니다.")
+        st.success(f"🎯 [스캐너 연동 완료] 현재 **[{sm['home']} vs {sm['away']}]** 경기의 배당 및 기준점 데이터가 자동 적용되어 있습니다.")
 
     c_an_l1, c_an_l2, c_an_l3 = st.columns([1, 1, 1])
     target_league = c_an_l1.text_input("🔍 리그명", value="PL", key="t2_target_league")
@@ -395,30 +410,29 @@ def render_tab3(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
     # 🎯 핸디캡 및 언오버 기준점 설정 영역
     # =========================================================
     st.markdown("---")
-    st.markdown("##### 🎯 과거 데이터 기반 핸디캡 & 언오버 확률 분석 기준점 설정")
+    st.markdown("##### 🎯 과거 데이터 기반 핸디캡 & 언오버 확률 분석 기준점 설정 (불러온 경기 기준점 자동 반영)")
     
-    hc_options = [-0.5, -1.0, -1.5, -2.0, -2.5, -3.0, -4.0, -5.0, 0.0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 4.0, 5.0]
-    ou_options = [1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0, 5.5, 6.0, 6.5]
-
     hc_col1, ou_col1 = st.columns(2)
     
     with hc_col1:
         with st.container(border=True):
-            st.markdown("**🎯 핸디캡 기준점 (2~3개 복수 선택 가능)**")
-            default_hcs = [-0.5, -1.0, -1.5] if all(x in hc_options for x in [-0.5, -1.0, -1.5]) else [-1.0]
-            sel_hc_lines = st.multiselect("핸디캡 기준점 선택 (최대 3개 권장)", hc_options, default=default_hcs, key="t3_sel_hc_lines")
-            # 마이너스 핸디캡도 -1, -2 순서(절댓값 오름차순)로 정렬되고 플러스 핸디캡도 +1, +2 순서로 정렬되도록 처리
-            hc_lines_val = sorted(
-                [float(x) for x in sel_hc_lines],
-                key=lambda x: (0 if x < 0 else (1 if x == 0 else 2), abs(x))
+            st.markdown("**🎯 핸디캡 기준점 (복수 선택 가능 · -0.5~-5.0 ➔ 0.0 ➔ +0.5~+5.0)**")
+            sel_hc_lines = st.multiselect(
+                "핸디캡 기준점 선택 (최대 3개 권장)",
+                HC_OPTIONS,
+                format_func=format_hc_label,
+                key="t3_sel_hc_lines"
             )
-            if not hc_lines_val:
-                hc_lines_val = [-1.0]
+            hc_lines_val = sort_hc_lines(sel_hc_lines) if sel_hc_lines else [-1.0]
 
     with ou_col1:
         with st.container(border=True):
             st.markdown("**⚡ 언더오버 기준점 (기본 2.5)**")
-            sel_ou_opt = st.selectbox("언오버 기준점 선택", ou_options, index=ou_options.index(2.5) if 2.5 in ou_options else 2, key="t3_sel_ou_line")
+            sel_ou_opt = st.selectbox(
+                "언오버 기준점 선택",
+                OU_OPTIONS,
+                key="t3_sel_ou_line"
+            )
             ou_line_val = float(sel_ou_opt)
 
     st.markdown("---")
@@ -543,7 +557,6 @@ def render_tab3(spreadsheet_id, bookmakers, overseas_bookmakers, tol):
                             ov_str = f"{round((ov_all/ou_cnt_all)*100, 1)}% ({ov_all}회)"
                             un_str = f"{round((un_all/ou_cnt_all)*100, 1)}% ({un_all}회)"
 
-                        # 동일 리그 필터링
                         if lg_col and "_lg_upper" in matched_all_df.columns:
                             matched_target_df = matched_all_df[matched_all_df["_lg_upper"] == target_lg_upper]
                             m_count_target = len(matched_target_df)
