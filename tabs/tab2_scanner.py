@@ -83,8 +83,9 @@ def build_scan_row_by_sheet_headers(header_row, base_info_list, odds_dict, fallb
         c_oa = oa if oa > 0 else ""
         row.extend([c_oh, c_od, c_oa])
 
-    # AG열(핸디캡기준), AH열(언오버기준) 추가
-    row.extend([hc_str, ou_val])
+    # AG열(핸디캡기준), AH열(언오버기준) 추가 (앞에 '를 붙여 구글 시트 수식 에러 방지)
+    hc_safe = f"'{hc_str}" if str(hc_str).strip() else ""
+    row.extend([hc_safe, ou_val])
     return row
 
 
