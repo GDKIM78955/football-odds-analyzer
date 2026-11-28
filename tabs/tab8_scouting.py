@@ -802,10 +802,10 @@ def render_tab8_scouting(spreadsheet_id, overseas_bookmakers):
                 "r5_gf": r5_gf, "r5_xg": r5_xg, "r5_gf_diff": round(r5_gf - avg_gf, 2), "r5_xg_diff": round(r5_xg - avg_xg, 2),
                 "tags": tags
             }
-            st.session_state["t8_last_rpt"] = rpt
+            st.session_state["t8_last_rpt_v3"] = rpt
 
-    if "t8_last_rpt" in st.session_state:
-        rpt = st.session_state["t8_last_rpt"]
+    if "t8_last_rpt_v3" in st.session_state:
+        rpt = st.session_state["t8_last_rpt_v3"]
         st.markdown("---")
         m1, m2, m3, m4 = st.columns(4)
         m1.metric("시즌 성적 (승점 vs xPts)", f"{rpt['w']}승 {rpt['d']}무 {rpt['l']}패", f"{rpt['pts']}점 vs {rpt['xpts']}점 ({rpt['pts_diff']:+.1f})")
