@@ -446,7 +446,7 @@ def _generate_charts_image(rpt, theme_mode="dark"):
     plt.close(fig)
     png_bytes = buf.getvalue()
     b64 = base64.b64encode(png_bytes).decode("utf-8")
-    return f"data:image/png;base64,{b64}", png_bytes
+return f"data:image/png;base64,{b64}", png_bytes
 def generate_naver_scouting_infographic(rpt, theme_mode="dark"):
     is_dark = (theme_mode == "dark")
 
