@@ -7,6 +7,8 @@ import tabs.tab3_analysis as t3
 import tabs.tab4_team_stats as t4
 import tabs.tab5_h2h as t5
 import tabs.tab7_top20 as t7
+import tabs.tab8_scouting as t8
+import tabs.tab9_admin as t9
 
 # 하위 폴더(tabs/) 파일이 수정되었을 때 서버 재부팅 없이 즉시 자동 반영되도록 감지
 _TAB_MODULES = [
@@ -16,6 +18,8 @@ _TAB_MODULES = [
     ("tabs/tab4_team_stats.py", t4),
     ("tabs/tab5_h2h.py", t5),
     ("tabs/tab7_top20.py", t7),
+    ("tabs/tab8_scouting.py", t8),
+    ("tabs/tab9_admin.py", t9),
 ]
 if "_tab_mtimes" not in st.session_state:
     st.session_state._tab_mtimes = {}
@@ -99,14 +103,16 @@ with st.sidebar:
         st.cache_data.clear()
         st.rerun()
 
-# 6개 탭 구성 (tab7_top20.py 연결 완료)
-tab_input, tab_scanner, tab_analysis, tab_team_stats, tab_h2h, tab_top20 = st.tabs([
+# 8개 탭 구성 (스카우팅 리포트 & 팀명 일괄 수정 추가)
+tab_input, tab_scanner, tab_analysis, tab_team_stats, tab_h2h, tab_top20, tab_scouting, tab_admin = st.tabs([
     "📝 경기 데이터 입력 & 저장",
     "📡 라운드 경기 자동 스캐너 & 추천픽",
     "📊 9개사 동일 배당 분석",
     "📈 팀별 세부내용 평균계산기",
     "⚔️ 홈 vs 원정 맞대결 종합분석",
-    "🏆 당일 최우선 TOP 20 픽"
+    "🏆 당일 최우선 TOP 20 픽",
+    "📋 팀 종합 스카우팅 리포트",
+    "🛠️ 시트 팀명 일괄 수정"
 ])
 
 with tab_input:
@@ -126,3 +132,9 @@ with tab_h2h:
 
 with tab_top20:
     t7.render_tab6_top20(SPREADSHEET_ID, BOOKMAKERS, OVERSEAS_BOOKMAKERS, tol)
+
+with tab_scouting:
+    t8.render_tab8_scouting(SPREADSHEET_ID, OVERSEAS_BOOKMAKERS)
+
+with tab_admin:
+    t9.render_tab9_admin(SPREADSHEET_ID, BOOKMAKERS)
