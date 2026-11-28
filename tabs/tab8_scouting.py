@@ -1,15 +1,23 @@
+import base64
+import io
 import math
+import os
 import re
+from collections import Counter, deque
+import requests
 import streamlit as st
 import pandas as pd
 import numpy as np
-from collections import Counter
-from database import load_sheet_data
+from PIL import Image
+from google.auth.transport.requests import Request
+from database import get_gspread_client, load_sheet_data
 from infographics import render_clipboard_component
 from tabs.tab2_scanner import (
     HC_OPTIONS, OU_OPTIONS, format_hc_label, sort_hc_lines
 )
 from tabs.tab3_analysis import normalize_bm_dataframe
+
+LOGO_FOLDER_ID = "1jhKbgnrWEK3t0rQuP9OYTryYrI56Ujye"
 
 
 def _to_float(val, default=0.0):
@@ -20,6 +28,10 @@ def _to_float(val, default=0.0):
         return float(s)
     except Exception:
         return default
+
+
+def _norm_team_key(name):
+    return re.sub(r"[\s_\-\.]", "", str(name)).lower()
 
 
 def _norm_date(d_str):
@@ -53,6 +65,152 @@ def _poisson_xpts(xg, xga):
             elif i == j:
                 draw_p += prob
     return win_p * 3.0 + draw_p * 1.0
+
+
+@st.cache_data(ttl=1800, show_spinner=False)
+def _load_drive_logo_map(folder_id):
+    """구글 드라이브 로고 폴더(하위 폴더 1단계 포함)에서 {팀명: 이미지URL} 딕셔너리 생성"""
+    logo_map = {}
+    try:
+        client = get_gspread_client()
+        if not client:
+            return logo_map
+
+        creds = getattr(client, "auth", None) or getattr(getattr(client, "http_client", None), "auth", None)
+        if creds is None:
+            return logo_map
+
+        if hasattr(creds, "valid") and not creds.valid:
+            creds.refresh(Request())
+        token = getattr(creds, "token", None) or getattr(creds, "access_token", None)
+        if not token:
+            return logo_map
+
+        headers = {"Authorization": f"Bearer {token}"}
+
+        def _fetch_folder_items(fid):
+            items = []
+            page_token = None
+            while True:
+                params = {
+                    "q": f"'{fid}' in parents and trashed = false",
+                    "fields": "nextPageToken, files(id, name, mimeType)",
+                    "pageSize": 1000,
+                    "supportsAllDrives": "true",
+                    "includeItemsFromAllDrives": "true",
+                }
+                if page_token:
+                    params["pageToken"] = page_token
+                resp = requests.get("https://www.googleapis.com/drive/v3/files", headers=headers, params=params, timeout=10)
+                if resp.status_code != 200:
+                    break
+                data = resp.json()
+                items.extend(data.get("files", []))
+                page_token = data.get("nextPageToken")
+                if not page_token:
+                    break
+            return items
+
+        root_items = _fetch_folder_items(folder_id)
+        all_files = []
+        sub_folders = []
+        for it in root_items:
+            if it.get("mimeType") == "application/vnd.google-apps.folder":
+                sub_folders.append(it["id"])
+            else:
+                all_files.append(it)
+
+        for sf_id in sub_folders:
+            all_files.extend(_fetch_folder_items(sf_id))
+
+        for f in all_files:
+            mime = str(f.get("mimeType", ""))
+            fname = str(f.get("name", ""))
+            fid = str(f.get("id", ""))
+            if not fid or not fname:
+                continue
+            if mime.startswith("image/") or fname.lower().endswith((".png", ".jpg", ".jpeg", ".webp", ".gif", ".svg")):
+                base_name = os.path.splitext(fname)[0].strip()
+                img_url = f"https://lh3.googleusercontent.com/d/{fid}=w160"
+                logo_map[base_name] = img_url
+                logo_map[_norm_team_key(base_name)] = img_url
+    except Exception:
+        pass
+    return logo_map
+
+
+def _get_team_logo_url(logo_map, team_name):
+    if not logo_map or not team_name:
+        return ""
+    t_clean = str(team_name).strip()
+    return logo_map.get(t_clean) or logo_map.get(_norm_team_key(t_clean), "")
+
+
+@st.cache_data(ttl=1800, show_spinner=False)
+def _make_transparent_logo_data_uri(img_url, tolerance=38):
+    """네 모서리 바깥쪽 배경색만 감지해 투명 PNG(base64)로 변환 (엠블럼 내부 흰색 보호)"""
+    if not img_url:
+        return ""
+    try:
+        resp = requests.get(img_url, timeout=10)
+        if resp.status_code != 200:
+            return img_url
+
+        img = Image.open(io.BytesIO(resp.content)).convert("RGBA")
+        w, h = img.size
+        if w == 0 or h == 0:
+            return img_url
+
+        px = img.load()
+        corners = [px[0, 0], px[w - 1, 0], px[0, h - 1], px[w - 1, h - 1]]
+
+        # 이미 투명 배경인 PNG라면 그대로 PNG base64 반환
+        if all(c[3] < 20 for c in corners):
+            buf = io.BytesIO()
+            img.save(buf, format="PNG")
+            b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
+            return f"data:image/png;base64,{b64}"
+
+        # 네 모서리 중 불투명한 픽셀을 배경 기준색으로 설정
+        opaque_corners = [c for c in corners if c[3] >= 20]
+        bg_r = int(np.mean([c[0] for c in opaque_corners]))
+        bg_g = int(np.mean([c[1] for c in opaque_corners]))
+        bg_b = int(np.mean([c[2] for c in opaque_corners]))
+
+        def _is_bg(r, g, b, a):
+            if a < 20:
+                return True
+            return (abs(r - bg_r) + abs(g - bg_g) + abs(b - bg_b)) <= (tolerance * 3)
+
+        visited = [[False] * w for _ in range(h)]
+        q = deque()
+
+        for sx, sy in [(0, 0), (w - 1, 0), (0, h - 1), (w - 1, h - 1)]:
+            if _is_bg(*px[sx, sy]):
+                visited[sy][sx] = True
+                q.append((sx, sy))
+
+        while q:
+            cx, cy = q.popleft()
+            px[cx, cy] = (0, 0, 0, 0)
+            for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                nx, ny = cx + dx, cy + dy
+                if 0 <= nx < w and 0 <= ny < h and not visited[ny][nx]:
+                    if _is_bg(*px[nx, ny]):
+                        visited[ny][nx] = True
+                        q.append((nx, ny))
+
+        # 투명 여백 자동 크롭 후 깔끔하게 저장
+        bbox = img.getbbox()
+        if bbox:
+            img = img.crop(bbox)
+
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
+        return f"data:image/png;base64,{b64}"
+    except Exception:
+        return img_url
 
 
 def _extract_bm_cols(df_norm):
@@ -135,14 +293,34 @@ def _lookup_odds(lookup_tuple, norm_dt, sn, hm, aw):
 
 def generate_naver_scouting_infographic(rpt):
     tags_html = "".join(
-        f"<td bgcolor='#1e293b' style='background-color: #1e293b; border: 1px solid #475569; color: #38bdf8; font-size: 11px; font-weight: 800; padding: 4px 8px; border-radius: 5px; white-space: nowrap; text-decoration: none;'>{t}</td><td width='5'></td>"
+        f"<td bgcolor='#1e293b' style='background-color: #1e293b; border: 1px solid #475569; color: #38bdf8; font-size: 12px; font-weight: 800; padding: 5px 10px; border-radius: 5px; white-space: nowrap; text-decoration: none;'>{t}</td><td width='6'></td>"
         for t in rpt["tags"][:5]
     )
 
     recent_cells = ""
     for res_ch in rpt["recent5_list"]:
         bg = "#2563eb" if res_ch == "승" else ("#10b981" if res_ch == "무" else "#e11d48")
-        recent_cells += f"<td bgcolor='{bg}' style='background-color: {bg}; color: #ffffff; font-size: 12px; font-weight: 800; padding: 4px 8px; border-radius: 4px; text-align: center; text-decoration: none;'>{res_ch}</td><td width='4'></td>"
+        recent_cells += f"<td bgcolor='{bg}' style='background-color: {bg}; color: #ffffff; font-size: 13px; font-weight: 800; padding: 5px 9px; border-radius: 5px; text-align: center; text-decoration: none;'>{res_ch}</td><td width='4'></td>"
+
+    logo_src = rpt.get("logo_src", "")
+    is_transparent = rpt.get("logo_transparent", True)
+    if logo_src:
+        if is_transparent:
+            logo_cell_html = f"""
+            <td bgcolor="#0f172a" style="background-color: #0f172a; padding: 18px 0 18px 20px; vertical-align: middle; width: 68px; text-align: center;">
+                <img src="{logo_src}" alt="{rpt['team']}" width="58" height="58" style="width: 58px; height: 58px; object-fit: contain; vertical-align: middle; border: 0;" />
+            </td>
+            """
+        else:
+            logo_cell_html = f"""
+            <td bgcolor="#0f172a" style="background-color: #0f172a; padding: 18px 0 18px 20px; vertical-align: middle; width: 68px;">
+                <div style="width: 58px; height: 58px; background-color: #ffffff; border-radius: 12px; text-align: center; line-height: 58px; padding: 4px; box-sizing: border-box;">
+                    <img src="{logo_src}" alt="{rpt['team']}" width="50" height="50" style="width: 50px; height: 50px; object-fit: contain; vertical-align: middle; border: 0;" />
+                </div>
+            </td>
+            """
+    else:
+        logo_cell_html = ""
 
     top_scores_str = " / ".join([f"{sc} ({cnt}회)" for sc, cnt in rpt["top_scores"]]) if rpt["top_scores"] else "-"
     xg_fg = "#1d4ed8" if rpt["xg_diff"] >= 0.1 else ("#e11d48" if rpt["xg_diff"] <= -0.1 else "#334155")
@@ -169,36 +347,37 @@ def generate_naver_scouting_infographic(rpt):
         odd_txt = f"{m['team_bm_odd']:.2f}" if m["team_bm_odd"] >= 1.01 else "-"
         log_rows_html += f"""
         <tr>
-            <td bgcolor="{bg_l}" style="background-color: {bg_l}; padding: 7px 6px; font-size: 11px; color: #475569; text-align: center; border-bottom: 1px solid #e2e8f0; text-decoration: none;">{m['date']}</td>
-            <td bgcolor="{bg_l}" style="background-color: {bg_l}; padding: 7px 6px; font-size: 11px; color: #0f172a; font-weight: 700; text-align: center; border-bottom: 1px solid #e2e8f0; text-decoration: none;">{ha_badge}</td>
-            <td bgcolor="{bg_l}" style="background-color: {bg_l}; padding: 7px 8px; font-size: 12px; color: #0f172a; font-weight: 700; text-align: left; border-bottom: 1px solid #e2e8f0; text-decoration: none;">{m['opp']}</td>
-            <td bgcolor="{bg_l}" style="background-color: {bg_l}; padding: 7px 6px; font-size: 12px; color: {res_fg_l}; font-weight: 800; text-align: center; border-bottom: 1px solid #e2e8f0; text-decoration: none;">{int(m['gf'])}:{int(m['ga'])} ({m['res']})</td>
-            <td bgcolor="{bg_l}" style="background-color: {bg_l}; padding: 7px 6px; font-size: 11px; color: #334155; text-align: center; border-bottom: 1px solid #e2e8f0; text-decoration: none;">{m['xg']:.2f} / {m['xga']:.2f}</td>
-            <td bgcolor="{bg_l}" style="background-color: {bg_l}; padding: 7px 6px; font-size: 11px; color: #334155; font-weight: 700; text-align: center; border-bottom: 1px solid #e2e8f0; text-decoration: none;">{odd_txt}</td>
+            <td bgcolor="{bg_l}" style="background-color: {bg_l}; padding: 9px 6px; font-size: 13px; color: #475569; text-align: center; border-bottom: 1px solid #e2e8f0; text-decoration: none;">{m['date']}</td>
+            <td bgcolor="{bg_l}" style="background-color: {bg_l}; padding: 9px 6px; font-size: 13px; color: #0f172a; font-weight: 700; text-align: center; border-bottom: 1px solid #e2e8f0; text-decoration: none;">{ha_badge}</td>
+            <td bgcolor="{bg_l}" style="background-color: {bg_l}; padding: 9px 10px; font-size: 13px; color: #0f172a; font-weight: 700; text-align: left; border-bottom: 1px solid #e2e8f0; text-decoration: none;">{m['opp']}</td>
+            <td bgcolor="{bg_l}" style="background-color: {bg_l}; padding: 9px 6px; font-size: 14px; color: {res_fg_l}; font-weight: 800; text-align: center; border-bottom: 1px solid #e2e8f0; text-decoration: none;">{int(m['gf'])}:{int(m['ga'])} ({m['res']})</td>
+            <td bgcolor="{bg_l}" style="background-color: {bg_l}; padding: 9px 6px; font-size: 13px; color: #334155; text-align: center; border-bottom: 1px solid #e2e8f0; text-decoration: none;">{m['xg']:.2f} / {m['xga']:.2f}</td>
+            <td bgcolor="{bg_l}" style="background-color: {bg_l}; padding: 9px 6px; font-size: 13px; color: #334155; font-weight: 700; text-align: center; border-bottom: 1px solid #e2e8f0; text-decoration: none;">{odd_txt}</td>
         </tr>
         """
 
     html = f"""
-    <div style="font-family: 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif; max-width: 740px; margin: 0 auto; background-color: #ffffff; border: 2px solid #1e293b; border-radius: 10px; overflow: hidden;">
+    <div style="font-family: 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif; max-width: 800px; margin: 0 auto; background-color: #ffffff; border: 2px solid #1e293b; border-radius: 12px; overflow: hidden;">
         <!-- 상단 배너 -->
         <table width="100%" cellpadding="0" cellspacing="0" style="width: 100%; border-collapse: collapse; background-color: #0f172a; color: #ffffff;">
             <tr>
-                <td bgcolor="#0f172a" style="background-color: #0f172a; padding: 18px 20px; vertical-align: middle;">
-                    <div style="font-size: 11px; color: #fbbf24; font-weight: 800; letter-spacing: 0.6px; margin-bottom: 4px; text-decoration: none;">
+                {logo_cell_html}
+                <td bgcolor="#0f172a" style="background-color: #0f172a; padding: 20px 18px; vertical-align: middle;">
+                    <div style="font-size: 12px; color: #fbbf24; font-weight: 800; letter-spacing: 0.6px; margin-bottom: 5px; text-decoration: none;">
                         📋 TEAM COMPREHENSIVE SCOUTING REPORT ({rpt['season']} · {rpt['league']})
                     </div>
-                    <div style="font-size: 22px; font-weight: 800; color: #ffffff; line-height: 1.3; text-decoration: none;">
+                    <div style="font-size: 25px; font-weight: 800; color: #ffffff; line-height: 1.3; text-decoration: none;">
                         {rpt['team']} 종합 전력 분석 리포트
                     </div>
-                    <div style="font-size: 12px; font-weight: 600; color: #cbd5e1; margin-top: 4px; text-decoration: none;">
+                    <div style="font-size: 13px; font-weight: 600; color: #cbd5e1; margin-top: 5px; text-decoration: none;">
                         총 {rpt['total_n']}경기 · {rpt['streak_text']} · {rpt['ha_gap_label']}
                     </div>
                     <table cellpadding="0" cellspacing="0" style="border-collapse: collapse; margin-top: 10px;">
                         <tr>{tags_html}</tr>
                     </table>
                 </td>
-                <td bgcolor="#0f172a" style="background-color: #0f172a; padding: 18px 20px; text-align: right; vertical-align: middle; width: 150px; white-space: nowrap;">
-                    <div style="font-size: 11px; color: #94a3b8; font-weight: 700; margin-bottom: 5px; text-decoration: none;">최근 5경기 흐름</div>
+                <td bgcolor="#0f172a" style="background-color: #0f172a; padding: 20px 20px 20px 8px; text-align: right; vertical-align: middle; width: 165px; white-space: nowrap;">
+                    <div style="font-size: 12px; color: #94a3b8; font-weight: 700; margin-bottom: 6px; text-decoration: none;">최근 5경기 흐름</div>
                     <table align="right" cellpadding="0" cellspacing="0" style="border-collapse: collapse;">
                         <tr>{recent_cells}</tr>
                     </table>
@@ -209,30 +388,30 @@ def generate_naver_scouting_infographic(rpt):
         <!-- 핵심 KPI 3단 바 -->
         <table width="100%" cellpadding="0" cellspacing="0" style="width: 100%; border-collapse: collapse; background-color: #f1f5f9; border-bottom: 1px solid #cbd5e1;">
             <tr>
-                <td bgcolor="#f1f5f9" style="background-color: #f1f5f9; width: 34%; padding: 12px 10px; text-align: center; border-right: 1px solid #cbd5e1;">
-                    <div style="font-size: 11px; color: #475569; font-weight: 700; margin-bottom: 3px;">📊 시즌 성적 & 기대승점(xPts)</div>
-                    <div style="font-size: 14px; font-weight: 800; color: #0f172a;">
+                <td bgcolor="#f1f5f9" style="background-color: #f1f5f9; width: 34%; padding: 14px 10px; text-align: center; border-right: 1px solid #cbd5e1;">
+                    <div style="font-size: 12px; color: #475569; font-weight: 700; margin-bottom: 4px;">📊 시즌 성적 &amp; 기대승점(xPts)</div>
+                    <div style="font-size: 17px; font-weight: 800; color: #0f172a;">
                         {rpt['w']}승 {rpt['d']}무 {rpt['l']}패 <span style="color: #2563eb;">({rpt['win_pct']}%)</span>
                     </div>
-                    <div style="font-size: 11px; color: #475569; font-weight: 700; margin-top: 2px;">
+                    <div style="font-size: 12px; color: #475569; font-weight: 700; margin-top: 4px;">
                         승점 {rpt['pts']}점 vs xPts {rpt['xpts']}점 (<span style="color: {xpts_fg};">{rpt['pts_diff']:+.1f}</span>)
                     </div>
                 </td>
-                <td bgcolor="#f1f5f9" style="background-color: #f1f5f9; width: 33%; padding: 12px 10px; text-align: center; border-right: 1px solid #cbd5e1;">
-                    <div style="font-size: 11px; color: #475569; font-weight: 700; margin-bottom: 3px;">⚽ 평균 득점 / 실점</div>
-                    <div style="font-size: 14px; font-weight: 800; color: #0f172a;">
+                <td bgcolor="#f1f5f9" style="background-color: #f1f5f9; width: 33%; padding: 14px 10px; text-align: center; border-right: 1px solid #cbd5e1;">
+                    <div style="font-size: 12px; color: #475569; font-weight: 700; margin-bottom: 4px;">⚽ 평균 득점 / 실점</div>
+                    <div style="font-size: 17px; font-weight: 800; color: #0f172a;">
                         <span style="color: #1d4ed8;">{rpt['avg_gf']}골</span> / <span style="color: #be123c;">{rpt['avg_ga']}실점</span>
                     </div>
-                    <div style="font-size: 11px; color: #475569; font-weight: 600; margin-top: 2px;">
+                    <div style="font-size: 12px; color: #475569; font-weight: 600; margin-top: 4px;">
                         2득점↑ {rpt['gf2_pct']}% · 2실점↑ {rpt['ga2_pct']}% · CS {rpt['cs_pct']}%
                     </div>
                 </td>
-                <td bgcolor="#f1f5f9" style="background-color: #f1f5f9; width: 33%; padding: 12px 10px; text-align: center;">
-                    <div style="font-size: 11px; color: #475569; font-weight: 700; margin-bottom: 3px;">💰 배당 수익률 (배트맨 {rpt['bm_matched_n']}건)</div>
-                    <div style="font-size: 14px; font-weight: 800; color: {roi_fg};">
+                <td bgcolor="#f1f5f9" style="background-color: #f1f5f9; width: 33%; padding: 14px 10px; text-align: center;">
+                    <div style="font-size: 12px; color: #475569; font-weight: 700; margin-bottom: 4px;">💰 배당 수익률 (배트맨 {rpt['bm_matched_n']}건)</div>
+                    <div style="font-size: 17px; font-weight: 800; color: {roi_fg};">
                         승 ROI {rpt['roi_pct']:+.1f}%
                     </div>
-                    <div style="font-size: 11px; color: #475569; font-weight: 600; margin-top: 2px;">
+                    <div style="font-size: 12px; color: #475569; font-weight: 600; margin-top: 4px;">
                         정배 승률 {rpt['fav_win_pct']}% · 역배 승점 {rpt['dog_pts_pct']}%
                     </div>
                 </td>
@@ -242,80 +421,80 @@ def generate_naver_scouting_infographic(rpt):
         <!-- 섹션 1: 홈 vs 원정 정밀 비교표 -->
         <table width="100%" cellpadding="0" cellspacing="0" style="width: 100%; border-collapse: collapse;">
             <tr>
-                <th bgcolor="#cbd5e1" colspan="7" style="background-color: #cbd5e1; padding: 8px 14px; font-size: 12px; color: #1e293b; text-align: left; border-bottom: 1px solid #94a3b8;">
+                <th bgcolor="#cbd5e1" colspan="7" style="background-color: #cbd5e1; padding: 10px 16px; font-size: 14px; color: #1e293b; text-align: left; border-bottom: 1px solid #94a3b8;">
                     🏠 홈 vs 원정 정밀 비교표 (설정 언오버 {rpt['sel_ou']} 기준)
                 </th>
             </tr>
             <tr>
-                <th bgcolor="#e2e8f0" style="padding: 6px; font-size: 11px; color: #1e293b; text-align: center; border-bottom: 1px solid #cbd5e1;">구분</th>
-                <th bgcolor="#e2e8f0" style="padding: 6px; font-size: 11px; color: #1e293b; text-align: center; border-bottom: 1px solid #cbd5e1;">전적 (승률)</th>
-                <th bgcolor="#e2e8f0" style="padding: 6px; font-size: 11px; color: #1e293b; text-align: center; border-bottom: 1px solid #cbd5e1;">평균 득/실</th>
-                <th bgcolor="#e2e8f0" style="padding: 6px; font-size: 11px; color: #1e293b; text-align: center; border-bottom: 1px solid #cbd5e1;">xG / xGA</th>
-                <th bgcolor="#e2e8f0" style="padding: 6px; font-size: 11px; color: #1e293b; text-align: center; border-bottom: 1px solid #cbd5e1;">점유율</th>
-                <th bgcolor="#e2e8f0" style="padding: 6px; font-size: 11px; color: #1e293b; text-align: center; border-bottom: 1px solid #cbd5e1;">{rpt['sel_ou']} 오버</th>
-                <th bgcolor="#e2e8f0" style="padding: 6px; font-size: 11px; color: #1e293b; text-align: center; border-bottom: 1px solid #cbd5e1;">경기당 승점</th>
+                <th bgcolor="#e2e8f0" style="padding: 8px 6px; font-size: 13px; color: #1e293b; text-align: center; border-bottom: 1px solid #cbd5e1;">구분</th>
+                <th bgcolor="#e2e8f0" style="padding: 8px 6px; font-size: 13px; color: #1e293b; text-align: center; border-bottom: 1px solid #cbd5e1;">전적 (승률)</th>
+                <th bgcolor="#e2e8f0" style="padding: 8px 6px; font-size: 13px; color: #1e293b; text-align: center; border-bottom: 1px solid #cbd5e1;">평균 득/실</th>
+                <th bgcolor="#e2e8f0" style="padding: 8px 6px; font-size: 13px; color: #1e293b; text-align: center; border-bottom: 1px solid #cbd5e1;">xG / xGA</th>
+                <th bgcolor="#e2e8f0" style="padding: 8px 6px; font-size: 13px; color: #1e293b; text-align: center; border-bottom: 1px solid #cbd5e1;">점유율</th>
+                <th bgcolor="#e2e8f0" style="padding: 8px 6px; font-size: 13px; color: #1e293b; text-align: center; border-bottom: 1px solid #cbd5e1;">{rpt['sel_ou']} 오버</th>
+                <th bgcolor="#e2e8f0" style="padding: 8px 6px; font-size: 13px; color: #1e293b; text-align: center; border-bottom: 1px solid #cbd5e1;">경기당 승점</th>
             </tr>
             <tr>
-                <td bgcolor="#ffffff" style="padding: 8px 6px; font-size: 12px; font-weight: 800; color: #1d4ed8; text-align: center; border-bottom: 1px solid #e2e8f0;">🏠 홈 ({rpt['h_n']}전)</td>
-                <td bgcolor="#ffffff" style="padding: 8px 6px; font-size: 12px; font-weight: 700; color: #0f172a; text-align: center; border-bottom: 1px solid #e2e8f0;">{rpt['hw']}승{rpt['hd']}무{rpt['hl']}패 ({rpt['h_win_pct']}%)</td>
-                <td bgcolor="#ffffff" style="padding: 8px 6px; font-size: 12px; color: #334155; text-align: center; border-bottom: 1px solid #e2e8f0;">{rpt['h_gf']} / {rpt['h_ga']}</td>
-                <td bgcolor="#ffffff" style="padding: 8px 6px; font-size: 12px; color: #334155; text-align: center; border-bottom: 1px solid #e2e8f0;">{rpt['h_xg']} / {rpt['h_xga']}</td>
-                <td bgcolor="#ffffff" style="padding: 8px 6px; font-size: 12px; color: #334155; text-align: center; border-bottom: 1px solid #e2e8f0;">{rpt['h_poss']}%</td>
-                <td bgcolor="#ffffff" style="padding: 8px 6px; font-size: 12px; color: #e11d48; font-weight: 700; text-align: center; border-bottom: 1px solid #e2e8f0;">{rpt['h_ov_pct']}%</td>
-                <td bgcolor="#ffffff" style="padding: 8px 6px; font-size: 12px; font-weight: 800; color: #0f172a; text-align: center; border-bottom: 1px solid #e2e8f0;">{rpt['h_ppg']}점</td>
+                <td bgcolor="#ffffff" style="padding: 10px 6px; font-size: 13px; font-weight: 800; color: #1d4ed8; text-align: center; border-bottom: 1px solid #e2e8f0;">🏠 홈 ({rpt['h_n']}전)</td>
+                <td bgcolor="#ffffff" style="padding: 10px 6px; font-size: 13px; font-weight: 700; color: #0f172a; text-align: center; border-bottom: 1px solid #e2e8f0;">{rpt['hw']}승{rpt['hd']}무{rpt['hl']}패 ({rpt['h_win_pct']}%)</td>
+                <td bgcolor="#ffffff" style="padding: 10px 6px; font-size: 13px; color: #334155; text-align: center; border-bottom: 1px solid #e2e8f0;">{rpt['h_gf']} / {rpt['h_ga']}</td>
+                <td bgcolor="#ffffff" style="padding: 10px 6px; font-size: 13px; color: #334155; text-align: center; border-bottom: 1px solid #e2e8f0;">{rpt['h_xg']} / {rpt['h_xga']}</td>
+                <td bgcolor="#ffffff" style="padding: 10px 6px; font-size: 13px; color: #334155; text-align: center; border-bottom: 1px solid #e2e8f0;">{rpt['h_poss']}%</td>
+                <td bgcolor="#ffffff" style="padding: 10px 6px; font-size: 13px; color: #e11d48; font-weight: 700; text-align: center; border-bottom: 1px solid #e2e8f0;">{rpt['h_ov_pct']}%</td>
+                <td bgcolor="#ffffff" style="padding: 10px 6px; font-size: 13px; font-weight: 800; color: #0f172a; text-align: center; border-bottom: 1px solid #e2e8f0;">{rpt['h_ppg']}점</td>
             </tr>
             <tr>
-                <td bgcolor="#f8fafc" style="padding: 8px 6px; font-size: 12px; font-weight: 800; color: #be123c; text-align: center; border-bottom: 1px solid #cbd5e1;">🚗 원정 ({rpt['a_n']}전)</td>
-                <td bgcolor="#f8fafc" style="padding: 8px 6px; font-size: 12px; font-weight: 700; color: #0f172a; text-align: center; border-bottom: 1px solid #cbd5e1;">{rpt['aw']}승{rpt['ad']}무{rpt['al']}패 ({rpt['a_win_pct']}%)</td>
-                <td bgcolor="#f8fafc" style="padding: 8px 6px; font-size: 12px; color: #334155; text-align: center; border-bottom: 1px solid #cbd5e1;">{rpt['a_gf']} / {rpt['a_ga']}</td>
-                <td bgcolor="#f8fafc" style="padding: 8px 6px; font-size: 12px; color: #334155; text-align: center; border-bottom: 1px solid #cbd5e1;">{rpt['a_xg']} / {rpt['a_xga']}</td>
-                <td bgcolor="#f8fafc" style="padding: 8px 6px; font-size: 12px; color: #334155; text-align: center; border-bottom: 1px solid #cbd5e1;">{rpt['a_poss']}%</td>
-                <td bgcolor="#f8fafc" style="padding: 8px 6px; font-size: 12px; color: #e11d48; font-weight: 700; text-align: center; border-bottom: 1px solid #cbd5e1;">{rpt['a_ov_pct']}%</td>
-                <td bgcolor="#f8fafc" style="padding: 8px 6px; font-size: 12px; font-weight: 800; color: #0f172a; text-align: center; border-bottom: 1px solid #cbd5e1;">{rpt['a_ppg']}점</td>
+                <td bgcolor="#f8fafc" style="padding: 10px 6px; font-size: 13px; font-weight: 800; color: #be123c; text-align: center; border-bottom: 1px solid #cbd5e1;">🚗 원정 ({rpt['a_n']}전)</td>
+                <td bgcolor="#f8fafc" style="padding: 10px 6px; font-size: 13px; font-weight: 700; color: #0f172a; text-align: center; border-bottom: 1px solid #cbd5e1;">{rpt['aw']}승{rpt['ad']}무{rpt['al']}패 ({rpt['a_win_pct']}%)</td>
+                <td bgcolor="#f8fafc" style="padding: 10px 6px; font-size: 13px; color: #334155; text-align: center; border-bottom: 1px solid #cbd5e1;">{rpt['a_gf']} / {rpt['a_ga']}</td>
+                <td bgcolor="#f8fafc" style="padding: 10px 6px; font-size: 13px; color: #334155; text-align: center; border-bottom: 1px solid #cbd5e1;">{rpt['a_xg']} / {rpt['a_xga']}</td>
+                <td bgcolor="#f8fafc" style="padding: 10px 6px; font-size: 13px; color: #334155; text-align: center; border-bottom: 1px solid #cbd5e1;">{rpt['a_poss']}%</td>
+                <td bgcolor="#f8fafc" style="padding: 10px 6px; font-size: 13px; color: #e11d48; font-weight: 700; text-align: center; border-bottom: 1px solid #cbd5e1;">{rpt['a_ov_pct']}%</td>
+                <td bgcolor="#f8fafc" style="padding: 10px 6px; font-size: 13px; font-weight: 800; color: #0f172a; text-align: center; border-bottom: 1px solid #cbd5e1;">{rpt['a_ppg']}점</td>
             </tr>
         </table>
 
         <!-- 섹션 2: 공수 퀄리티 / 키퍼 / 전후반 / 멘탈 -->
         <table width="100%" cellpadding="0" cellspacing="0" style="width: 100%; border-collapse: collapse;">
             <tr>
-                <th bgcolor="#cbd5e1" colspan="2" style="background-color: #cbd5e1; padding: 8px 14px; font-size: 12px; color: #1e293b; text-align: left; border-bottom: 1px solid #94a3b8;">
-                    ⚔️ 공격·수비·키퍼 퀄리티 & 전·후반 패턴 · 멘탈 지표
+                <th bgcolor="#cbd5e1" colspan="2" style="background-color: #cbd5e1; padding: 10px 16px; font-size: 14px; color: #1e293b; text-align: left; border-bottom: 1px solid #94a3b8;">
+                    ⚔️ 공격·수비·키퍼 퀄리티 &amp; 전·후반 패턴 · 멘탈 지표
                 </th>
             </tr>
             <tr>
-                <td bgcolor="#ffffff" style="background-color: #ffffff; width: 50%; padding: 10px 14px; border-bottom: 1px solid #e2e8f0; border-right: 1px solid #e2e8f0; font-size: 12px; color: #334155; line-height: 1.7; vertical-align: top;">
+                <td bgcolor="#ffffff" style="background-color: #ffffff; width: 50%; padding: 14px 16px; border-bottom: 1px solid #e2e8f0; border-right: 1px solid #e2e8f0; font-size: 14px; color: #334155; line-height: 1.8; vertical-align: top;">
                     <b style="color: #0f172a;">• xG 결정력:</b> xG {rpt['avg_xg']} vs 득점 {rpt['avg_gf']} (<b style="color: {xg_fg};">{rpt['xg_diff']:+.2f}</b>)<br>
                     <b style="color: #0f172a;">• xGA 수비력:</b> xGA {rpt['avg_xga']} vs 실점 {rpt['avg_ga']} (<b style="color: {xga_fg};">{rpt['xga_diff']:+.2f}</b>)<br>
                     <b style="color: #0f172a;">• 압도 지표:</b> xGD <b>{rpt['xgd']:+.2f}</b> · 유효슈팅 마진 <b>{rpt['sot_margin']:+.1f}회</b><br>
-                    <b style="color: #0f172a;">• 공격 슈팅 효율:</b> 슈팅당 xG <b>{rpt['xg_per_shot']}</b> · 정확도 <b>{rpt['shot_acc_pct']}%</b> · 전환율 <b>{rpt['sot_conv_pct']}%</b><br>
-                    <b style="color: #0f172a;">• 수비/키퍼 효율:</b> 허용 슈팅당 xGA <b>{rpt['xga_per_shot']}</b> · 키퍼 선방률 <b style="color: #047857;">{rpt['gk_save_pct']}%</b><br>
-                    <b style="color: #0f172a;">• 리그 내 순위:</b> 득점 <b>{rpt['rank_gf']}</b> · 최소실점 <b>{rpt['rank_ga']}</b> · xG <b>{rpt['rank_xg']}</b>
+                    <b style="color: #0f172a;">• 공격 슈팅:</b> 슈팅당 xG <b>{rpt['xg_per_shot']}</b> · 정확도 <b>{rpt['shot_acc_pct']}%</b> · 전환율 <b>{rpt['sot_conv_pct']}%</b><br>
+                    <b style="color: #0f172a;">• 수비/키퍼:</b> 허용 xGA/슛 <b>{rpt['xga_per_shot']}</b> · 선방률 <b style="color: #047857;">{rpt['gk_save_pct']}%</b><br>
+                    <b style="color: #0f172a;">• 리그 순위:</b> 득점 <b>{rpt['rank_gf']}</b> · 최소실점 <b>{rpt['rank_ga']}</b> · xG <b>{rpt['rank_xg']}</b>
                 </td>
-                <td bgcolor="#ffffff" style="background-color: #ffffff; width: 50%; padding: 10px 14px; border-bottom: 1px solid #e2e8f0; font-size: 12px; color: #334155; line-height: 1.7; vertical-align: top;">
+                <td bgcolor="#ffffff" style="background-color: #ffffff; width: 50%; padding: 14px 16px; border-bottom: 1px solid #e2e8f0; font-size: 14px; color: #334155; line-height: 1.8; vertical-align: top;">
                     <b style="color: #0f172a;">• 전반 흐름:</b> 전반 득점률 <b>{rpt['fh_score_pct']}%</b> · 전반 무실점 <b>{rpt['fh_cs_pct']}%</b><br>
                     <b style="color: #0f172a;">• 후반 집중력:</b> 후반 득실마진 <b>{rpt['sh_gd_avg']:+.2f}골</b> · 후반 실점비중 <b>{rpt['sh_ga_share']}%</b><br>
                     <b style="color: #0f172a;">• 전반 리드 굳히기:</b> 승률 <b style="color: #1d4ed8;">{rpt['ht_lead_win_pct']}%</b> ({rpt['ht_lead_str']})<br>
                     <b style="color: #0f172a;">• 전반 무승부 시:</b> 승 {rpt['ht_draw_w']}% · 무 {rpt['ht_draw_d']}% · 패 {rpt['ht_draw_l']}% ({rpt['ht_draw_n']}전)<br>
                     <b style="color: #0f172a;">• 전반 열세 반격:</b> 승점 획득 <b style="color: #047857;">{rpt['ht_trail_pts_pct']}%</b> ({rpt['ht_trail_str']})<br>
-                    <b style="color: #0f172a;">• 기세/멘탈:</b> 승 직후 승률 <b>{rpt['after_win_pct']}</b> · 패 직후 반등 <b>{rpt['bounce_win_pct']}</b> (무패 {rpt['bounce_unb_pct']})
+                    <b style="color: #0f172a;">• 기세/멘탈:</b> 승 직후 <b>{rpt['after_win_pct']}</b> · 패 직후 반등 <b>{rpt['bounce_win_pct']}</b> (무패 {rpt['bounce_unb_pct']})
                 </td>
             </tr>
 
             <!-- 섹션 3: 베팅 DNA / 핸디캡 / 언오버 / 배당 반응도 -->
             <tr>
-                <th bgcolor="#cbd5e1" colspan="2" style="background-color: #cbd5e1; padding: 8px 14px; font-size: 12px; color: #1e293b; text-align: left; border-bottom: 1px solid #94a3b8;">
-                    🎯 베팅 DNA · 사용자 설정 핸디캡/언오버 · 상대전력 & 배당 반응도
+                <th bgcolor="#cbd5e1" colspan="2" style="background-color: #cbd5e1; padding: 10px 16px; font-size: 14px; color: #1e293b; text-align: left; border-bottom: 1px solid #94a3b8;">
+                    🎯 베팅 DNA · 사용자 설정 핸디캡/언오버 · 상대전력 &amp; 배당 반응도
                 </th>
             </tr>
             <tr>
-                <td bgcolor="#f8fafc" style="background-color: #f8fafc; width: 50%; padding: 10px 14px; border-bottom: 1px solid #e2e8f0; border-right: 1px solid #e2e8f0; font-size: 12px; color: #334155; line-height: 1.7; vertical-align: top;">
+                <td bgcolor="#f8fafc" style="background-color: #f8fafc; width: 50%; padding: 14px 16px; border-bottom: 1px solid #e2e8f0; border-right: 1px solid #e2e8f0; font-size: 14px; color: #334155; line-height: 1.8; vertical-align: top;">
                     <b style="color: #0f172a;">• 설정 {rpt['sel_ou']} 언오버:</b> 오버 <b style="color: #e11d48;">{rpt['sel_ov_pct']}%</b> / 언더 <b style="color: #2563eb;">{rpt['sel_un_pct']}%</b><br>
                     <b style="color: #0f172a;">• 기준점별 오버:</b> 1.5↑ <b>{rpt['ov15_pct']}%</b> · 2.5↑ <b>{rpt['ov25_pct']}%</b> · 3.5↑ <b>{rpt['ov35_pct']}%</b><br>
                     <b style="color: #0f172a;">• 양팀득점(BTTS):</b> <b>{rpt['btts_pct']}%</b> · 최다 스코어: {top_scores_str}<br>
                     <b style="color: #0f172a;">• 무승부 지수:</b> 무 {rpt['draw_pct']}% (0:0·1:1 {rpt['low_draw_cnt']}회) · 무 ROI <b style="color: {draw_roi_fg};">{rpt['draw_roi_pct']:+.1f}%</b><br>
                     {hc_lines_html}
                 </td>
-                <td bgcolor="#f8fafc" style="background-color: #f8fafc; width: 50%; padding: 10px 14px; border-bottom: 1px solid #e2e8f0; font-size: 12px; color: #334155; line-height: 1.7; vertical-align: top;">
+                <td bgcolor="#f8fafc" style="background-color: #f8fafc; width: 50%; padding: 14px 16px; border-bottom: 1px solid #e2e8f0; font-size: 14px; color: #334155; line-height: 1.8; vertical-align: top;">
                     <b style="color: #0f172a;">• 약팀 상대 (≤1.7):</b> 승률 <b>{rpt['vs_weak_pct']}</b> ({rpt['vs_weak_rec']})<br>
                     <b style="color: #0f172a;">• 호각세 (1.7~2.8):</b> 승률 <b>{rpt['vs_mid_pct']}</b> ({rpt['vs_mid_rec']})<br>
                     <b style="color: #0f172a;">• 강팀 상대 (&gt;2.8):</b> 승률 <b>{rpt['vs_strong_pct']}</b> ({rpt['vs_strong_rec']})<br>
@@ -327,12 +506,12 @@ def generate_naver_scouting_infographic(rpt):
 
             <!-- 섹션 4: 주력 전술 / 경기 스타일 / 상성 -->
             <tr>
-                <th bgcolor="#cbd5e1" colspan="2" style="background-color: #cbd5e1; padding: 8px 14px; font-size: 12px; color: #1e293b; text-align: left; border-bottom: 1px solid #94a3b8;">
+                <th bgcolor="#cbd5e1" colspan="2" style="background-color: #cbd5e1; padding: 10px 16px; font-size: 14px; color: #1e293b; text-align: left; border-bottom: 1px solid #94a3b8;">
                     ♟️ 주력 전술 · 경기 스타일 · 점유율/득점대/수비 상성
                 </th>
             </tr>
             <tr>
-                <td bgcolor="#ffffff" colspan="2" style="background-color: #ffffff; padding: 10px 14px; border-bottom: 1px solid #cbd5e1; font-size: 12px; color: #334155; line-height: 1.7;">
+                <td bgcolor="#ffffff" colspan="2" style="background-color: #ffffff; padding: 14px 16px; border-bottom: 1px solid #cbd5e1; font-size: 14px; color: #334155; line-height: 1.8;">
                     <b style="color: #0f172a;">• 주력 포메이션:</b> {tac_html} &nbsp;(전술 유연성: 총 <b>{rpt['tac_cnt']}종</b> · 주력 비중 <b>{rpt['main_tac_pct']}%</b>)<br>
                     <b style="color: #0f172a;">• 경기 스타일:</b> 평균 점유율 <b>{rpt['avg_poss']}%</b> · 패스 <b>{rpt['avg_pass']}%</b> · 경고 <b>{rpt['avg_yc']}장</b>(퇴장 {rpt['tot_rc']}회) · 상대 경고 유도 <b>{rpt['opp_avg_yc']}장</b><br>
                     <b style="color: #0f172a;">• 점유율별 승률:</b> 지공형(55%↑) <b>{rpt['pos_high_str']}</b> &nbsp;|&nbsp; 역습형(45%↓) <b>{rpt['pos_low_str']}</b><br>
@@ -345,17 +524,17 @@ def generate_naver_scouting_infographic(rpt):
         <!-- 섹션 5: 최근 5경기 상세 매치 로그 -->
         <table width="100%" cellpadding="0" cellspacing="0" style="width: 100%; border-collapse: collapse;">
             <tr>
-                <th bgcolor="#cbd5e1" colspan="6" style="background-color: #cbd5e1; padding: 8px 14px; font-size: 12px; color: #1e293b; text-align: left; border-bottom: 1px solid #94a3b8;">
+                <th bgcolor="#cbd5e1" colspan="6" style="background-color: #cbd5e1; padding: 10px 16px; font-size: 14px; color: #1e293b; text-align: left; border-bottom: 1px solid #94a3b8;">
                     📅 최근 5경기 상세 매치 로그
                 </th>
             </tr>
             <tr>
-                <th bgcolor="#e2e8f0" style="padding: 6px; font-size: 11px; color: #1e293b; text-align: center; border-bottom: 1px solid #cbd5e1;">날짜</th>
-                <th bgcolor="#e2e8f0" style="padding: 6px; font-size: 11px; color: #1e293b; text-align: center; border-bottom: 1px solid #cbd5e1;">장소</th>
-                <th bgcolor="#e2e8f0" style="padding: 6px; font-size: 11px; color: #1e293b; text-align: left; border-bottom: 1px solid #cbd5e1;">상대팀</th>
-                <th bgcolor="#e2e8f0" style="padding: 6px; font-size: 11px; color: #1e293b; text-align: center; border-bottom: 1px solid #cbd5e1;">스코어</th>
-                <th bgcolor="#e2e8f0" style="padding: 6px; font-size: 11px; color: #1e293b; text-align: center; border-bottom: 1px solid #cbd5e1;">xG / xGA</th>
-                <th bgcolor="#e2e8f0" style="padding: 6px; font-size: 11px; color: #1e293b; text-align: center; border-bottom: 1px solid #cbd5e1;">배트맨 승배당</th>
+                <th bgcolor="#e2e8f0" style="padding: 8px 6px; font-size: 13px; color: #1e293b; text-align: center; border-bottom: 1px solid #cbd5e1;">날짜</th>
+                <th bgcolor="#e2e8f0" style="padding: 8px 6px; font-size: 13px; color: #1e293b; text-align: center; border-bottom: 1px solid #cbd5e1;">장소</th>
+                <th bgcolor="#e2e8f0" style="padding: 8px 10px; font-size: 13px; color: #1e293b; text-align: left; border-bottom: 1px solid #cbd5e1;">상대팀</th>
+                <th bgcolor="#e2e8f0" style="padding: 8px 6px; font-size: 13px; color: #1e293b; text-align: center; border-bottom: 1px solid #cbd5e1;">스코어</th>
+                <th bgcolor="#e2e8f0" style="padding: 8px 6px; font-size: 13px; color: #1e293b; text-align: center; border-bottom: 1px solid #cbd5e1;">xG / xGA</th>
+                <th bgcolor="#e2e8f0" style="padding: 8px 6px; font-size: 13px; color: #1e293b; text-align: center; border-bottom: 1px solid #cbd5e1;">배트맨 승배당</th>
             </tr>
             {log_rows_html}
         </table>
@@ -363,12 +542,12 @@ def generate_naver_scouting_infographic(rpt):
         <!-- 섹션 6: 초보자를 위한 용어·지표 완벽 가이드 -->
         <table width="100%" cellpadding="0" cellspacing="0" style="width: 100%; border-collapse: collapse;">
             <tr>
-                <th bgcolor="#1e293b" style="background-color: #1e293b; padding: 8px 14px; font-size: 12px; color: #fbbf24; text-align: left;">
+                <th bgcolor="#1e293b" style="background-color: #1e293b; padding: 10px 16px; font-size: 14px; color: #fbbf24; text-align: left;">
                     📖 처음 보시는 분들을 위한 핵심 용어·지표 쉬운 설명서
                 </th>
             </tr>
             <tr>
-                <td bgcolor="#f8fafc" style="background-color: #f8fafc; padding: 12px 16px; font-size: 11px; color: #334155; line-height: 1.75; border-top: 1px solid #cbd5e1;">
+                <td bgcolor="#f8fafc" style="background-color: #f8fafc; padding: 14px 18px; font-size: 13px; color: #334155; line-height: 1.85; border-top: 1px solid #cbd5e1;">
                     <b style="color: #0f172a;">① xG(기대득점) · xGA(기대실점) · xGD(기대득실차):</b> 슈팅 위치와 찬스 난이도를 바탕으로 "원래 몇 골을 넣거나 먹혔어야 정상인지" 계산한 수치입니다. 실제 득점이 xG보다 높으면 <b>골 결정력이 좋은 팀</b>, 실제 실점이 xGA보다 낮으면 <b>수비·키퍼가 잘 버틴 팀</b>입니다. xGD(+)가 높을수록 경기 내용 자체가 상대를 압도했다는 뜻입니다.<br>
                     <b style="color: #0f172a;">② xPts(기대승점):</b> 경기 내용(xG/xGA)만 놓고 봤을 때 원래 얻었어야 할 승점입니다. 실제 승점이 xPts보다 훨씬 높다면 <b>운이 좋았던(거품 주의)</b> 상태, 반대로 xPts가 훨씬 높다면 <b>경기력 대비 운이 없었던(반등 가능성)</b> 상태입니다.<br>
                     <b style="color: #0f172a;">③ 슈팅당 xG &amp; 허용 슈팅당 xGA:</b> 슈팅 1개당 골 확률입니다. 공격 시 높으면 <b>확실한 찬스만 노리는 고효율 팀</b>, 수비 시 낮으면 <b>위험한 찬스는 안 주고 중거리만 허용하는 단단한 수비</b>입니다.<br>
@@ -386,7 +565,7 @@ def generate_naver_scouting_infographic(rpt):
 
 def render_tab8_scouting(spreadsheet_id, overseas_bookmakers):
     st.subheader("📋 팀 종합 스카우팅 리포트 (경기내용 + 9대 배당 교차 분석)")
-    st.caption("시즌, 리그, 팀 및 원하는 핸디캡/언오버 기준점을 선택하면 성적·홈/원정·xG/xPts·키퍼·전술·배당 DNA·최근 5경기 로그·초보자 용어 가이드까지 한 번에 출력합니다.")
+    st.caption("시즌, 리그, 팀 및 원하는 핸디캡/언오버 기준점을 선택하면 구단 로고가 포함된 종합 전력 리포트와 초보자 용어 가이드를 한 번에 출력합니다.")
 
     df_stats = load_sheet_data("경기내용", spreadsheet_id)
     if df_stats.empty or "홈팀" not in df_stats.columns or "원정팀" not in df_stats.columns:
@@ -417,7 +596,7 @@ def render_tab8_scouting(spreadsheet_id, overseas_bookmakers):
 
     sel_team = c_sel3.selectbox("⚽ 분석할 팀 선택", available_teams, key="scout_team")
 
-    c_opt1, c_opt2 = st.columns([2, 1])
+    c_opt1, c_opt2, c_opt3 = st.columns([2, 1, 1])
     sel_hc_lines = c_opt1.multiselect(
         "🎯 스카우팅 핸디캡 기준점 (복수 선택 가능 · 클릭 선택)",
         HC_OPTIONS,
@@ -431,11 +610,20 @@ def render_tab8_scouting(spreadsheet_id, overseas_bookmakers):
         index=OU_OPTIONS.index(2.5),
         key="scout_ou_line"
     ))
+    use_transparent_logo = c_opt3.checkbox(
+        "🎨 로고 배경 자동 투명화",
+        value=True,
+        help="체크 시 로고 바깥쪽 배경색을 자동으로 제거합니다. (해제 시 흰색 둥근 배지 적용)",
+        key="scout_logo_transparent"
+    )
     hc_lines_used = sort_hc_lines(sel_hc_lines) if sel_hc_lines else [-1.0, 1.0]
 
     if st.button(f"🔍 [{sel_team}] 종합 스카우팅 리포트 생성하기", type="primary", use_container_width=True, key="btn_run_scouting"):
-        with st.spinner(f"[{sel_team}] 경기내용 및 배트맨·해외 8개사 배당 데이터를 교차 분석 중입니다..."):
+        with st.spinner(f"[{sel_team}] 구단 로고 처리 및 경기내용·9대 배당 데이터를 교차 분석 중입니다..."):
             bm_lookup, ov_lookup = _build_odds_lookups_cached(spreadsheet_id, tuple(overseas_bookmakers))
+            logo_map = _load_drive_logo_map(LOGO_FOLDER_ID)
+            raw_logo_url = _get_team_logo_url(logo_map, sel_team)
+            logo_src = _make_transparent_logo_data_uri(raw_logo_url) if (raw_logo_url and use_transparent_logo) else raw_logo_url
 
             team_league_agg = {}
             for _, r in df_filtered.iterrows():
@@ -589,7 +777,6 @@ def render_tab8_scouting(spreadsheet_id, overseas_bookmakers):
                         break
                 streak_text = f"🛡️ 최근 {unbeaten}경기 무패" if unbeaten >= 3 else f"최근 경기: {last_res}"
 
-            # 공수 & 키퍼 & 슈팅 퀄리티
             avg_gf = round(float(np.mean([m["gf"] for m in matches])), 2)
             avg_ga = round(float(np.mean([m["ga"] for m in matches])), 2)
             avg_xg = round(float(np.mean([m["xg"] for m in matches])), 2)
@@ -618,7 +805,6 @@ def render_tab8_scouting(spreadsheet_id, overseas_bookmakers):
             sot_conv_pct = round((tot_gf / tot_sot) * 100, 1) if tot_sot > 0 else 0.0
             gk_save_pct = round(max(0.0, (tot_opp_sot - tot_ga) / tot_opp_sot) * 100, 1) if tot_opp_sot > 0 else 0.0
 
-            # 전·후반 패턴 & 멘탈
             fh_score_pct = round((sum(1 for m in matches if m["gf_1h"] > 0) / total_n) * 100, 1)
             fh_cs_pct = round((sum(1 for m in matches if m["ga_1h"] == 0) / total_n) * 100, 1)
             sh_gd_avg = round(float(np.mean([m["gf_2h"] - m["ga_2h"] for m in matches])), 2)
@@ -651,7 +837,6 @@ def render_tab8_scouting(spreadsheet_id, overseas_bookmakers):
             else:
                 bounce_win_pct, bounce_unb_pct = "-", "-"
 
-            # 언오버 & 핸디캡 & 무승부
             sel_ov_pct = round((sum(1 for m in matches if (m["gf"] + m["ga"]) > sel_ou_line) / total_n) * 100, 1)
             sel_un_pct = round(100.0 - sel_ov_pct, 1)
             ov15_pct = round((sum(1 for m in matches if (m["gf"] + m["ga"]) > 1.5) / total_n) * 100, 1)
@@ -673,7 +858,6 @@ def render_tab8_scouting(spreadsheet_id, overseas_bookmakers):
                     "l_pct": round((hl_c / total_n) * 100, 1),
                 })
 
-            # 배당 DNA & 정배 심화 & 무승부 ROI
             bm_valid = [m for m in matches if m["team_bm_odd"] >= 1.01]
             if bm_valid:
                 roi_return = sum(m["team_bm_odd"] for m in bm_valid if m["res"] == "승")
@@ -710,7 +894,6 @@ def render_tab8_scouting(spreadsheet_id, overseas_bookmakers):
             bm_tight_pct = f"{round((sum(1 for m in tight_ms if m['res'] == '승') / len(tight_ms)) * 100, 1)}% ({len(tight_ms)}전)" if tight_ms else "-"
             bm_value_pct = f"{round((sum(1 for m in value_ms if m['res'] == '승') / len(value_ms)) * 100, 1)}% ({len(value_ms)}전)" if value_ms else "-"
 
-            # 전술 & 스타일 & 점유율/득점대/수비 상성
             tac_groups = {}
             for m in matches:
                 if m["my_tac"]:
@@ -766,6 +949,7 @@ def render_tab8_scouting(spreadsheet_id, overseas_bookmakers):
 
             rpt = {
                 "season": sel_season, "league": sel_league, "team": sel_team,
+                "logo_src": logo_src, "logo_transparent": use_transparent_logo,
                 "total_n": total_n, "w": w, "d": d, "l": l, "win_pct": win_pct, "draw_pct": draw_pct,
                 "pts": pts, "xpts": xpts, "pts_diff": pts_diff,
                 "h_n": h_n, "hw": hw, "hd": hd, "hl": hl, "h_win_pct": h_win_pct,
@@ -802,10 +986,10 @@ def render_tab8_scouting(spreadsheet_id, overseas_bookmakers):
                 "r5_gf": r5_gf, "r5_xg": r5_xg, "r5_gf_diff": round(r5_gf - avg_gf, 2), "r5_xg_diff": round(r5_xg - avg_xg, 2),
                 "tags": tags
             }
-            st.session_state["t8_last_rpt_v3"] = rpt
+            st.session_state["t8_last_rpt_v5"] = rpt
 
-    if "t8_last_rpt_v3" in st.session_state:
-        rpt = st.session_state["t8_last_rpt_v3"]
+    if "t8_last_rpt_v5" in st.session_state:
+        rpt = st.session_state["t8_last_rpt_v5"]
         st.markdown("---")
         m1, m2, m3, m4 = st.columns(4)
         m1.metric("시즌 성적 (승점 vs xPts)", f"{rpt['w']}승 {rpt['d']}무 {rpt['l']}패", f"{rpt['pts']}점 vs {rpt['xpts']}점 ({rpt['pts_diff']:+.1f})")
@@ -814,6 +998,6 @@ def render_tab8_scouting(spreadsheet_id, overseas_bookmakers):
         m4.metric(f"{rpt['sel_ou']} 오버 / BTTS", f"{rpt['sel_ov_pct']}% / {rpt['btts_pct']}%", f"2득점↑ {rpt['gf2_pct']}% · 2실점↑ {rpt['ga2_pct']}%")
 
         with st.expander("📊 / 📋 [네이버 블로그/카페 전용] 팀 종합 스카우팅 리포트 인포그래픽 복사 (추천 ⭐)", expanded=True):
-            st.caption("초록색 버튼을 1번 클릭한 뒤 네이버 블로그/카페 글쓰기 창에서 Ctrl+V 하세요! (하단 용어 설명서까지 함께 복사됩니다)")
+            st.caption("초록색 버튼을 1번 클릭한 뒤 네이버 블로그/카페 글쓰기 창에서 Ctrl+V 하세요! (투명 로고 + 하단 용어 설명서까지 함께 복사됩니다)")
             ig_html = generate_naver_scouting_infographic(rpt)
-            render_clipboard_component(ig_html, "t8_clip_scouting_v3", height=1250)
+            render_clipboard_component(ig_html, "t8_clip_scouting_v5", height=1480)
