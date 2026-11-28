@@ -446,7 +446,8 @@ def _generate_charts_image(rpt, theme_mode="dark"):
     plt.close(fig)
     png_bytes = buf.getvalue()
     b64 = base64.b64encode(png_bytes).decode("utf-8")
-return f"data:image/png;base64,{b64}", png_bytesdef generate_naver_scouting_infographic(rpt, theme_mode="dark"):
+return f"data:image/png;base64,{b64}", png_bytes
+def generate_naver_scouting_infographic(rpt, theme_mode="dark"):
     is_dark = (theme_mode == "dark")
 
     # 테마별 컬러 팔레트
@@ -1267,4 +1268,4 @@ def render_tab8_scouting(spreadsheet_id, overseas_bookmakers):
         with st.expander("📊 / 📋 [네이버 블로그/카페 전용] 팀 종합 스카우팅 리포트 인포그래픽 복사 (추천 ⭐)", expanded=True):
             st.caption("초록색 버튼을 1번 클릭한 뒤 네이버 블로그/카페 글쓰기 창에서 Ctrl+V 하세요! (6각형 차트 + 투명 로고 + 용어 설명서 포함)")
             ig_html = generate_naver_scouting_infographic(rpt, theme_mode=theme_mode)
-            render_clipboard_component(ig_html, f"t8_clip_scouting_v6_{theme_mode}", height=1880)    
+            render_clipboard_component(ig_html, f"t8_clip_scouting_v6_{theme_mode}", height=1880)
